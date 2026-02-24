@@ -255,11 +255,8 @@ class CondenserPipeline:
 
     def _transcribe_video(self, video_path: Path, video_folder: Path) -> Dict[str, Any]:
         """Extract audio and transcribe."""
-        from .modules.downloader import normalize_name
-
-        # Extract audio to video folder with normalized name
-        base_name = normalize_name(video_path.stem)
-        audio_path = video_folder / f"{base_name}_audio.wav"
+        # Extract audio to video folder with generic name
+        audio_path = video_folder / "extracted_audio.wav"
 
         if not audio_path.exists():
             extract_audio(video_path, audio_path)
@@ -268,7 +265,7 @@ class CondenserPipeline:
         transcript_result = self.transcriber.transcribe(audio_path, include_timestamps=True)
 
         # Save transcript
-        transcript_json_path = video_folder / f"{base_name}_transcript.json"
+        transcript_json_path = video_folder / "transcript.json"
         self.transcriber.save_transcript(transcript_result, transcript_json_path)
 
         return transcript_result
@@ -307,8 +304,7 @@ class CondenserPipeline:
         from .modules.downloader import normalize_name
 
         # Get audio path
-        base_name = normalize_name(video_path.stem)
-        audio_path = video_folder / f"{base_name}_audio.wav"
+        audio_path = video_folder / "extracted_audio.wav"
 
         # Extract clean speech segments
         clean_segments = self.transcriber.extract_clean_speech_segments(
@@ -678,12 +674,9 @@ class CondenserPipeline:
 
     def _find_existing_transcript(self, video_path: Path) -> Optional[Dict[str, Any]]:
         """Find existing transcript JSON file."""
-        from .modules.downloader import normalize_name
-
         # Look for transcript JSON in video folder
         video_folder = video_path.parent
-        base_name = normalize_name(video_path.stem)
-        transcript_json = video_folder / f"{base_name}_transcript.json"
+        transcript_json = video_folder / "transcript.json"
 
         if transcript_json.exists():
             logger.info(f"Found existing transcript: {transcript_json}")

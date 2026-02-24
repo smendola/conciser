@@ -88,9 +88,9 @@ class VideoDownloader:
             video_folder.mkdir(parents=True, exist_ok=True)
             logger.info(f"Using video folder: {video_folder}")
 
-            # Use normalized filename or custom one
+            # Use generic filename or custom one (folder name already contains video title)
             if output_filename is None:
-                output_filename = f"{normalized_title}.%(ext)s"
+                output_filename = "source_video.%(ext)s"
 
             output_template = str(video_folder / output_filename)
 
