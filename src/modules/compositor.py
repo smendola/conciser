@@ -51,7 +51,11 @@ class VideoCompositor:
             if add_watermark:
                 video_with_watermark = self.temp_dir / f"watermarked_{video_path.name}"
                 self._add_watermark(video_path, video_with_watermark, watermark_text)
-                video_path = video_with_watermark
+                # Only use watermarked version if it was successfully created
+                if video_with_watermark.exists():
+                    video_path = video_with_watermark
+                else:
+                    logger.warning("Watermark file not created, using original video")
 
             # Combine video and audio
             resolution_map = {
@@ -84,8 +88,12 @@ class VideoCompositor:
             logger.info(f"Final video created: {output_path}")
 
             # Clean up temporary watermarked video if created
-            if add_watermark and video_with_watermark.exists():
-                video_with_watermark.unlink()
+            if add_watermark:
+                try:
+                    if 'video_with_watermark' in locals() and video_with_watermark.exists():
+                        video_with_watermark.unlink()
+                except:
+                    pass  # Ignore cleanup errors
 
             return output_path
 

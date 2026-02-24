@@ -10,6 +10,7 @@ from .modules.downloader import VideoDownloader
 from .modules.transcriber import Transcriber
 from .modules.condenser import ContentCondenser
 from .modules.voice_cloner import VoiceCloner
+from .modules.edge_tts import EdgeTTS
 from .modules.video_generator import VideoGenerator
 from .modules.compositor import VideoCompositor
 from .utils.audio_utils import extract_audio, extract_audio_segment, normalize_audio, get_audio_duration
@@ -34,7 +35,9 @@ class CondenserPipeline:
         self.downloader = VideoDownloader(settings.temp_dir)
         self.transcriber = Transcriber(settings.openai_api_key)
         self.condenser = ContentCondenser(settings.anthropic_api_key)
-        self.voice_cloner = VoiceCloner(settings.elevenlabs_api_key)
+        # TTS providers
+        self.voice_cloner = VoiceCloner(settings.elevenlabs_api_key) if settings.elevenlabs_api_key else None
+        self.edge_tts = EdgeTTS()  # Always available (free)
         # D-ID video generator only needed for avatar mode
         self.video_generator = VideoGenerator(settings.did_api_key) if settings.did_api_key else None
         self.compositor = VideoCompositor(settings.temp_dir)
@@ -49,7 +52,8 @@ class CondenserPipeline:
         progress_callback: Optional[callable] = None,
         resume: bool = True,
         skip_voice_clone: bool = False,
-        voice_id: str = None
+        voice_id: str = None,
+        tts_provider: str = "elevenlabs"
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -64,6 +68,7 @@ class CondenserPipeline:
             resume: Resume from existing intermediate files
             skip_voice_clone: Skip voice cloning and use premade voice
             voice_id: Voice ID to use if skipping voice cloning
+            tts_provider: TTS provider (elevenlabs or edge)
 
         Returns:
             Dictionary with results:
@@ -163,7 +168,12 @@ class CondenserPipeline:
                 condensed_script = condensed_result['condensed_script']
 
             # Stage 4: Clone voice (or use premade voice)
-            if skip_voice_clone:
+            if tts_provider == 'edge':
+                # Edge TTS doesn't need voice cloning
+                update_progress("VOICE_CLONE", f"Using Edge TTS voice: {voice_id}...")
+                used_voice_id = voice_id
+                cleanup_voice = False
+            elif skip_voice_clone:
                 update_progress("VOICE_CLONE", f"Using premade voice (ID: {voice_id})...")
                 used_voice_id = voice_id
                 cleanup_voice = False
@@ -174,7 +184,7 @@ class CondenserPipeline:
 
             # Stage 5: Generate speech
             update_progress("VOICE_GENERATE", "Generating speech with voice...")
-            generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder)
+            generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
 
             # Stage 6: Generate video
             if video_gen_mode == "avatar":
@@ -326,17 +336,25 @@ class CondenserPipeline:
 
         return voice_id
 
-    def _generate_speech(self, script: str, voice_id: str, video_folder: Path) -> Path:
+    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs") -> Path:
         """Generate speech from script."""
         output_path = video_folder / "generated_speech.mp3"
 
-        # Use chunked generation for long scripts
-        self.voice_cloner.generate_speech_chunked(
-            script,
-            voice_id,
-            output_path,
-            chunk_size=5000
-        )
+        if tts_provider == "edge":
+            # Use Edge TTS
+            self.edge_tts.generate_speech(
+                script,
+                output_path,
+                voice=voice_id
+            )
+        else:
+            # Use ElevenLabs with chunked generation for long scripts
+            self.voice_cloner.generate_speech_chunked(
+                script,
+                voice_id,
+                output_path,
+                chunk_size=5000
+            )
 
         # Normalize audio
         normalized_path = video_folder / "generated_speech_normalized.mp3"

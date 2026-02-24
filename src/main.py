@@ -167,7 +167,13 @@ def cli():
     default=None,
     help='Use a premade voice instead of cloning (specify ID or name, e.g., "George"). If not specified, voice will be cloned from video.'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice):
+@click.option(
+    '--tts-provider',
+    type=click.Choice(['elevenlabs', 'edge']),
+    default='elevenlabs',
+    help='TTS provider: elevenlabs (paid, high quality) or edge (free, good quality). Default: elevenlabs'
+)
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider):
     """
     Condense a video from URL.
 
@@ -187,11 +193,15 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
         conciser condense https://youtube.com/watch?v=... --video-gen-mode=avatar
 
+        # Free TTS with Edge
+        conciser condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Aria
+
+        conciser condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Ryan
+
+        # ElevenLabs TTS (default)
         conciser condense https://youtube.com/watch?v=... --voice=George
 
         conciser condense https://youtube.com/watch?v=... --voice=Sarah
-
-        conciser condense https://youtube.com/watch?v=... --voice=EXAVITQu4vr4xnSDxMaL
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -208,24 +218,42 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             print(f"Target Reduction: {reduction}%")
         print(f"Quality: {quality}")
         print(f"Video Mode: {video_gen_mode}")
+        print(f"TTS Provider: {tts_provider}")
 
         # Load settings first
         settings = get_settings()
 
-        # If --voice is specified, use premade voice (skip cloning)
-        if voice:
-            # Resolve voice name to ID if needed
-            voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
-            if not voice_id:
-                click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
-                click.echo(f"{Fore.YELLOW}Run 'conciser voices' to see available voices.{Style.RESET_ALL}")
-                sys.exit(1)
-            print(f"Voice: {voice} (ID: {voice_id})")
+        # Handle voice selection based on TTS provider
+        if tts_provider == 'edge':
+            # Edge TTS: resolve voice name or use default
+            if voice:
+                from .modules.edge_tts import EdgeTTS
+                edge = EdgeTTS()
+                voice_id = edge.resolve_voice_name(voice)
+                if not voice_id:
+                    click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Run 'conciser voices --provider=edge' to see available voices.{Style.RESET_ALL}")
+                    sys.exit(1)
+                print(f"Voice: {voice} -> {voice_id}")
+            else:
+                voice_id = "en-US-AriaNeural"  # Default Edge voice
+                print(f"Voice: {voice_id} (default)")
             skip_voice_clone = True
         else:
-            print(f"Voice: Clone from video")
-            voice_id = None  # Will be set during pipeline
-            skip_voice_clone = False
+            # ElevenLabs: resolve voice name/ID or clone
+            if voice:
+                # Resolve voice name to ID if needed
+                voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
+                if not voice_id:
+                    click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Run 'conciser voices' to see available voices.{Style.RESET_ALL}")
+                    sys.exit(1)
+                print(f"Voice: {voice} (ID: {voice_id})")
+                skip_voice_clone = True
+            else:
+                print(f"Voice: Clone from video")
+                voice_id = None  # Will be set during pipeline
+                skip_voice_clone = False
         print()
 
         # Check API keys
@@ -235,8 +263,10 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
         if not settings.anthropic_api_key:
             click.echo(f"{Fore.RED}Error: ANTHROPIC_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
             sys.exit(1)
-        if not settings.elevenlabs_api_key:
+        # ElevenLabs only required if using elevenlabs provider
+        if tts_provider == 'elevenlabs' and not settings.elevenlabs_api_key:
             click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
             sys.exit(1)
         # D-ID only required for avatar mode
         if video_gen_mode == 'avatar' and not settings.did_api_key:
@@ -266,7 +296,8 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             progress_callback=ProgressDisplay.show,
             resume=resume,
             skip_voice_clone=skip_voice_clone,
-            voice_id=voice_id if skip_voice_clone else None
+            voice_id=voice_id if skip_voice_clone else None,
+            tts_provider=tts_provider
         )
 
         # Display results
@@ -416,11 +447,17 @@ OUTPUT_DIR=./output
 
 
 @cli.command()
-def voices():
+@click.option(
+    '--provider',
+    type=click.Choice(['elevenlabs', 'edge']),
+    default='elevenlabs',
+    help='TTS provider to list voices for. Default: elevenlabs'
+)
+def voices(provider):
     """
-    List available ElevenLabs voices.
+    List available TTS voices.
 
-    Shows all premade voices that can be used with --voice option.
+    Shows all voices that can be used with --voice option.
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -429,9 +466,54 @@ def voices():
     try:
         settings = get_settings()
 
+        if provider == 'edge':
+            # List Edge TTS voices
+            from .modules.edge_tts import EdgeTTS
+
+            print(f"\n{Fore.CYAN}Available Edge TTS Voices (Free):{Style.RESET_ALL}\n")
+
+            edge = EdgeTTS()
+            voices = edge.list_voices()
+
+            if not voices:
+                print(f"{Fore.RED}No voices found or API error.{Style.RESET_ALL}")
+                sys.exit(1)
+
+            # Group by locale
+            locales = {}
+            for v in voices:
+                locale = v['locale']
+                if locale not in locales:
+                    locales[locale] = []
+                locales[locale].append(v)
+
+            # Show all locales, sorted with popular ones first
+            popular = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'pt-BR']
+            all_locales = sorted(locales.keys(), key=lambda x: (x not in popular, x))
+
+            for locale in all_locales:
+                print(f"{Fore.GREEN}{locale}:{Style.RESET_ALL}")
+                for v in locales[locale]:
+                    gender_icon = "♂" if v['gender'] == 'Male' else "♀" if v['gender'] == 'Female' else ""
+                    # Extract short name from full name (e.g., "en-US-AriaNeural" -> "Aria")
+                    short_name = v['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '')
+                    print(f"  {gender_icon} {Fore.GREEN}{short_name}{Style.RESET_ALL} {Style.DIM}({v['name']}){Style.RESET_ALL}")
+                print()
+
+            print(f"{Fore.YELLOW}Usage (short names):{Style.RESET_ALL}")
+            print(f"  conciser condense URL --tts-provider=edge --voice=Aria")
+            print(f"  conciser condense URL --tts-provider=edge --voice=Ryan")
+            print(f"  conciser condense URL --tts-provider=edge --voice=Denise")
+            print(f"\n{Fore.YELLOW}Usage (full names):{Style.RESET_ALL}")
+            print(f"  conciser condense URL --tts-provider=edge --voice=en-US-AriaNeural")
+            print(f"  conciser condense URL --tts-provider=edge --voice=en-GB-RyanNeural\n")
+            return
+
+        # ElevenLabs
         if not settings.elevenlabs_api_key:
             print(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set.{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}Run 'conciser setup' to configure.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Or use --provider=edge for free voices without API key.{Style.RESET_ALL}")
             sys.exit(1)
 
         from .modules.voice_cloner import VoiceCloner
@@ -478,8 +560,8 @@ def voices():
             print()
 
         print(f"{Fore.YELLOW}Usage:{Style.RESET_ALL}")
-        print(f"  conciser condense URL --voice=George")
-        print(f"  conciser condense URL --voice=JBFqnCBsd6RMkjVDRZzb\n")
+        print(f"  conciser condense URL --tts-provider=elevenlabs --voice=George")
+        print(f"  conciser condense URL --tts-provider=elevenlabs --voice=JBFqnCBsd6RMkjVDRZzb\n")
 
     except Exception as e:
         print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
