@@ -2,6 +2,7 @@
 
 import subprocess
 from pathlib import Path
+from typing import List, Dict
 import logging
 
 logger = logging.getLogger(__name__)
@@ -119,3 +120,111 @@ def get_video_info(video_path: Path) -> dict:
     except (subprocess.CalledProcessError, ValueError) as e:
         logger.error(f"Failed to get video info: {e}")
         raise RuntimeError(f"Failed to get video info: {e}")
+
+
+def detect_scene_changes(
+    video_path: Path,
+    threshold: int = 27,
+    min_scenes: int = 5
+) -> List[Dict]:
+    """
+    Detect scene changes in video using PySceneDetect.
+
+    Uses content-aware detection that's robust to camera shake and zooms,
+    making it ideal for educational/presentation videos.
+
+    Args:
+        video_path: Path to video file
+        threshold: Detection threshold (20-35, lower = more sensitive)
+        min_scenes: Minimum expected scenes (triggers retry with lower threshold)
+
+    Returns:
+        List of scene dictionaries with:
+            - scene_id: Scene number
+            - start_time: Start timestamp in seconds
+            - end_time: End timestamp in seconds
+            - duration: Scene duration in seconds
+    """
+    try:
+        from scenedetect import detect, ContentDetector
+
+        logger.info(f"Detecting scenes in {video_path.name} (threshold={threshold})")
+
+        # First pass with standard threshold
+        scene_list = detect(
+            str(video_path),
+            ContentDetector(threshold=threshold),
+            show_progress=False
+        )
+
+        # If too few scenes detected, retry with lower threshold
+        if len(scene_list) < min_scenes:
+            logger.info(f"Only {len(scene_list)} scenes detected, retrying with lower threshold")
+            scene_list = detect(
+                str(video_path),
+                ContentDetector(threshold=threshold - 4),  # More sensitive
+                show_progress=False
+            )
+
+        # Convert to our format
+        scenes = []
+        for i, (start_time, end_time) in enumerate(scene_list):
+            scenes.append({
+                'scene_id': i,
+                'start_time': start_time.get_seconds(),
+                'end_time': end_time.get_seconds(),
+                'duration': (end_time - start_time).get_seconds()
+            })
+
+        logger.info(f"Detected {len(scenes)} scene changes")
+        return scenes
+
+    except ImportError:
+        logger.warning("PySceneDetect not installed, falling back to evenly-spaced frames")
+        return []
+    except Exception as e:
+        logger.error(f"Scene detection failed: {e}")
+        return []
+
+
+def extract_scene_keyframes(
+    video_path: Path,
+    scenes: List[Dict],
+    output_dir: Path,
+    max_frames: int = 15
+) -> List[Path]:
+    """
+    Extract keyframes for detected scenes.
+
+    Args:
+        video_path: Path to video file
+        scenes: List of scene dictionaries from detect_scene_changes()
+        output_dir: Directory to save extracted frames
+        max_frames: Maximum number of frames to extract
+
+    Returns:
+        List of paths to extracted frames
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # If too many scenes, sample them proportionally
+    if len(scenes) > max_frames:
+        step = len(scenes) / max_frames
+        selected_scenes = [scenes[int(i * step)] for i in range(max_frames)]
+    else:
+        selected_scenes = scenes
+
+    frame_paths = []
+    for i, scene in enumerate(selected_scenes):
+        # Extract frame from middle of scene for better representation
+        timestamp = scene['start_time'] + (scene['duration'] / 2)
+        frame_path = output_dir / f"scene_{scene['scene_id']:03d}.jpg"
+
+        try:
+            extract_frame(video_path, frame_path, timestamp)
+            frame_paths.append(frame_path)
+        except Exception as e:
+            logger.warning(f"Failed to extract frame {i}: {e}")
+
+    logger.info(f"Extracted {len(frame_paths)} keyframes")
+    return frame_paths

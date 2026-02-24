@@ -14,7 +14,7 @@ from .modules.edge_tts import EdgeTTS
 from .modules.video_generator import VideoGenerator
 from .modules.compositor import VideoCompositor
 from .utils.audio_utils import extract_audio, extract_audio_segment, normalize_audio, get_audio_duration
-from .utils.video_utils import extract_frame
+from .utils.video_utils import extract_frame, detect_scene_changes, extract_scene_keyframes
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ class CondenserPipeline:
         resume: bool = True,
         skip_voice_clone: bool = False,
         voice_id: str = None,
-        tts_provider: str = "elevenlabs"
+        tts_provider: str = "elevenlabs",
+        slideshow_max_frames: int = None
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -203,7 +204,7 @@ class CondenserPipeline:
                 generated_video_path = self._generate_video_avatar(video_path, generated_audio_path, video_folder)
             elif video_gen_mode == "slideshow":
                 update_progress("VIDEO_GENERATE", "Creating slideshow video...")
-                generated_video_path = self._generate_video_slideshow(video_path, generated_audio_path, video_folder)
+                generated_video_path = self._generate_video_slideshow(video_path, generated_audio_path, video_folder, slideshow_max_frames)
             else:  # static
                 update_progress("VIDEO_GENERATE", "Creating static image video...")
                 generated_video_path = self._generate_video_static(video_path, generated_audio_path, video_folder)
@@ -321,10 +322,14 @@ class CondenserPipeline:
             logger.warning("No clean segments found, using first 2 minutes")
             clean_segments = [{'start': 30, 'end': 150, 'duration': 120}]
 
+        # Create voice_samples subdirectory
+        voice_samples_dir = video_folder / "voice_samples"
+        voice_samples_dir.mkdir(exist_ok=True)
+
         # Extract audio samples
         sample_paths = []
         for i, segment in enumerate(clean_segments[:3]):  # Max 3 samples
-            sample_path = video_folder / f"voice_sample_{i}.wav"
+            sample_path = voice_samples_dir / f"voice_sample_{i}.wav"
             extract_audio_segment(
                 audio_path,
                 sample_path,
@@ -333,7 +338,7 @@ class CondenserPipeline:
             )
 
             # Normalize the sample
-            normalized_path = video_folder / f"voice_sample_{i}_normalized.wav"
+            normalized_path = voice_samples_dir / f"voice_sample_{i}_normalized.wav"
             normalize_audio(sample_path, normalized_path)
             sample_paths.append(normalized_path)
 
@@ -378,9 +383,14 @@ class CondenserPipeline:
 
     def _generate_video_avatar(self, source_video_path: Path, audio_path: Path, video_folder: Path) -> Path:
         """Generate talking head video using D-ID."""
+        # Create frames subdirectory
+        frames_dir = video_folder / "frames"
+        frames_dir.mkdir(exist_ok=True)
+
         # Extract a good frame from the source video
-        frame_path = video_folder / "source_frame.jpg"
+        frame_path = frames_dir / "avatar_source_frame.jpg"
         extract_frame(source_video_path, frame_path, timestamp=10.0)
+        logger.info(f"Saved avatar source frame to: {frame_path}")
 
         # Generate video
         output_path = video_folder / "generated_video.mp4"
@@ -396,9 +406,14 @@ class CondenserPipeline:
         """Generate video with static image and audio (low cost alternative)."""
         import subprocess
 
+        # Create frames subdirectory
+        frames_dir = video_folder / "frames"
+        frames_dir.mkdir(exist_ok=True)
+
         # Extract a good frame from the source video
-        frame_path = video_folder / "source_frame.jpg"
+        frame_path = frames_dir / "static_frame.jpg"
         extract_frame(source_video_path, frame_path, timestamp=10.0)
+        logger.info(f"Saved static frame to: {frame_path}")
 
         # Get audio duration
         duration = get_audio_duration(audio_path)
@@ -426,36 +441,132 @@ class CondenserPipeline:
 
         return output_path
 
-    def _generate_video_slideshow(self, source_video_path: Path, audio_path: Path, video_folder: Path) -> Path:
-        """Generate slideshow video with multiple frames from source video."""
+    def _generate_video_slideshow(
+        self,
+        source_video_path: Path,
+        audio_path: Path,
+        video_folder: Path,
+        max_frames: int = None
+    ) -> Path:
+        """
+        Generate slideshow video with scene-detected frames.
+
+        Uses PySceneDetect to identify scene changes in the original video,
+        then proportionally maps those scenes to the condensed audio timeline.
+
+        Args:
+            source_video_path: Path to original video
+            audio_path: Path to condensed audio
+            video_folder: Working directory
+            max_frames: Maximum frames to extract (None = auto-calculate)
+        """
         import subprocess
 
-        # Get audio duration
-        duration = get_audio_duration(audio_path)
-
-        # Extract multiple frames evenly distributed
-        num_frames = min(10, int(duration / 5))  # One frame every 5 seconds, max 10
-        frame_paths = []
-
-        # Get source video duration
+        # Get durations
+        condensed_duration = get_audio_duration(audio_path)
         source_duration = get_audio_duration(source_video_path)
 
-        for i in range(num_frames):
-            timestamp = (source_duration / (num_frames + 1)) * (i + 1)
-            frame_path = video_folder / f"slideshow_frame_{i:03d}.jpg"
-            extract_frame(source_video_path, frame_path, timestamp=timestamp)
-            frame_paths.append(frame_path)
+        logger.info(f"Detecting scenes in source video ({source_duration:.1f}s)...")
 
-        # Create a concat file for ffmpeg
-        concat_file = video_folder / "slideshow_concat.txt"
-        frame_duration = duration / num_frames
+        # Detect scene changes in source video
+        scenes = detect_scene_changes(source_video_path, threshold=27)
 
-        with open(concat_file, 'w') as f:
+        # Create frames subdirectory for preservation
+        frames_dir = video_folder / "frames"
+        frames_dir.mkdir(exist_ok=True)
+
+        # Fallback to evenly-spaced frames if scene detection fails
+        if not scenes:
+            logger.warning("Scene detection failed, using evenly-spaced frames")
+
+            # Calculate fallback frame count
+            if max_frames is None:
+                num_frames = min(10, int(condensed_duration / 5))
+                logger.info(f"Auto-calculated fallback frames: {num_frames} (use --slideshow-frames to override)")
+            else:
+                num_frames = max_frames
+                logger.info(f"Using user-specified frames for fallback: {num_frames}")
+
+            frame_paths = []
+            for i in range(num_frames):
+                timestamp = (source_duration / (num_frames + 1)) * (i + 1)
+                frame_path = frames_dir / f"slideshow_frame_{i:03d}.jpg"
+                extract_frame(source_video_path, frame_path, timestamp=timestamp)
+                frame_paths.append(frame_path)
+        else:
+            # Extract keyframes from detected scenes
+            logger.info(f"Found {len(scenes)} scenes, extracting keyframes...")
+
+            # Calculate max frames if not specified
+            if max_frames is None:
+                # Conservative default: 1 frame per 4 seconds, max 15
+                max_frames = min(15, int(condensed_duration / 4))
+                logger.info(f"Auto-calculated max frames: {max_frames} (use --slideshow-frames to override)")
+            else:
+                logger.info(f"Using user-specified max frames: {max_frames}")
+
+            frame_paths = extract_scene_keyframes(
+                source_video_path,
+                scenes,
+                frames_dir,  # Save to frames/ subdirectory
+                max_frames=max_frames
+            )
+            logger.info(f"Saved {len(frame_paths)} frames to {frames_dir}")
+
+        # Proportional synchronization: map frames to condensed timeline
+        # If scene was at 25% through original, show at 25% through condensed
+        frame_timings = []
+        if scenes and len(frame_paths) == len([s for s in scenes if any(str(s['scene_id']) in str(fp) for fp in frame_paths)]):
+            # We have scene timing info - use proportional mapping
             for frame_path in frame_paths:
-                f.write(f"file '{frame_path}'\n")
-                f.write(f"duration {frame_duration}\n")
+                # Extract scene_id from filename
+                scene_id = int(frame_path.stem.split('_')[-1])
+                scene = scenes[scene_id]
+
+                # Calculate proportional position
+                original_position = scene['start_time'] / source_duration  # 0.0 to 1.0
+                condensed_position = original_position * condensed_duration  # Map to condensed timeline
+
+                frame_timings.append({
+                    'path': frame_path,
+                    'show_at': condensed_position,
+                    'scene_id': scene_id
+                })
+
+            # Sort by show_at time
+            frame_timings.sort(key=lambda x: x['show_at'])
+            logger.info(f"Synchronized {len(frame_timings)} frames to condensed timeline using proportional mapping")
+        else:
+            # Fallback: equal duration for each frame
+            frame_duration = condensed_duration / len(frame_paths)
+            for i, frame_path in enumerate(frame_paths):
+                frame_timings.append({
+                    'path': frame_path,
+                    'show_at': i * frame_duration,
+                    'scene_id': i
+                })
+            logger.info(f"Using equal duration ({frame_duration:.1f}s) for {len(frame_paths)} frames")
+
+        # Calculate durations for each frame
+        for i in range(len(frame_timings)):
+            if i < len(frame_timings) - 1:
+                # Duration until next frame
+                frame_timings[i]['duration'] = frame_timings[i + 1]['show_at'] - frame_timings[i]['show_at']
+            else:
+                # Last frame shows until end
+                frame_timings[i]['duration'] = condensed_duration - frame_timings[i]['show_at']
+
+        # Create concat file with timed durations (use absolute paths)
+        concat_file = video_folder / "slideshow_concat.txt"
+        with open(concat_file, 'w') as f:
+            for ft in frame_timings:
+                # Convert to absolute path for ffmpeg concat demuxer
+                abs_path = ft['path'].resolve() if hasattr(ft['path'], 'resolve') else Path(ft['path']).resolve()
+                f.write(f"file '{abs_path}'\n")
+                f.write(f"duration {ft['duration']:.3f}\n")
             # Add last frame again to ensure proper duration
-            f.write(f"file '{frame_paths[-1]}'\n")
+            last_path = frame_timings[-1]['path'].resolve() if hasattr(frame_timings[-1]['path'], 'resolve') else Path(frame_timings[-1]['path']).resolve()
+            f.write(f"file '{last_path}'\n")
 
         # Create slideshow video
         temp_video = video_folder / "slideshow_no_audio.mp4"
@@ -471,7 +582,11 @@ class CondenserPipeline:
             str(temp_video)
         ]
 
-        subprocess.run(cmd, check=True, capture_output=True)
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg slideshow creation failed: {e.stderr}")
+            raise RuntimeError(f"Failed to create slideshow video: {e.stderr}")
 
         # Combine with audio
         output_path = video_folder / "generated_video.mp4"
@@ -488,11 +603,10 @@ class CondenserPipeline:
         ]
 
         subprocess.run(cmd, check=True, capture_output=True)
-        logger.info(f"Created slideshow video: {output_path}")
+        logger.info(f"Created slideshow video with {len(frame_timings)} scene-synchronized frames")
+        logger.info(f"Extracted frames saved to: {frames_dir}")
 
-        # Cleanup
-        for frame_path in frame_paths:
-            frame_path.unlink(missing_ok=True)
+        # Cleanup temporary files (but keep frames in frames/ directory)
         concat_file.unlink(missing_ok=True)
         temp_video.unlink(missing_ok=True)
 

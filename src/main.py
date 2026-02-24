@@ -173,7 +173,13 @@ def cli():
     default='elevenlabs',
     help='TTS provider: elevenlabs (paid, high quality) or edge (free, good quality). Default: elevenlabs'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider):
+@click.option(
+    '--slideshow-frames',
+    type=int,
+    default=None,
+    help='Max frames for slideshow mode (default: auto). Use 30-50 for most scene changes, 100+ for all.'
+)
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames):
     """
     Condense a video from URL.
 
@@ -297,7 +303,8 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             resume=resume,
             skip_voice_clone=skip_voice_clone,
             voice_id=voice_id if skip_voice_clone else None,
-            tts_provider=tts_provider
+            tts_provider=tts_provider,
+            slideshow_max_frames=slideshow_frames
         )
 
         # Display results
