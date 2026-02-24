@@ -1,0 +1,238 @@
+● Great! Here's how Conciser works - a complete AI-powered video condensation pipeline:
+
+  High-Level Architecture
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │                         CONCISER PIPELINE                        │
+  └─────────────────────────────────────────────────────────────────┘
+
+  Input: YouTube URL
+     │
+     ├─► [1] DOWNLOAD ────────► yt-dlp
+     │                           │
+     ├─► [2] TRANSCRIBE ────────┼──► Extract audio (ffmpeg)
+     │                           └──► Whisper (OpenAI)
+     │
+     ├─► [3] CONDENSE ──────────► Claude (Anthropic)
+     │                           • Analyzes transcript
+     │                           • Removes filler/redundancy
+     │                           • Preserves key insights
+     │
+     ├─► [4] VOICE CLONE ───────► ElevenLabs
+     │                           • Samples clean speech
+     │                           • Creates voice model
+     │
+     ├─► [5] VOICE GENERATE ────► ElevenLabs
+     │                           • TTS with cloned voice
+     │                           • Generates condensed audio
+     │
+     ├─► [6] VIDEO GENERATE ────► D-ID
+     │                           • Takes frame from original
+     │                           • Animates with new audio
+     │                           • Creates talking head
+     │
+     └─► [7] COMPOSE ───────────► ffmpeg
+                                 • Final compositing
+                                 • Quality optimization
+                                 • Watermark (optional)
+
+  Output: Condensed MP4 video
+
+  Detailed Data Flow
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 1: DOWNLOAD                                                 │
+  └──────────────────────────────────────────────────────────────────┘
+  YouTube URL
+      │
+      ▼
+  [VideoDownloader]
+      │ yt-dlp with quality selection (720p/1080p/4k)
+      ▼
+  video.mp4 + metadata (title, duration, uploader, etc.)
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 2: TRANSCRIBE                                               │
+  └──────────────────────────────────────────────────────────────────┘
+  video.mp4
+      │
+      ├──► [extract_audio] ──► audio.wav
+      │
+      └──► [Transcriber]
+           • OpenAI Whisper API
+           • Includes timestamps
+           • Segment-level data
+           │
+           ▼
+      transcript.json
+      {
+        "text": "full transcript...",
+        "segments": [
+          {"start": 0.0, "end": 3.2, "text": "Hello..."},
+          ...
+        ]
+      }
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 3: CONDENSE                                                 │
+  └──────────────────────────────────────────────────────────────────┘
+  transcript + duration + aggressiveness (1-10)
+      │
+      ▼
+  [ContentCondenser]
+      │ Claude API (Sonnet 4)
+      │ • Analyzes content
+      │ • Identifies filler words/pauses
+      │ • Removes redundancy
+      │ • Preserves key insights
+      │ • Maintains natural flow
+      ▼
+  condensed_script.json
+  {
+    "condensed_script": "shortened version...",
+    "original_duration_minutes": 45.0,
+    "estimated_condensed_duration_minutes": 18.0,
+    "reduction_percentage": 60.0,
+    "key_points_preserved": ["point1", "point2", ...],
+    "removed_content_summary": "...",
+    "quality_notes": "..."
+  }
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 4: VOICE CLONE                                              │
+  └──────────────────────────────────────────────────────────────────┘
+  original audio + transcript segments
+      │
+      ├──► [extract_clean_speech_segments]
+      │    • Finds 2-3 min of clean speech
+      │    • Avoids background noise/music
+      │    • Extracts 30-150 second clips
+      │
+      └──► voice_samples (1-3 files)
+           │
+           ├──► [normalize_audio] ──► normalized samples
+           │
+           └──► [VoiceCloner]
+                • ElevenLabs API
+                • Creates custom voice model
+                │
+                ▼
+           voice_id: "xyz123..."
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 5: VOICE GENERATE                                           │
+  └──────────────────────────────────────────────────────────────────┘
+  condensed_script + voice_id
+      │
+      ▼
+  [VoiceCloner.generate_speech_chunked]
+      │ • Splits long scripts into chunks
+      │ • ElevenLabs TTS
+      │ • Uses cloned voice
+      │ • Concatenates chunks
+      │
+      ├──► generated_speech.mp3
+      │
+      └──► [normalize_audio]
+           │
+           ▼
+      generated_speech_normalized.mp3
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 6: VIDEO GENERATE                                           │
+  └──────────────────────────────────────────────────────────────────┘
+  original video + generated audio
+      │
+      ├──► [extract_frame]
+      │    • Grabs frame at ~10s
+      │    • Source for face animation
+      │    │
+      │    ▼
+      │  source_frame.jpg
+      │
+      └──► [VideoGenerator]
+           • D-ID API
+           • Uploads frame + audio
+           • Generates animated talking head
+           • Polls for completion (~5-10 min)
+           │
+           ▼
+      generated_video.mp4
+
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Stage 7: COMPOSE                                                  │
+  └──────────────────────────────────────────────────────────────────┘
+  generated_video + audio
+      │
+      ▼
+  [VideoCompositor]
+      │ ffmpeg operations:
+      │ • Sync audio/video
+      │ • Apply quality settings
+      │ • Add watermark (optional)
+      │ • Encode with proper codec
+      │
+      ▼
+  FINAL: condensed_video.mp4
+
+  Module Breakdown
+
+  src/
+  ├── main.py              # CLI interface (Click)
+  │   ├── condense         # Main command
+  │   ├── info             # Get video info
+  │   ├── setup            # Configure API keys
+  │   └── check            # Verify config
+  │
+  ├── pipeline.py          # Orchestrator (CondenserPipeline)
+  │   └── Coordinates all 7 stages
+  │
+  ├── modules/
+  │   ├── downloader.py         # yt-dlp wrapper
+  │   ├── transcriber.py        # OpenAI Whisper
+  │   ├── condenser.py          # Claude API
+  │   ├── voice_cloner.py       # ElevenLabs
+  │   ├── video_generator.py   # D-ID API
+  │   └── compositor.py         # ffmpeg wrapper
+  │
+  ├── utils/
+  │   ├── audio_utils.py        # ffmpeg audio ops
+  │   ├── video_utils.py        # ffmpeg video ops
+  │   └── prompt_templates.py  # Claude prompts
+  │
+  └── config.py            # Settings/env vars
+
+  API Dependencies
+
+  ┌─────────────┬──────────────────┬───────────────────────────┐
+  │ Service     │ Purpose          │ Cost Factor               │
+  ├─────────────┼──────────────────┼───────────────────────────┤
+  │ OpenAI      │ Transcription    │ ~$0.006/min (Whisper)     │
+  │ Anthropic   │ Condensing       │ ~$0.003/1K tokens         │
+  │ ElevenLabs  │ Voice Cloning    │ ~10K chars/month free     │
+  │ D-ID        │ Video Generation │ ~$0.05-0.15/sec video     │
+  └─────────────┴──────────────────┴───────────────────────────┘
+
+  Key Design Decisions
+
+  Why this approach?
+  - yt-dlp: Most reliable YouTube downloader
+  - Whisper: Best-in-class transcription with timestamps
+  - Claude: Superior text condensation vs GPT (maintains coherence)
+  - ElevenLabs: High-quality voice cloning with minimal samples
+  - D-ID: Realistic talking head animation from single frame
+
+  Trade-offs:
+  - D-ID video generation is the slowest step (5-10 min)
+  - Voice cloning quality depends on clean source audio
+  - Final output is AI-generated (may have artifacts)
+  - Costs scale with video duration
+
+  The MP4 conversion you're seeing now is probably the yt-dlp post-processor converting the
+  downloaded video to MP4 format!

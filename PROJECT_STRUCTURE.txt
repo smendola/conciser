@@ -1,0 +1,54 @@
+conciser/
+├── src/                           # Main source code
+│   ├── __init__.py
+│   ├── main.py                    # CLI entry point - START HERE
+│   ├── config.py                  # Configuration system
+│   ├── pipeline.py                # Main pipeline orchestrator
+│   ├── modules/                   # Pipeline stage modules
+│   │   ├── __init__.py
+│   │   ├── downloader.py          # Stage 1: Video download
+│   │   ├── transcriber.py         # Stage 2: Audio transcription
+│   │   ├── condenser.py           # Stage 3: Content condensation
+│   │   ├── voice_cloner.py        # Stage 4-5: Voice clone & synthesis
+│   │   ├── video_generator.py     # Stage 6: Video generation
+│   │   └── compositor.py          # Stage 7: Final assembly
+│   └── utils/                     # Utility functions
+│       ├── __init__.py
+│       ├── audio_utils.py         # Audio processing utilities
+│       ├── video_utils.py         # Video processing utilities
+│       └── prompt_templates.py    # LLM prompt templates
+│
+├── tests/                         # Test suite
+│   ├── __init__.py
+│   └── test_pipeline.py           # Pipeline tests
+│
+├── scripts/                       # Helper scripts
+│   ├── install.sh                 # Automated installation
+│   └── test_setup.sh              # Setup verification
+│
+├── temp/                          # Temporary processing files (created on first run)
+├── output/                        # Final condensed videos (created on first run)
+│
+├── requirements.txt               # Python dependencies
+├── setup.py                       # Package installation config
+├── .env.example                   # Environment variables template
+├── .gitignore                     # Git ignore rules
+├── LICENSE                        # MIT License
+│
+├── README.md                      # Main documentation - READ THIS FIRST
+├── QUICKSTART.md                  # 5-minute getting started guide
+├── ARCHITECTURE.md                # Technical architecture details
+├── IMPLEMENTATION_COMPLETE.md     # Implementation status & next steps
+└── PROJECT_STRUCTURE.txt          # This file
+
+WORKFLOW:
+1. Install dependencies: ./scripts/install.sh
+2. Configure API keys: conciser setup
+3. Verify setup: conciser check
+4. Condense a video: conciser condense <youtube_url> -a 5
+
+DOCUMENTATION READING ORDER:
+1. README.md - Overview and features
+2. QUICKSTART.md - Get started in 5 minutes
+3. IMPLEMENTATION_COMPLETE.md - What's included and next steps
+4. ARCHITECTURE.md - Technical deep dive
