@@ -290,6 +290,10 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
         print(f"\n{Fore.YELLOW}Operation cancelled by user.{Style.RESET_ALL}")
         sys.exit(1)
     except Exception as e:
+        from .utils.exceptions import ApiError
+        if isinstance(e, ApiError):
+            # Error message already printed, just exit
+            sys.exit(1)
         logger.exception("Pipeline failed")
         print(f"\n{Fore.RED}Error: {e}{Style.RESET_ALL}")
         print(f"{Fore.RED}Check conciser.log for details.{Style.RESET_ALL}")

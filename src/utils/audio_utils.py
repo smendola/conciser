@@ -9,7 +9,7 @@ import ast
 logger = logging.getLogger(__name__)
 
 
-def extract_api_error_message(error: Exception) -> Optional[str]:
+def extract_api_error_message(error: Exception, service_name: str = "API") -> Optional[str]:
     """
     Extract human-readable message from API error JSON response.
 
@@ -19,8 +19,12 @@ def extract_api_error_message(error: Exception) -> Optional[str]:
     - ElevenLabs: body: {'detail': {'message': '...'}} or {'detail': 'string'}
     - D-ID: body: {'message': '...'}
 
+    Args:
+        error: Exception object
+        service_name: Name of the service (e.g., "OpenAI", "ElevenLabs")
+
     Returns:
-        Extracted message string if found and non-blank, None otherwise
+        Extracted message string with service prefix if found, None otherwise
     """
     error_str = str(error)
 
@@ -51,7 +55,7 @@ def extract_api_error_message(error: Exception) -> Optional[str]:
         if 'error' in body and isinstance(body['error'], dict):
             msg = body['error'].get('message')
             if msg and msg.strip():
-                return msg.strip()
+                return f"{service_name}: {msg.strip()}"
 
         # ElevenLabs: {'detail': {'message': '...'}} or {'detail': 'string'}
         if 'detail' in body:
@@ -59,15 +63,15 @@ def extract_api_error_message(error: Exception) -> Optional[str]:
             if isinstance(detail, dict):
                 msg = detail.get('message')
                 if msg and msg.strip():
-                    return msg.strip()
+                    return f"{service_name}: {msg.strip()}"
             elif isinstance(detail, str) and detail.strip():
-                return detail.strip()
+                return f"{service_name}: {detail.strip()}"
 
         # Generic: {'message': '...'}
         if 'message' in body:
             msg = body['message']
             if msg and msg.strip():
-                return msg.strip()
+                return f"{service_name}: {msg.strip()}"
 
     except (SyntaxError, ValueError, KeyError, IndexError):
         pass

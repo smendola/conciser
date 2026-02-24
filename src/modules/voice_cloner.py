@@ -65,14 +65,15 @@ class VoiceCloner:
 
         except Exception as e:
             from ..utils.audio_utils import extract_api_error_message
+            from ..utils.exceptions import ApiError
             from colorama import Fore, Style
-            error_msg = extract_api_error_message(e)
+            error_msg = extract_api_error_message(e, "ElevenLabs")
             if error_msg:
-                logger.error(f"Voice cloning failed: {error_msg}")
-                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+                print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}\n")
+                raise ApiError(error_msg) from None
             else:
                 logger.error(f"Voice cloning failed: {e}")
-            raise RuntimeError(f"Failed to clone voice: {e}")
+                raise RuntimeError(f"Failed to clone voice: {e}")
 
     def generate_speech(
         self,
@@ -125,14 +126,15 @@ class VoiceCloner:
 
         except Exception as e:
             from ..utils.audio_utils import extract_api_error_message
+            from ..utils.exceptions import ApiError
             from colorama import Fore, Style
-            error_msg = extract_api_error_message(e)
+            error_msg = extract_api_error_message(e, "ElevenLabs")
             if error_msg:
-                logger.error(f"Speech generation failed: {error_msg}")
-                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+                print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}\n")
+                raise ApiError(error_msg) from None
             else:
                 logger.error(f"Speech generation failed: {e}")
-            raise RuntimeError(f"Failed to generate speech: {e}")
+                raise RuntimeError(f"Failed to generate speech: {e}")
 
     def generate_speech_chunked(
         self,
@@ -211,15 +213,20 @@ class VoiceCloner:
             return output_path
 
         except Exception as e:
+            from ..utils.exceptions import ApiError
+            # If it's already an ApiError, just re-raise it
+            if isinstance(e, ApiError):
+                raise
+            # Otherwise try to extract error message
             from ..utils.audio_utils import extract_api_error_message
             from colorama import Fore, Style
-            error_msg = extract_api_error_message(e)
+            error_msg = extract_api_error_message(e, "ElevenLabs")
             if error_msg:
-                logger.error(f"Chunked speech generation failed: {error_msg}")
-                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+                print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}\n")
+                raise ApiError(error_msg) from None
             else:
                 logger.error(f"Chunked speech generation failed: {e}")
-            raise RuntimeError(f"Failed to generate speech: {e}")
+                raise RuntimeError(f"Failed to generate speech: {e}")
 
     def _split_into_sentences(self, text: str) -> List[str]:
         """Split text into sentences."""

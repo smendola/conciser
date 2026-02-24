@@ -110,14 +110,15 @@ class ContentCondenser:
 
         except Exception as e:
             from ..utils.audio_utils import extract_api_error_message
+            from ..utils.exceptions import ApiError
             from colorama import Fore, Style
-            error_msg = extract_api_error_message(e)
+            error_msg = extract_api_error_message(e, "Anthropic")
             if error_msg:
-                logger.error(f"Content condensation failed: {error_msg}")
-                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+                print(f"\n{Fore.RED}{error_msg}{Style.RESET_ALL}\n")
+                raise ApiError(error_msg) from None
             else:
                 logger.error(f"Content condensation failed: {e}")
-            raise RuntimeError(f"Failed to condense content: {e}")
+                raise RuntimeError(f"Failed to condense content: {e}")
 
     def save_condensed_script(
         self,

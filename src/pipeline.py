@@ -222,7 +222,9 @@ class CondenserPipeline:
             }
 
         except Exception as e:
-            logger.error(f"Pipeline failed: {e}")
+            from .utils.exceptions import ApiError
+            if not isinstance(e, ApiError):
+                logger.error(f"Pipeline failed: {e}")
             raise
 
     def _download_video(self, url: str, quality: str) -> Dict[str, Any]:
