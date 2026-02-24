@@ -109,7 +109,14 @@ class ContentCondenser:
             raise RuntimeError(f"Failed to parse condensed content: {e}")
 
         except Exception as e:
-            logger.error(f"Content condensation failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            from colorama import Fore, Style
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Content condensation failed: {error_msg}")
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Content condensation failed: {e}")
             raise RuntimeError(f"Failed to condense content: {e}")
 
     def save_condensed_script(

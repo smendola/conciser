@@ -93,7 +93,14 @@ class VideoGenerator:
             raise RuntimeError(f"Failed to generate video: {e}")
 
         except Exception as e:
-            logger.error(f"Video generation failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            from colorama import Fore, Style
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Video generation failed: {error_msg}")
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Video generation failed: {e}")
             raise RuntimeError(f"Failed to generate video: {e}")
 
     def _wait_for_completion(self, talk_id: str, max_wait_time: int) -> str:

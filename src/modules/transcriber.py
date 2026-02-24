@@ -57,7 +57,14 @@ class Transcriber:
                 return self._transcribe_single(audio_path, language, include_timestamps)
 
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Transcription failed: {error_msg}")
+                from colorama import Fore, Style
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Transcription failed: {e}")
             raise RuntimeError(f"Failed to transcribe audio: {e}")
 
     def _transcribe_single(

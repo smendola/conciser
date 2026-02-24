@@ -2,10 +2,77 @@
 
 import subprocess
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 import logging
+import ast
 
 logger = logging.getLogger(__name__)
+
+
+def extract_api_error_message(error: Exception) -> Optional[str]:
+    """
+    Extract human-readable message from API error JSON response.
+
+    Expected formats:
+    - OpenAI: body: {'error': {'message': '...'}}
+    - Anthropic: similar structure
+    - ElevenLabs: body: {'detail': {'message': '...'}} or {'detail': 'string'}
+    - D-ID: body: {'message': '...'}
+
+    Returns:
+        Extracted message string if found and non-blank, None otherwise
+    """
+    error_str = str(error)
+
+    # Look for body: {...} in error string
+    if "body: {" not in error_str:
+        return None
+
+    try:
+        # Extract dict from "body: {...}"
+        start = error_str.index("body: {") + 6
+        # Find matching closing brace
+        brace_count = 0
+        end = start
+        for i, char in enumerate(error_str[start:], start):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end = i + 1
+                    break
+
+        dict_str = error_str[start:end]
+        # Use ast.literal_eval to parse Python dict string (with single quotes)
+        body = ast.literal_eval(dict_str)
+
+        # OpenAI: {'error': {'message': '...'}}
+        if 'error' in body and isinstance(body['error'], dict):
+            msg = body['error'].get('message')
+            if msg and msg.strip():
+                return msg.strip()
+
+        # ElevenLabs: {'detail': {'message': '...'}} or {'detail': 'string'}
+        if 'detail' in body:
+            detail = body['detail']
+            if isinstance(detail, dict):
+                msg = detail.get('message')
+                if msg and msg.strip():
+                    return msg.strip()
+            elif isinstance(detail, str) and detail.strip():
+                return detail.strip()
+
+        # Generic: {'message': '...'}
+        if 'message' in body:
+            msg = body['message']
+            if msg and msg.strip():
+                return msg.strip()
+
+    except (SyntaxError, ValueError, KeyError, IndexError):
+        pass
+
+    return None
 
 
 def extract_audio(video_path: Path, output_path: Path, sample_rate: int = 16000) -> Path:

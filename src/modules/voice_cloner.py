@@ -64,7 +64,14 @@ class VoiceCloner:
                     f.close()
 
         except Exception as e:
-            logger.error(f"Voice cloning failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            from colorama import Fore, Style
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Voice cloning failed: {error_msg}")
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Voice cloning failed: {e}")
             raise RuntimeError(f"Failed to clone voice: {e}")
 
     def generate_speech(
@@ -117,7 +124,14 @@ class VoiceCloner:
             return output_path
 
         except Exception as e:
-            logger.error(f"Speech generation failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            from colorama import Fore, Style
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Speech generation failed: {error_msg}")
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Speech generation failed: {e}")
             raise RuntimeError(f"Failed to generate speech: {e}")
 
     def generate_speech_chunked(
@@ -197,7 +211,14 @@ class VoiceCloner:
             return output_path
 
         except Exception as e:
-            logger.error(f"Chunked speech generation failed: {e}")
+            from ..utils.audio_utils import extract_api_error_message
+            from colorama import Fore, Style
+            error_msg = extract_api_error_message(e)
+            if error_msg:
+                logger.error(f"Chunked speech generation failed: {error_msg}")
+                print(f"\n{Fore.RED}API Error: {error_msg}{Style.RESET_ALL}\n")
+            else:
+                logger.error(f"Chunked speech generation failed: {e}")
             raise RuntimeError(f"Failed to generate speech: {e}")
 
     def _split_into_sentences(self, text: str) -> List[str]:
