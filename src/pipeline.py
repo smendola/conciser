@@ -183,8 +183,19 @@ class CondenserPipeline:
                 cleanup_voice = True
 
             # Stage 5: Generate speech
-            update_progress("VOICE_GENERATE", "Generating speech with voice...")
-            generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
+            if resume:
+                # Check for existing generated speech
+                existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id)
+
+                if existing_speech:
+                    update_progress("VOICE_GENERATE", f"Resuming from step VOICE_GENERATE - found existing speech: {existing_speech.name}")
+                    generated_audio_path = existing_speech
+                else:
+                    update_progress("VOICE_GENERATE", "Generating speech with voice...")
+                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
+            else:
+                update_progress("VOICE_GENERATE", "Generating speech with voice...")
+                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
 
             # Stage 6: Generate video
             if video_gen_mode == "avatar":
@@ -338,7 +349,10 @@ class CondenserPipeline:
 
     def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs") -> Path:
         """Generate speech from script."""
-        output_path = video_folder / "generated_speech.mp3"
+        # Create unique filename based on provider and voice
+        import re
+        voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
+        output_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}.mp3"
 
         if tts_provider == "edge":
             # Use Edge TTS
@@ -357,7 +371,7 @@ class CondenserPipeline:
             )
 
         # Normalize audio
-        normalized_path = video_folder / "generated_speech_normalized.mp3"
+        normalized_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}_normalized.mp3"
         normalize_audio(output_path, normalized_path)
 
         return normalized_path
@@ -570,6 +584,18 @@ class CondenserPipeline:
         if condensed_script_json.exists():
             logger.info(f"Found existing condensed script: {condensed_script_json}")
             return self.condenser.load_condensed_script(condensed_script_json)
+
+        return None
+
+    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str) -> Optional[Path]:
+        """Find existing generated speech file for this provider and voice."""
+        import re
+        voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
+        speech_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}_normalized.mp3"
+
+        if speech_path.exists():
+            logger.info(f"Found existing generated speech: {speech_path}")
+            return speech_path
 
         return None
 

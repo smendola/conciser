@@ -453,11 +453,18 @@ OUTPUT_DIR=./output
     default='elevenlabs',
     help='TTS provider to list voices for. Default: elevenlabs'
 )
-def voices(provider):
+@click.option(
+    '--lang',
+    type=str,
+    default=None,
+    help='Filter by language/locale (e.g., "en", "US", "en-US", "fr-FR")'
+)
+def voices(provider, lang):
     """
     List available TTS voices.
 
     Shows all voices that can be used with --voice option.
+    Use --lang to filter by language/locale (e.g., "en", "US", "en-US", "fr-FR").
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -470,7 +477,10 @@ def voices(provider):
             # List Edge TTS voices
             from .modules.edge_tts import EdgeTTS
 
-            print(f"\n{Fore.CYAN}Available Edge TTS Voices (Free):{Style.RESET_ALL}\n")
+            title = f"Available Edge TTS Voices (Free)"
+            if lang:
+                title += f" - Filtered by: {lang}"
+            print(f"\n{Fore.CYAN}{title}:{Style.RESET_ALL}\n")
 
             edge = EdgeTTS()
             voices = edge.list_voices()
@@ -487,6 +497,24 @@ def voices(provider):
                     locales[locale] = []
                 locales[locale].append(v)
 
+            # Filter locales if --lang is specified
+            if lang:
+                lang_lower = lang.lower()
+                filtered_locales = {}
+                for locale, voice_list in locales.items():
+                    locale_lower = locale.lower()
+                    # Match: exact, starts with, ends with, or contains
+                    if (locale_lower == lang_lower or
+                        locale_lower.startswith(lang_lower + '-') or
+                        locale_lower.endswith('-' + lang_lower) or
+                        lang_lower in locale_lower):
+                        filtered_locales[locale] = voice_list
+                locales = filtered_locales
+
+                if not locales:
+                    print(f"{Fore.RED}No voices found for language: {lang}{Style.RESET_ALL}")
+                    sys.exit(1)
+
             # Show all locales, sorted with popular ones first
             popular = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'pt-BR']
             all_locales = sorted(locales.keys(), key=lambda x: (x not in popular, x))
@@ -500,7 +528,12 @@ def voices(provider):
                     print(f"  {gender_icon} {Fore.GREEN}{short_name}{Style.RESET_ALL} {Style.DIM}({v['name']}){Style.RESET_ALL}")
                 print()
 
-            print(f"{Fore.YELLOW}Usage (short names):{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Filter voices:{Style.RESET_ALL}")
+            print(f"  conciser voices --provider=edge --lang=en       # All English variants")
+            print(f"  conciser voices --provider=edge --lang=US       # US English only")
+            print(f"  conciser voices --provider=edge --lang=en-US    # US English only")
+            print(f"  conciser voices --provider=edge --lang=fr-FR    # French (France)")
+            print(f"\n{Fore.YELLOW}Usage (short names):{Style.RESET_ALL}")
             print(f"  conciser condense URL --tts-provider=edge --voice=Aria")
             print(f"  conciser condense URL --tts-provider=edge --voice=Ryan")
             print(f"  conciser condense URL --tts-provider=edge --voice=Denise")
