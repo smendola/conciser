@@ -13,6 +13,40 @@ from .pipeline import CondenserPipeline
 colorama_init()
 
 
+def _resolve_voice(voice: str, api_key: str) -> str:
+    """
+    Resolve voice name or ID to voice ID.
+
+    Args:
+        voice: Voice ID or name (e.g., "George" or "JBFqnCBsd6RMkjVDRZzb")
+        api_key: ElevenLabs API key
+
+    Returns:
+        Voice ID if found, None otherwise
+    """
+    # If it looks like a voice ID (20+ alphanumeric chars), return as-is
+    if len(voice) > 15 and voice.replace('-', '').isalnum():
+        return voice
+
+    # Otherwise, look up by name
+    try:
+        from .modules.voice_cloner import VoiceCloner
+        cloner = VoiceCloner(api_key)
+        voices = cloner.list_voices()
+
+        # Case-insensitive search
+        voice_lower = voice.lower()
+        for v in voices:
+            # Check if name matches (partial or full)
+            if voice_lower in v['name'].lower() or v['name'].lower().startswith(voice_lower):
+                return v['voice_id']
+
+        return None
+    except Exception as e:
+        logger.error(f"Failed to resolve voice: {e}")
+        return None
+
+
 def _format_script_into_paragraphs(script_text: str, api_key: str) -> str:
     """Format a script into paragraphs using Claude."""
     from anthropic import Anthropic
@@ -128,18 +162,12 @@ def cli():
     help='Video generation mode: static (cheap, single frame), slideshow (multiple frames), avatar (expensive, D-ID). Default: static'
 )
 @click.option(
-    '--skip-voice-clone',
-    is_flag=True,
-    default=False,
-    help='Skip voice cloning and use a premade ElevenLabs voice (use if instant voice cloning is not available)'
-)
-@click.option(
-    '--voice-id',
+    '--voice',
     type=str,
-    default='JBFqnCBsd6RMkjVDRZzb',
-    help='ElevenLabs voice ID to use when skipping voice cloning. Default: George (Warm, Captivating Storyteller)'
+    default=None,
+    help='Use a premade voice instead of cloning (specify ID or name, e.g., "George"). If not specified, voice will be cloned from video.'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, skip_voice_clone, voice_id):
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice):
     """
     Condense a video from URL.
 
@@ -159,10 +187,16 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
         conciser condense https://youtube.com/watch?v=... --video-gen-mode=avatar
 
-        conciser condense https://youtube.com/watch?v=... --skip-voice-clone
+        conciser condense https://youtube.com/watch?v=... --voice=George
 
-        conciser condense https://youtube.com/watch?v=... --skip-voice-clone --voice-id=EXAVITQu4vr4xnSDxMaL
+        conciser condense https://youtube.com/watch?v=... --voice=Sarah
+
+        conciser condense https://youtube.com/watch?v=... --voice=EXAVITQu4vr4xnSDxMaL
     """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
     try:
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}Conciser - Video Condensation Pipeline{Style.RESET_ALL}")
@@ -174,14 +208,25 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             print(f"Target Reduction: {reduction}%")
         print(f"Quality: {quality}")
         print(f"Video Mode: {video_gen_mode}")
-        if skip_voice_clone:
-            print(f"Voice: Premade (ID: {voice_id})")
+
+        # Load settings first
+        settings = get_settings()
+
+        # If --voice is specified, use premade voice (skip cloning)
+        if voice:
+            # Resolve voice name to ID if needed
+            voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
+            if not voice_id:
+                click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                click.echo(f"{Fore.YELLOW}Run 'conciser voices' to see available voices.{Style.RESET_ALL}")
+                sys.exit(1)
+            print(f"Voice: {voice} (ID: {voice_id})")
+            skip_voice_clone = True
         else:
             print(f"Voice: Clone from video")
+            voice_id = None  # Will be set during pipeline
+            skip_voice_clone = False
         print()
-
-        # Load settings
-        settings = get_settings()
 
         # Check API keys
         if not settings.openai_api_key:
@@ -221,7 +266,7 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             progress_callback=ProgressDisplay.show,
             resume=resume,
             skip_voice_clone=skip_voice_clone,
-            voice_id=voice_id
+            voice_id=voice_id if skip_voice_clone else None
         )
 
         # Display results
@@ -259,6 +304,10 @@ def info(url):
 
     URL: Video URL to analyze
     """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
     try:
         settings = get_settings()
         from .modules.downloader import VideoDownloader
@@ -363,6 +412,77 @@ OUTPUT_DIR=./output
 
 
 @cli.command()
+def voices():
+    """
+    List available ElevenLabs voices.
+
+    Shows all premade voices that can be used with --voice option.
+    """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
+    try:
+        settings = get_settings()
+
+        if not settings.elevenlabs_api_key:
+            print(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Run 'conciser setup' to configure.{Style.RESET_ALL}")
+            sys.exit(1)
+
+        from .modules.voice_cloner import VoiceCloner
+
+        print(f"\n{Fore.CYAN}Available ElevenLabs Voices:{Style.RESET_ALL}\n")
+
+        cloner = VoiceCloner(settings.elevenlabs_api_key)
+        voices = cloner.list_voices()
+
+        if not voices:
+            print(f"{Fore.RED}No voices found or API error.{Style.RESET_ALL}")
+            sys.exit(1)
+
+        # Group by category
+        premade = [v for v in voices if v['category'] == 'premade']
+        cloned = [v for v in voices if v['category'] == 'cloned']
+        generated = [v for v in voices if v['category'] == 'generated']
+
+        def format_voice_name(name):
+            """Format voice name with green name and italic description."""
+            if ' - ' in name:
+                parts = name.split(' - ', 1)
+                # ANSI code \033[3m for italic, \033[23m to end italic
+                return f"{Fore.GREEN}{parts[0]}{Style.RESET_ALL} - \033[3m{parts[1]}\033[23m"
+            else:
+                return f"{Fore.GREEN}{name}{Style.RESET_ALL}"
+
+        if premade:
+            print(f"{Fore.GREEN}Premade Voices:{Style.RESET_ALL}")
+            for v in premade:
+                print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
+            print()
+
+        if cloned:
+            print(f"{Fore.GREEN}Your Cloned Voices:{Style.RESET_ALL}")
+            for v in cloned:
+                print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
+            print()
+
+        if generated:
+            print(f"{Fore.GREEN}Generated Voices:{Style.RESET_ALL}")
+            for v in generated:
+                print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
+            print()
+
+        print(f"{Fore.YELLOW}Usage:{Style.RESET_ALL}")
+        print(f"  conciser condense URL --voice=George")
+        print(f"  conciser condense URL --voice=JBFqnCBsd6RMkjVDRZzb\n")
+
+    except Exception as e:
+        print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument('url_or_video_id')
 @click.option(
     '--format/--no-format',
@@ -383,6 +503,10 @@ def show_script(url_or_video_id, format):
 
         conciser show-script IZD9jIOLPAw --no-format  # Skip paragraph formatting
     """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
     try:
         settings = get_settings()
 
