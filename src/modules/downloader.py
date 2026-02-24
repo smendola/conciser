@@ -108,6 +108,12 @@ class VideoDownloader:
                 'writeautomaticsub': False,
                 # No postprocessors - use native format (webm, mp4, mkv, etc.)
                 # ffmpeg can handle all formats in later pipeline stages
+                # Use web client to avoid JS runtime requirement for most videos
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['web', 'ios'],
+                    }
+                },
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
