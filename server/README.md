@@ -2,6 +2,16 @@
 
 HTTP server for remote video condensation via Chrome extension.
 
+## Chrome Extension
+
+A production-ready Chrome extension package is available for easy installation. See `../CHROME_EXTENSION_INSTALL.md` for installation options:
+
+- **Quick Install**: Drag & drop `conciser-chrome-extension.zip` onto `chrome://extensions/`
+- **Chrome Web Store**: Submit for public distribution (recommended)
+- **Manual Install**: Load unpacked from `../chrome-extension/` directory
+
+The extension allows users to condense YouTube videos directly from their browser by clicking a toolbar icon.
+
 ## Setup
 
 ### 1. Install Dependencies
@@ -28,6 +38,20 @@ ngrok start conciser
 ```
 
 Server will be available at the static URL: `https://conciser-aurora.ngrok.dev`
+
+## Usage
+
+### Via Chrome Extension (Recommended)
+
+1. Install the Chrome extension (see above)
+2. Navigate to any YouTube video
+3. Click the Conciser icon in Chrome toolbar
+4. Click "Condense Video"
+5. Download when complete
+
+### Via API (Direct)
+
+You can also interact with the API directly using curl or other HTTP clients.
 
 ## API Endpoints
 
@@ -105,12 +129,29 @@ Default settings (hardcoded in `app.py`):
 - Video mode: slideshow
 - TTS provider: edge (free)
 - Voice: Aria (en-US-AriaNeural)
+- **Condenser: OpenAI GPT-4o** (more reliable than Claude)
 
-To customize, edit the `pipeline.run()` call in `process_video()` function.
+To customize, edit your `.env` file:
+- `CONDENSER_SERVICE=openai` (default, uses GPT-4o) or `claude` (uses Claude Sonnet)
+- Or edit the `pipeline.run()` call in `process_video()` function for other settings
+
+## Deployment
+
+### Server
+- Runs on localhost port 5000 by default
+- Exposed via ngrok for remote access
+- Static ngrok URL configured: `https://conciser-aurora.ngrok.dev`
+
+### Chrome Extension
+- Packaged extension: `../conciser-chrome-extension.zip` (14 KB)
+- Smart icon state: colored when usable (on YouTube video), grayed when not
+- Ready to distribute or submit to Chrome Web Store
+- Server URL hardcoded in `popup.js` (update if using different ngrok URL)
 
 ## Notes
 
 - Single-threaded: Only processes one video at a time
 - In-memory storage: Jobs lost on server restart
 - No authentication: Anyone with ngrok URL can submit videos
-- Videos kept forever in `output/` directory
+- Videos kept in `output/` directory (consider periodic cleanup)
+- Chrome extension requires server + ngrok to be running

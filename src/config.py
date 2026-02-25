@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # Service preferences
     transcription_service: str = Field(default="openai", description="openai or local")
+    condenser_service: str = Field(default="openai", description="openai or claude")
     voice_service: str = Field(default="elevenlabs", description="elevenlabs or coqui")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")
 

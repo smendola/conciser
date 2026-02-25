@@ -34,7 +34,11 @@ class CondenserPipeline:
         # Initialize modules
         self.downloader = VideoDownloader(settings.temp_dir)
         self.transcriber = Transcriber(settings.openai_api_key)
-        self.condenser = ContentCondenser(settings.anthropic_api_key)
+        self.condenser = ContentCondenser(
+            provider=settings.condenser_service,
+            openai_api_key=settings.openai_api_key,
+            anthropic_api_key=settings.anthropic_api_key
+        )
         # TTS providers
         self.voice_cloner = VoiceCloner(settings.elevenlabs_api_key) if settings.elevenlabs_api_key else None
         self.edge_tts = EdgeTTS()  # Always available (free)

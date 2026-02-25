@@ -1,10 +1,12 @@
 """Content condensation module using LLMs."""
 
 import json
+import time
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Literal
 import logging
 from anthropic import Anthropic
+from openai import OpenAI
 
 from ..utils.prompt_templates import get_condense_prompt
 
@@ -12,25 +14,53 @@ logger = logging.getLogger(__name__)
 
 
 class ContentCondenser:
-    """Condenses transcript using Claude API."""
+    """Condenses transcript using Claude or OpenAI API."""
 
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+    def __init__(
+        self,
+        provider: Literal["claude", "openai"] = "openai",
+        api_key: str = None,
+        openai_api_key: str = None,
+        anthropic_api_key: str = None,
+        model: str = None
+    ):
         """
         Initialize the condenser.
 
         Args:
-            api_key: Anthropic API key
-            model: Claude model to use
+            provider: LLM provider to use ("claude" or "openai")
+            api_key: API key (deprecated, use provider-specific keys)
+            openai_api_key: OpenAI API key
+            anthropic_api_key: Anthropic API key
+            model: Model to use (provider-specific defaults if not specified)
         """
-        self.client = Anthropic(api_key=api_key)
-        self.model = model
+        self.provider = provider.lower()
+
+        if self.provider == "claude":
+            key = anthropic_api_key or api_key
+            if not key:
+                raise ValueError("Anthropic API key required for Claude provider")
+            self.client = Anthropic(api_key=key)
+            self.model = model or "claude-sonnet-4-20250514"
+
+        elif self.provider == "openai":
+            key = openai_api_key or api_key
+            if not key:
+                raise ValueError("OpenAI API key required for OpenAI provider")
+            self.client = OpenAI(api_key=key)
+            self.model = model or "gpt-4o"
+
+        else:
+            raise ValueError(f"Unsupported provider: {provider}. Use 'claude' or 'openai'.")
 
     def condense(
         self,
         transcript: str,
         duration_minutes: float,
         aggressiveness: int = 5,
-        target_reduction_percentage: int = None
+        target_reduction_percentage: int = None,
+        max_retries: int = 5,
+        initial_retry_delay: float = 2.0
     ) -> Dict[str, Any]:
         """
         Condense transcript to shorter version.
@@ -40,6 +70,8 @@ class ContentCondenser:
             duration_minutes: Original video duration in minutes
             aggressiveness: Condensing aggressiveness (1-10)
             target_reduction_percentage: Optional specific reduction target
+            max_retries: Maximum number of retry attempts for transient errors
+            initial_retry_delay: Initial delay in seconds before first retry (doubles each time)
 
         Returns:
             Dictionary with:
@@ -52,7 +84,7 @@ class ContentCondenser:
                 - quality_notes: Notes about the condensation
         """
         try:
-            logger.info(f"Starting content condensation (aggressiveness: {aggressiveness}/10)")
+            logger.info(f"Starting content condensation (provider: {self.provider}, model: {self.model}, aggressiveness: {aggressiveness}/10)")
 
             # Generate the prompt
             prompt = get_condense_prompt(
@@ -62,21 +94,76 @@ class ContentCondenser:
                 target_reduction_percentage=target_reduction_percentage
             )
 
-            # Call Claude API
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=16000,
-                temperature=0.3,  # Lower temperature for more consistent output
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
+            # Retry logic for transient errors
+            response_text = None
+            last_error = None
 
-            # Extract the response
-            response_text = message.content[0].text
+            for attempt in range(max_retries + 1):
+                try:
+                    # Call LLM API based on provider
+                    if self.provider == "claude":
+                        message = self.client.messages.create(
+                            model=self.model,
+                            max_tokens=16000,
+                            temperature=0.3,
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                }
+                            ]
+                        )
+                        response_text = message.content[0].text
+
+                    elif self.provider == "openai":
+                        completion = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=[
+                                {
+                                    "role": "system",
+                                    "content": "You are an expert content editor skilled at condensing transcripts while preserving key information. Always respond with valid JSON."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                }
+                            ],
+                            temperature=0.3,
+                            max_tokens=16000,
+                            response_format={"type": "json_object"}
+                        )
+                        response_text = completion.choices[0].message.content
+
+                    break  # Success! Exit retry loop
+
+                except Exception as api_error:
+                    last_error = api_error
+                    error_str = str(api_error)
+
+                    # Check if this is a retryable error (529 Overloaded, rate limits, network issues)
+                    is_retryable = (
+                        "529" in error_str or
+                        "overloaded" in error_str.lower() or
+                        "rate_limit" in error_str.lower() or
+                        "timeout" in error_str.lower() or
+                        "connection" in error_str.lower()
+                    )
+
+                    if not is_retryable or attempt >= max_retries:
+                        # Not retryable or out of retries
+                        raise
+
+                    # Calculate exponential backoff delay
+                    delay = initial_retry_delay * (2 ** attempt)
+                    logger.warning(
+                        f"API request failed (attempt {attempt + 1}/{max_retries + 1}): {error_str}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+
+            # Safety check
+            if response_text is None:
+                raise RuntimeError(f"API request failed after {max_retries + 1} attempts. Last error: {last_error}")
 
             # Parse JSON response
             # Try to extract JSON if wrapped in markdown code blocks

@@ -188,6 +188,41 @@ def start_page():
             background: #1557b0;
         }
 
+        .extensions-btn {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 1.1em;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px 0;
+        }
+
+        .extensions-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .extensions-btn:active {
+            transform: translateY(0);
+        }
+
+        .extensions-btn.copied {
+            background: #007bff;
+            animation: pulse 0.3s;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
         .section {
             margin-bottom: 40px;
         }
@@ -263,8 +298,14 @@ def start_page():
             border-radius: 4px;
         }
 
-        .browser-specific {
-            display: none;
+        details {
+            margin: 20px 0;
+        }
+
+        details summary {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
         }
 
         ul {
@@ -300,185 +341,108 @@ def start_page():
                 <p>Click the button below to download the Conciser extension</p>
                 <a href="/extension.zip" class="download-btn" download>⬇ Download Extension</a>
                 <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
-                    This will download a ZIP file containing the extension
+                    File: <code>conciser-chrome-extension.zip</code> (14 KB)<br>
+                    <em>Icon changes color when you're on a YouTube video page!</em>
                 </p>
             </div>
 
             <div class="section">
-                <h2>📝 Step 2: Extract the ZIP File</h2>
+                <h2>🔧 Step 2: Install in <span id="browser-name-install">Chrome</span></h2>
 
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">1</span>
-                        Locate the downloaded file
+                        Open Extensions page
                     </div>
                     <div class="step-detail">
-                        Find <code>extension.zip</code> in your Downloads folder
+                        Click to copy the URL, then paste it into your browser's address bar:<br>
+                        <button class="extensions-btn" id="copy-url-btn" onclick="copyExtensionsURL()">
+                            📋 Copy <code id="extensions-url" style="background: transparent; color: white;">chrome://extensions/</code>
+                        </button>
+                        <div id="copy-feedback" style="display: none; color: #28a745; font-weight: 600; margin-top: 10px;">
+                            ✅ Copied! Paste it in a new tab's address bar and press Enter
+                        </div>
+                        <p style="margin-top: 10px; font-size: 0.85em; color: #888;">
+                            <em>Note: For security reasons, this page can't open the extensions page automatically</em>
+                        </p>
                     </div>
                 </div>
 
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
-                        Extract the ZIP file
+                        Drag and drop the ZIP file
                     </div>
                     <div class="step-detail">
-                        <strong>Windows:</strong> Right-click → "Extract All..." → Choose a location (e.g., Desktop)<br>
-                        <strong>Mac:</strong> Double-click the ZIP file (it extracts automatically)<br>
-                        <strong>Linux:</strong> Right-click → "Extract Here" or use <code>unzip extension.zip</code>
-                    </div>
-                </div>
-
-                <div class="important">
-                    <strong>⚠️ IMPORTANT:</strong> Remember where you extracted it! You'll need this folder path in the next step.
-                    We recommend extracting to your Desktop or Documents folder so it's easy to find.
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>🔧 Step 3: Install Extension in <span id="browser-name-install">Your Browser</span></h2>
-
-                <!-- Chrome Instructions -->
-                <div class="browser-specific chrome-only">
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">1</span>
-                            Open Chrome Extensions page
-                        </div>
-                        <div class="step-detail">
-                            Type <code>chrome://extensions/</code> in your address bar and press Enter<br>
-                            <strong>Or:</strong> Click the three dots menu (⋮) → More Tools → Extensions
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">2</span>
-                            Enable Developer Mode
-                        </div>
-                        <div class="step-detail">
-                            Look for the "Developer mode" toggle switch in the <strong>top-right corner</strong> of the page<br>
-                            Click it to turn it ON (it should turn blue)
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">3</span>
-                            Load the extension
-                        </div>
-                        <div class="step-detail">
-                            Click the <strong>"Load unpacked"</strong> button (appears after enabling Developer mode)<br>
-                            Browse to where you extracted the ZIP file<br>
-                            Select the <code>chrome-extension</code> folder and click "Select Folder"
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">4</span>
-                            Verify installation
-                        </div>
-                        <div class="step-detail">
-                            You should see "Conciser Remote" appear in your extensions list<br>
-                            There should be a blue icon with a white "C" next to the extension name
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Edge Instructions -->
-                <div class="browser-specific edge-only">
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">1</span>
-                            Open Edge Extensions page
-                        </div>
-                        <div class="step-detail">
-                            Type <code>edge://extensions/</code> in your address bar and press Enter<br>
-                            <strong>Or:</strong> Click the three dots menu (⋯) → Extensions → Manage Extensions
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">2</span>
-                            Enable Developer Mode
-                        </div>
-                        <div class="step-detail">
-                            Look for the "Developer mode" toggle switch in the <strong>bottom-left corner</strong> of the page<br>
-                            Click it to turn it ON (it should turn blue)
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">3</span>
-                            Load the extension
-                        </div>
-                        <div class="step-detail">
-                            Click the <strong>"Load unpacked"</strong> button (appears after enabling Developer mode)<br>
-                            Browse to where you extracted the ZIP file<br>
-                            Select the <code>chrome-extension</code> folder and click "Select Folder"
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <div class="step-title">
-                            <span class="step-number">4</span>
-                            Verify installation
-                        </div>
-                        <div class="step-detail">
-                            You should see "Conciser Remote" appear in your extensions list<br>
-                            There should be a blue icon with a white "C" next to the extension name
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>📌 Step 4: Pin the Extension (RECOMMENDED)</h2>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">1</span>
-                        Click the extensions icon
-                    </div>
-                    <div class="step-detail">
-                        Look for the puzzle piece icon (🧩) in your browser toolbar (top-right corner, next to the address bar)
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">2</span>
-                        Pin Conciser Remote
-                    </div>
-                    <div class="step-detail">
-                        Find "Conciser Remote" in the dropdown list<br>
-                        Click the <strong>pin icon (📌)</strong> next to it<br>
-                        The pin should turn blue/solid when pinned
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">3</span>
-                        Verify pinning
-                    </div>
-                    <div class="step-detail">
-                        The blue Conciser "C" icon should now appear in your toolbar<br>
-                        You can click it any time while on a YouTube video
+                        Find <code>conciser-chrome-extension.zip</code> in your Downloads folder<br>
+                        <strong>Drag it directly onto the extensions page</strong><br>
+                        Chrome will automatically install it - no extraction or developer mode needed!
+                        <p style="margin-top: 12px; padding: 10px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #1a73e8;">
+                            <strong>💡 Pro Tip:</strong> You can drag directly from Chrome's <strong>Recent download history</strong> widget (top-right of browser)
+                            without opening your file explorer!
+                        </p>
                     </div>
                 </div>
 
                 <div class="tip">
-                    <strong>💡 Why pin it?</strong> Pinning makes the extension easily accessible with one click.
-                    Without pinning, you'd have to click the puzzle piece icon every time to access it.
+                    <strong>✨ That's it!</strong> The extension should now appear in your extensions list with a blue "C" icon.
+                    Chrome may show a "not from Chrome Web Store" warning - this is normal, just click "OK" or dismiss it.
+                </div>
+
+                <details style="margin-top: 20px;">
+                    <summary style="cursor: pointer; font-weight: 600; color: #1a73e8;">
+                        Alternative: Manual Installation (if drag-and-drop doesn't work)
+                    </summary>
+                    <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                        <ol style="margin-left: 20px;">
+                            <li>Extract the ZIP file to a folder on your computer</li>
+                            <li>Enable "Developer mode" toggle (top-right corner)</li>
+                            <li>Click "Load unpacked"</li>
+                            <li>Select the extracted folder</li>
+                        </ol>
+                    </div>
+                </details>
+            </div>
+
+            <div class="section">
+                <h2>📌 Step 3: Pin the Extension</h2>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Click the puzzle piece icon (🧩)
+                    </div>
+                    <div class="step-detail">
+                        Look in your browser toolbar (top-right corner, next to the address bar)
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Pin "Conciser Remote"
+                    </div>
+                    <div class="step-detail">
+                        Find "Conciser Remote" in the dropdown<br>
+                        Click the <strong>pin icon (📌)</strong> next to it<br>
+                        The blue "C" icon will now appear in your toolbar for easy access
+                    </div>
                 </div>
             </div>
 
             <div class="section">
-                <h2>🎯 Step 5: Using the Extension</h2>
+                <h2>🎯 Step 4: Using the Extension</h2>
+
+                <div class="important" style="background: #e3f2fd; border-left-color: #1a73e8;">
+                    <strong>💡 Smart Icon Feature:</strong> The extension icon changes color to show when it's ready to use!
+                    <ul style="margin-top: 10px;">
+                        <li><strong>🔵 Blue/Colored Icon:</strong> You're on a YouTube video page - click to condense!</li>
+                        <li><strong>⚫ Gray Icon:</strong> Not on a YouTube video page - navigate to a video first</li>
+                    </ul>
+                    <p style="margin-top: 10px; margin-bottom: 0;">
+                        The icon automatically updates as you browse, so you always know when you can use it.
+                    </p>
+                </div>
 
                 <div class="step">
                     <div class="step-title">
@@ -487,7 +451,8 @@ def start_page():
                     </div>
                     <div class="step-detail">
                         Open <code>youtube.com</code> in your browser<br>
-                        Navigate to <strong>any video page</strong> (must be a video, not the homepage or search results)
+                        Navigate to <strong>any video page</strong> (must be a video, not the homepage or search results)<br>
+                        <em>Watch the icon turn blue when you're on a video page!</em>
                     </div>
                 </div>
 
@@ -498,6 +463,7 @@ def start_page():
                     </div>
                     <div class="step-detail">
                         Click the blue "C" icon in your toolbar (or the puzzle piece icon if you didn't pin it)<br>
+                        <em>The icon will only be blue/active when you're on a YouTube video page</em><br>
                         A popup will appear showing the current video
                     </div>
                 </div>
@@ -522,7 +488,7 @@ def start_page():
                         The popup will show real-time progress updates every 3 seconds<br>
                         You'll see stages like "Downloading", "Transcribing", "Condensing", "Generating video"<br>
                         <strong>Processing typically takes 5-15 minutes</strong> depending on video length<br>
-                        You can close the popup and come back later - processing continues on the server
+                        <strong>💡 Pro tip:</strong> You can close the popup and come back later - the extension remembers your job and will resume tracking when you reopen it!
                     </div>
                 </div>
 
@@ -556,11 +522,11 @@ def start_page():
                         AI-Powered Condensation
                     </div>
                     <div class="step-detail">
-                        Conciser uses AI to intelligently summarize YouTube videos:
+                        Conciser uses AI to intelligently condense YouTube videos:
                         <ul>
                             <li><strong>Extracts the script</strong> from the video using speech recognition</li>
                             <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness: 5/10)</li>
-                            <li><strong>Generates new audio</strong> with a British voice (Ryan)</li>
+                            <li><strong>Generates new audio</strong> with natural text-to-speech voice</li>
                             <li><strong>Creates a slideshow</strong> using key frames from the original video</li>
                             <li><strong>Produces a final video</strong> that's typically 30-60% shorter</li>
                         </ul>
@@ -600,11 +566,11 @@ def start_page():
                     Try a different video - standard public YouTube videos work best
                 </div>
 
-                <h3>Extension icon doesn't appear</h3>
+                <h3>Extension didn't install</h3>
                 <div class="step-detail">
-                    Make sure you selected the correct folder (<code>chrome-extension</code>)<br>
-                    Check that Developer mode is enabled<br>
-                    Try removing and re-adding the extension
+                    Try the alternative manual installation method (see Step 2 for details)<br>
+                    Make sure you're using Chrome or Edge (other browsers may not be compatible)<br>
+                    Check that the ZIP file downloaded completely (should be 14 KB)
                 </div>
             </div>
         </div>
@@ -629,35 +595,53 @@ def start_page():
                 </div>
                 <div class="content" style="text-align: center; padding: 60px 40px;">
                     <h2 style="font-size: 2em; color: #d32f2f; margin-bottom: 20px;">
-                        I SAID ON THE COMPUTER<br>NOT ON THE FUCKING PHONE
+                        Desktop Only
                     </h2>
                     <p style="font-size: 1.2em; color: #666; margin-top: 30px;">
-                        This extension only works on desktop Chrome or Edge.
+                        This Chrome extension only works on desktop browsers (Chrome or Edge).<br>
+                        Please visit this page on your computer to install.
                     </p>
                 </div>
             `;
         } else {
-            // Detect browser
+            // Detect browser for display
             const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
-            const isChrome = navigator.userAgent.indexOf('Chrome') !== -1 && !isEdge;
-
-            const browserName = isEdge ? 'Edge' : isChrome ? 'Chrome' : 'Browser';
+            const browserName = isEdge ? 'Edge' : 'Chrome';
+            const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
 
             // Update browser name in page
             document.querySelectorAll('#browser-name, #browser-name-install').forEach(el => {
                 el.textContent = browserName;
             });
 
-            // Show appropriate instructions
-            if (isEdge) {
-                document.querySelectorAll('.edge-only').forEach(el => {
-                    el.style.display = 'block';
-                });
-            } else {
-                document.querySelectorAll('.chrome-only').forEach(el => {
-                    el.style.display = 'block';
-                });
+            // Update extensions URL display
+            const urlElement = document.getElementById('extensions-url');
+            if (urlElement) {
+                urlElement.textContent = extensionsURL;
             }
+        }
+
+        // Copy extensions URL to clipboard
+        function copyExtensionsURL() {
+            const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
+            const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
+
+            navigator.clipboard.writeText(extensionsURL).then(() => {
+                const feedback = document.getElementById('copy-feedback');
+                const btn = document.getElementById('copy-url-btn');
+
+                feedback.style.display = 'block';
+                btn.classList.add('copied');
+                btn.innerHTML = '✅ Copied to Clipboard!';
+
+                setTimeout(() => {
+                    feedback.style.display = 'none';
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '📋 Click to Copy: <code id="extensions-url" style="background: transparent; color: white;">' + extensionsURL + '</code>';
+                }, 3000);
+            }).catch(err => {
+                alert('Copy failed. Please manually copy this URL:\\n\\n' + extensionsURL);
+            });
         }
     </script>
 </body>
@@ -668,28 +652,18 @@ def start_page():
 
 @app.route('/extension.zip')
 def download_extension():
-    """Download the extension as a ZIP file."""
-    import zipfile
-    import io
+    """Download the packaged Chrome extension."""
+    # Serve the pre-packaged extension
+    extension_zip = Path(__file__).parent.parent / 'conciser-chrome-extension.zip'
 
-    # Get the extension directory
-    extension_dir = Path(__file__).parent.parent / 'chrome-extension'
+    if not extension_zip.exists():
+        return jsonify({'error': 'Extension package not found'}), 404
 
-    # Create ZIP in memory
-    memory_file = io.BytesIO()
-    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # Add all files from chrome-extension directory
-        for file_path in extension_dir.rglob('*'):
-            if file_path.is_file():
-                arcname = file_path.relative_to(extension_dir.parent)
-                zf.write(file_path, arcname)
-
-    memory_file.seek(0)
     return send_file(
-        memory_file,
+        extension_zip,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='extension.zip'
+        download_name='conciser-chrome-extension.zip'
     )
 
 

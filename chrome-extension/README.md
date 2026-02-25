@@ -4,28 +4,46 @@ Chrome extension to submit YouTube videos to your Conciser server for AI-powered
 
 ## Installation
 
-### 1. Load Extension in Chrome
+### Quick Install (Recommended)
+1. Go to `chrome://extensions/`
+2. Drag and drop `conciser-chrome-extension.zip` onto the page
+3. Chrome will automatically install it
 
+### Manual Install
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" (toggle in top right)
 3. Click "Load unpacked"
 4. Select the `chrome-extension` directory
 5. Extension icon should appear in toolbar
 
-## Usage
+## Features
+
+### Smart Icon State
+- **Active (colored icon)**: When on a YouTube video page - click to condense
+- **Disabled (grayed out)**: When not on a YouTube video page
+- The icon automatically updates as you browse
+
+### Persistent State
+- **Remembers active jobs**: Close and reopen the popup - it remembers your processing job
+- **Resume anywhere**: Check progress from any tab, the extension tracks your active job
+- **Auto-cleanup**: Clears state when job completes or fails
+
+### Usage
 
 1. Navigate to any YouTube video page
-2. Click the Conciser extension icon
+2. Click the Conciser extension icon (it will be colored/active)
 3. Click "Condense Video"
 4. Wait for processing (status updates every 3 seconds)
-5. Click "Download Condensed Video" when ready
+5. You can close the popup and reopen it later - it will resume tracking
+6. Click "Watch Video" when ready
 
 ## What It Does
 
 - Detects YouTube video URLs automatically
+- Shows visual feedback via icon state (active/disabled)
 - Submits URL to your Conciser server
 - Polls for status every 3 seconds
-- Opens download in new tab when complete
+- Opens video in new tab when complete
 
 ## Default Settings
 

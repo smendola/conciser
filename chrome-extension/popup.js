@@ -5,8 +5,10 @@ let currentJobId = null;
 let pollInterval = null;
 const serverUrl = 'https://conciser-aurora.ngrok.dev';
 
-// Get current tab and check if it's YouTube
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+// Initialize popup
+async function initializePopup() {
+  // Get current tab and check if it's YouTube
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
   currentUrl = tab.url;
 
@@ -26,7 +28,30 @@ chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     videoInfo.textContent = '⚠️ Not a YouTube video page';
     condenseBtn.disabled = true;
   }
-});
+
+  // Check for existing job in storage
+  const storage = await chrome.storage.local.get(['activeJob', 'completedJobs']);
+
+  // First check if this video has a completed job
+  const completedJobs = storage.completedJobs || {};
+  if (completedJobs[currentUrl]) {
+    currentJobId = completedJobs[currentUrl];
+    showCompleted({ job_id: currentJobId });
+    return;
+  }
+
+  // Then check if there's an active job in progress
+  if (storage.activeJob) {
+    currentJobId = storage.activeJob.jobId;
+    condenseBtn.disabled = true;
+    condenseBtn.textContent = 'Processing...';
+    showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`);
+    startPolling();
+  }
+}
+
+// Run initialization
+initializePopup();
 
 // Condense button click
 document.getElementById('condenseBtn').addEventListener('click', async () => {
@@ -47,6 +72,23 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
 
     if (response.ok) {
       currentJobId = data.job_id;
+
+      // Clear any previous completed job for this URL
+      const storage = await chrome.storage.local.get(['completedJobs']);
+      if (storage.completedJobs && storage.completedJobs[currentUrl]) {
+        delete storage.completedJobs[currentUrl];
+        await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+      }
+
+      // Save job to storage for persistence
+      await chrome.storage.local.set({
+        activeJob: {
+          jobId: currentJobId,
+          url: currentUrl,
+          startedAt: new Date().toISOString()
+        }
+      });
+
       showStatus('processing', `Processing started\nJob ID: ${currentJobId}`);
       startPolling();
     } else {
@@ -86,9 +128,11 @@ async function checkStatus() {
 
     if (data.status === 'completed') {
       clearInterval(pollInterval);
+      await saveCompletedJob();
       showCompleted(data);
     } else if (data.status === 'error') {
       clearInterval(pollInterval);
+      await clearJobStorage();
       showStatus('error', `Processing failed\n${data.error}`);
       resetButton();
     } else if (data.status === 'processing') {
@@ -102,8 +146,26 @@ async function checkStatus() {
   }
 }
 
+async function saveCompletedJob() {
+  // Save this job as completed for this video URL
+  const storage = await chrome.storage.local.get(['completedJobs']);
+  const completedJobs = storage.completedJobs || {};
+  completedJobs[currentUrl] = currentJobId;
+
+  await chrome.storage.local.set({ completedJobs });
+  await chrome.storage.local.remove(['activeJob']);
+}
+
+async function clearJobStorage() {
+  await chrome.storage.local.remove(['activeJob']);
+}
+
 function showCompleted(data) {
   const container = document.getElementById('statusContainer');
+  const condenseBtn = document.getElementById('condenseBtn');
+
+  // Hide the condense button since job is complete
+  condenseBtn.style.display = 'none';
 
   container.innerHTML = `
     <div class="status completed">
@@ -125,4 +187,5 @@ function resetButton() {
   const condenseBtn = document.getElementById('condenseBtn');
   condenseBtn.disabled = false;
   condenseBtn.textContent = 'Condense Video';
+  condenseBtn.style.display = '';  // Make sure it's visible
 }

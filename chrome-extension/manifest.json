@@ -4,12 +4,17 @@
   "version": "1.0.0",
   "description": "Send YouTube videos to Conciser for AI-powered condensation",
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "tabs",
+    "storage"
   ],
   "host_permissions": [
     "*://www.youtube.com/*",
     "*://youtube.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
