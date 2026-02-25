@@ -87,11 +87,14 @@ class CondenserPipeline:
         cleanup_voice = False  # Track if we need to cleanup cloned voice
 
         try:
+            # Extract video ID from URL for resume matching
+            video_id = self._extract_video_id(video_url)
+
             # Stage 1: Download video
             if resume:
-                # Check for existing video files
-                existing_video = self._find_existing_video()
-                existing_metadata = self._find_existing_metadata()
+                # Check for existing video files FOR THIS SPECIFIC VIDEO ID
+                existing_video = self._find_existing_video(video_id)
+                existing_metadata = self._find_existing_metadata(video_id)
 
                 if existing_video and existing_metadata:
                     update_progress("DOWNLOAD", f"Resuming from step DOWNLOAD - found existing video: {existing_video.name}")
@@ -624,12 +627,30 @@ class CondenserPipeline:
             add_watermark=True
         )
 
-    def _find_existing_video(self) -> Optional[Path]:
-        """Find existing downloaded video in temp directory."""
+    def _extract_video_id(self, url: str) -> Optional[str]:
+        """Extract YouTube video ID from URL."""
+        import re
+        # Match YouTube URLs
+        patterns = [
+            r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+            r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        return None
+
+    def _find_existing_video(self, video_id: str = None) -> Optional[Path]:
+        """Find existing downloaded video in temp directory for specific video ID."""
         # Look for video-specific folders (format: {video_id}_{normalized_title}/)
         video_extensions = ['*.mp4', '*.webm', '*.mkv', '*.avi', '*.mov']
         for folder in self.settings.temp_dir.iterdir():
             if folder.is_dir():
+                # If video_id specified, only check folders that start with it
+                if video_id and not folder.name.startswith(f"{video_id}_"):
+                    continue
+
                 # Look for main video file in folder (any video format)
                 for ext in video_extensions:
                     for video_file in folder.glob(ext):
@@ -639,9 +660,9 @@ class CondenserPipeline:
                             return video_file
         return None
 
-    def _find_existing_metadata(self) -> Optional[Dict[str, Any]]:
-        """Find or generate metadata from existing video."""
-        video_path = self._find_existing_video()
+    def _find_existing_metadata(self, video_id: str = None) -> Optional[Dict[str, Any]]:
+        """Find or generate metadata from existing video for specific video ID."""
+        video_path = self._find_existing_video(video_id)
         if not video_path:
             return None
 
