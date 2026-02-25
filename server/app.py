@@ -63,19 +63,21 @@ def process_video(job_id):
         settings = get_settings()
         pipeline = CondenserPipeline(settings)
 
-        # Print actual Python API call in magenta
-        params = {
-            'video_url': job.url,
-            'aggressiveness': 5,
-            'quality': '1080p',
-            'video_gen_mode': 'slideshow',
-            'tts_provider': 'edge',
-            'voice_id': 'en-GB-RyanNeural',
-            'skip_voice_clone': True,
-            'progress_callback': 'progress_callback',
-            'resume': True
-        }
-        print(f"\033[35mpipeline.run({params})\033[0m")
+        # Debug: Print actual Python API call in magenta
+        DEBUG_SHOW_PROMPT = False
+        if DEBUG_SHOW_PROMPT:
+            params = {
+                'video_url': job.url,
+                'aggressiveness': 5,
+                'quality': '1080p',
+                'video_gen_mode': 'slideshow',
+                'tts_provider': 'edge',
+                'voice_id': 'en-GB-RyanNeural',
+                'skip_voice_clone': True,
+                'progress_callback': 'progress_callback',
+                'resume': True
+            }
+            print(f"\033[35mpipeline.run({params})\033[0m")
 
         # Run with defaults (--voice implies skip_voice_clone=True)
         result = pipeline.run(

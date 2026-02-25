@@ -20,10 +20,11 @@ class EdgeTTS:
         self,
         text: str,
         voice: str,
-        output_path: Path
+        output_path: Path,
+        rate: str = "+0%"
     ) -> Path:
         """Generate speech asynchronously."""
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice, rate=rate)
         await communicate.save(str(output_path))
         return output_path
 
@@ -31,7 +32,8 @@ class EdgeTTS:
         self,
         text: str,
         output_path: Path,
-        voice: str = "en-US-AriaNeural"
+        voice: str = "en-US-AriaNeural",
+        rate: str = "+0%"
     ) -> Path:
         """
         Generate speech from text using Edge TTS.
@@ -40,15 +42,16 @@ class EdgeTTS:
             text: Text to convert to speech
             output_path: Path to save generated audio
             voice: Voice name (default: en-US-AriaNeural)
+            rate: Speech speed adjustment (e.g., "+50%" for faster, "-25%" for slower, "+0%" for normal)
 
         Returns:
             Path to generated audio file
         """
         try:
-            logger.info(f"Generating speech with Edge TTS ({len(text)} characters)")
+            logger.info(f"Generating speech with Edge TTS ({len(text)} characters, rate={rate})")
 
             # Run async function
-            asyncio.run(self._generate_speech_async(text, voice, output_path))
+            asyncio.run(self._generate_speech_async(text, voice, output_path, rate))
 
             logger.info(f"Speech generated and saved to: {output_path}")
             return output_path

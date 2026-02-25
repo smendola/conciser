@@ -58,7 +58,8 @@ class CondenserPipeline:
         skip_voice_clone: bool = False,
         voice_id: str = None,
         tts_provider: str = "elevenlabs",
-        slideshow_max_frames: int = None
+        slideshow_max_frames: int = None,
+        tts_rate: str = "+0%"
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -200,10 +201,10 @@ class CondenserPipeline:
                     generated_audio_path = existing_speech
                 else:
                     update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
+                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate)
             else:
                 update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider)
+                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate)
 
             # Stage 6: Generate video
             if video_gen_mode == "avatar":
@@ -364,7 +365,7 @@ class CondenserPipeline:
 
         return voice_id
 
-    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs") -> Path:
+    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs", tts_rate: str = "+0%") -> Path:
         """Generate speech from script."""
         # Create unique filename based on provider and voice
         import re
@@ -376,7 +377,8 @@ class CondenserPipeline:
             self.edge_tts.generate_speech(
                 script,
                 output_path,
-                voice=voice_id
+                voice=voice_id,
+                rate=tts_rate
             )
         else:
             # Use ElevenLabs with chunked generation for long scripts

@@ -131,15 +131,17 @@ class TestPromptTemplates:
         """Test prompt generation."""
         from src.utils.prompt_templates import get_condense_prompt
 
-        prompt = get_condense_prompt(
+        system_prompt, user_prompt = get_condense_prompt(
             transcript="Hello world",
             duration_minutes=10.0,
             aggressiveness=5
         )
 
-        assert "Hello world" in prompt
-        assert "10.0" in prompt
-        assert "aggressiveness" in prompt.lower()
+        assert "Hello world" in user_prompt
+        assert "10.0" in system_prompt
+        assert "aggressiveness" in system_prompt.lower()
+        assert isinstance(system_prompt, str)
+        assert isinstance(user_prompt, str)
 
 
 # Run tests with: pytest tests/

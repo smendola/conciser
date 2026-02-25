@@ -165,7 +165,7 @@ def cli():
     '--voice',
     type=str,
     default=None,
-    help='Use a premade voice instead of cloning (specify ID or name, e.g., "George"). If not specified, voice will be cloned from video.'
+    help='Use a premade voice instead of cloning. Formats: "name" (e.g., "George"), "provider/voice" (e.g., "edge/ryan", "elevenlabs/George"). If not specified, voice will be cloned from video.'
 )
 @click.option(
     '--tts-provider',
@@ -179,7 +179,13 @@ def cli():
     default=None,
     help='Max frames for slideshow mode (default: auto). Use 30-50 for most scene changes, 100+ for all.'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames):
+@click.option(
+    '--speech-rate',
+    type=str,
+    default='+0%',
+    help='Speech speed for Edge TTS (e.g., "+50%" for faster, "-25%" for slower, "+0%" for normal). Only works with Edge TTS provider.'
+)
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate):
     """
     Condense a video from URL.
 
@@ -199,12 +205,24 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
         nbj condense https://youtube.com/watch?v=... --video-gen-mode=avatar
 
-        # Free TTS with Edge
+        # Voice shortcuts (provider/voice format)
+        nbj condense https://youtube.com/watch?v=... --voice=edge/ryan
+
+        nbj condense https://youtube.com/watch?v=... --voice=edge/aria
+
+        nbj condense https://youtube.com/watch?v=... --voice=elevenlabs/George
+
+        # Speech speed control (Edge TTS only)
+        nbj condense https://youtube.com/watch?v=... --voice=edge/ryan --speech-rate="+25%"
+
+        nbj condense https://youtube.com/watch?v=... --voice=edge/aria --speech-rate="-10%"
+
+        # Legacy format (still supported)
         nbj condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Aria
 
         nbj condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Ryan
 
-        # ElevenLabs TTS (default)
+        # ElevenLabs TTS (default provider)
         nbj condense https://youtube.com/watch?v=... --voice=George
 
         nbj condense https://youtube.com/watch?v=... --voice=Sarah
@@ -224,10 +242,48 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             print(f"Target Reduction: {reduction}%")
         print(f"Quality: {quality}")
         print(f"Video Mode: {video_gen_mode}")
-        print(f"TTS Provider: {tts_provider}")
 
         # Load settings first
         settings = get_settings()
+
+        # Validate speech rate format
+        import re
+        if speech_rate != '+0%':
+            if not re.match(r'^[+-]\d+%$', speech_rate):
+                click.echo(f"{Fore.RED}Error: Invalid speech rate format '{speech_rate}'.{Style.RESET_ALL}")
+                click.echo(f"{Fore.YELLOW}Format should be like '+25%', '-10%', or '+0%'.{Style.RESET_ALL}")
+                sys.exit(1)
+
+        # Parse shortcut format: --voice=provider/voice (e.g., --voice=edge/ryan)
+        if voice and '/' in voice:
+            parts = voice.split('/', 1)
+            if len(parts) == 2:
+                provider_from_voice, voice_name = parts
+                provider_from_voice = provider_from_voice.lower().strip()
+                voice_name = voice_name.strip()
+
+                # Validate provider
+                if provider_from_voice not in ['elevenlabs', 'edge']:
+                    click.echo(f"{Fore.RED}Error: Invalid provider '{provider_from_voice}' in --voice parameter.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Valid providers: elevenlabs, edge{Style.RESET_ALL}")
+                    sys.exit(1)
+
+                # Set provider and voice
+                tts_provider = provider_from_voice
+                voice = voice_name
+                print(f"TTS Provider: {tts_provider} (from --voice)")
+            else:
+                print(f"TTS Provider: {tts_provider}")
+        else:
+            print(f"TTS Provider: {tts_provider}")
+
+        # Show speech rate if non-default
+        if speech_rate != '+0%':
+            if tts_provider == 'edge':
+                print(f"Speech Rate: {speech_rate}")
+            else:
+                click.echo(f"{Fore.YELLOW}Warning: --speech-rate only works with Edge TTS. Ignoring.{Style.RESET_ALL}")
+                speech_rate = '+0%'  # Reset to default for non-Edge providers
 
         # Handle voice selection based on TTS provider
         if tts_provider == 'edge':
@@ -304,7 +360,8 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             skip_voice_clone=skip_voice_clone,
             voice_id=voice_id if skip_voice_clone else None,
             tts_provider=tts_provider,
-            slideshow_max_frames=slideshow_frames
+            slideshow_max_frames=slideshow_frames,
+            tts_rate=speech_rate
         )
 
         # Display results

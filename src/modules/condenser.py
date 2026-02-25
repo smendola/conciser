@@ -86,13 +86,42 @@ class ContentCondenser:
         try:
             logger.info(f"Starting content condensation (provider: {self.provider}, model: {self.model}, aggressiveness: {aggressiveness}/10)")
 
-            # Generate the prompt
-            prompt = get_condense_prompt(
+            # Generate the prompts (system and user)
+            system_prompt, user_prompt = get_condense_prompt(
                 transcript=transcript,
                 duration_minutes=duration_minutes,
                 aggressiveness=aggressiveness,
                 target_reduction_percentage=target_reduction_percentage
             )
+
+            # Debug: Output the exact prompts being sent to LLM
+            DEBUG_SHOW_PROMPT = False
+            if DEBUG_SHOW_PROMPT:
+                from colorama import Fore, Style
+                print(f"\n{Fore.MAGENTA}{'='*80}")
+                print(f"CONDENSER LLM SYSTEM PROMPT:")
+                print(f"{'='*80}")
+                print(system_prompt)
+                print(f"{'='*80}")
+                print(f"CONDENSER LLM USER PROMPT:")
+                print(f"{'='*80}")
+                # Show the actual formatted prompt with word counts, but truncate the transcript
+                if len(user_prompt) > 2000:
+                    # Find where the transcript starts
+                    transcript_marker = "<transcript>"
+                    if transcript_marker in user_prompt:
+                        prefix = user_prompt[:user_prompt.find(transcript_marker) + len(transcript_marker)]
+                        print(prefix)
+                        print()
+                        print("[TRANSCRIPT TEXT TRUNCATED FOR DISPLAY]")
+                        print()
+                        print("</transcript>")
+                    else:
+                        print(user_prompt[:2000])
+                        print("\n[PROMPT TRUNCATED FOR DISPLAY]")
+                else:
+                    print(user_prompt)
+                print(f"{'='*80}{Style.RESET_ALL}\n")
 
             # Retry logic for transient errors
             response_text = None
@@ -106,10 +135,11 @@ class ContentCondenser:
                             model=self.model,
                             max_tokens=16000,
                             temperature=0.3,
+                            system=system_prompt,
                             messages=[
                                 {
                                     "role": "user",
-                                    "content": prompt
+                                    "content": user_prompt
                                 }
                             ]
                         )
@@ -121,11 +151,11 @@ class ContentCondenser:
                             messages=[
                                 {
                                     "role": "system",
-                                    "content": "You are an expert content editor skilled at condensing transcripts while preserving key information. Always respond with valid JSON."
+                                    "content": system_prompt
                                 },
                                 {
                                     "role": "user",
-                                    "content": prompt
+                                    "content": user_prompt
                                 }
                             ],
                             temperature=0.3,
@@ -178,9 +208,20 @@ class ContentCondenser:
 
             result = json.loads(response_text)
 
-            # Ensure original_duration_minutes is in the result (in case LLM omitted it)
-            if 'original_duration_minutes' not in result:
-                result['original_duration_minutes'] = duration_minutes
+            # Add original_duration_minutes
+            result['original_duration_minutes'] = duration_minutes
+
+            # Calculate estimated_condensed_duration_minutes based on word count
+            # Assume 150 words per minute speaking rate
+            condensed_word_count = len(result.get('condensed_script', '').split())
+            result['estimated_condensed_duration_minutes'] = condensed_word_count / 150.0
+
+            # Calculate reduction_percentage based on word counts
+            original_word_count = len(transcript.split())
+            if original_word_count > 0:
+                result['reduction_percentage'] = ((original_word_count - condensed_word_count) / original_word_count) * 100
+            else:
+                result['reduction_percentage'] = 0.0
 
             logger.info(
                 f"Condensation completed: {result.get('reduction_percentage', 0):.1f}% reduction, "
