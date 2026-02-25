@@ -106,12 +106,13 @@ class VideoDownloader:
                 'writethumbnail': True,
                 'writesubtitles': False,
                 'writeautomaticsub': False,
+                'ignoreerrors': False,
                 # No postprocessors - use native format (webm, mp4, mkv, etc.)
                 # ffmpeg can handle all formats in later pipeline stages
-                # Use web client to avoid JS runtime requirement for most videos
+                # Use web and android clients for better format availability
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['web', 'ios'],
+                        'player_client': ['web', 'android'],
                     }
                 },
             }
@@ -120,10 +121,16 @@ class VideoDownloader:
                 # Download the video
                 ydl.download([url])
 
-                # Get the actual filename (native format: webm, mp4, mkv, etc.)
-                video_filename = ydl.prepare_filename(info)
-                video_path = Path(video_filename)
+                # Find the actual downloaded file (yt-dlp may choose different format than expected)
+                # Look for source_video.* in the video folder
+                downloaded_files = list(video_folder.glob("source_video.*"))
+                # Filter out .webp thumbnail files
+                video_files = [f for f in downloaded_files if f.suffix.lower() not in ['.webp', '.jpg', '.png']]
 
+                if not video_files:
+                    raise RuntimeError(f"Downloaded video not found in {video_folder}")
+
+                video_path = video_files[0]
                 logger.info(f"Download completed: {video_path}")
 
                 metadata = {
@@ -146,8 +153,17 @@ class VideoDownloader:
                 }
 
         except Exception as e:
-            logger.error(f"Download failed: {e}")
-            raise RuntimeError(f"Failed to download video: {e}")
+            error_msg = str(e)
+            logger.error(f"Download failed: {error_msg}")
+
+            # Provide more helpful error messages
+            if "Only images are available" in error_msg or "Requested format is not available" in error_msg:
+                raise RuntimeError(
+                    "Video not available for download. This may be a YouTube Short, "
+                    "premiere, live stream, or restricted content. Try a different video."
+                )
+            else:
+                raise RuntimeError(f"Failed to download video: {error_msg}")
 
     def _get_format_string(self, quality: str) -> str:
         """
@@ -157,12 +173,12 @@ class VideoDownloader:
             quality: Quality string (720p, 1080p, 4k, best)
 
         Returns:
-            Format string for yt-dlp
+            Format string for yt-dlp with multiple fallbacks
         """
         quality_map = {
-            '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-            '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-            '4k': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
+            '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best',
+            '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best',
+            '4k': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/bestvideo+bestaudio/best',
             'best': 'bestvideo+bestaudio/best',
         }
 
