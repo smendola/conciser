@@ -114,10 +114,10 @@ class CondenserPipeline:
                 metadata = download_result['metadata']
                 video_folder = download_result['video_folder']
 
-            # Generate output filename if not provided
+            # Store video_id for output filename (will add tts/voice info later)
+            video_id = metadata.get('video_id', 'unknown')
             normalized_title = metadata.get('normalized_title', metadata['title'])
-            if output_path is None:
-                output_path = self.settings.output_dir / f"{normalized_title}_condensed.mp4"
+            # Output filename will be generated after we know TTS provider and voice
 
             # Stage 2: Extract and transcribe audio
             if resume:
@@ -211,6 +211,15 @@ class CondenserPipeline:
             else:  # static
                 update_progress("VIDEO_GENERATE", "Creating static image video...")
                 generated_video_path = self._generate_video_static(video_path, generated_audio_path, video_folder)
+
+            # Generate output filename if not provided
+            if output_path is None:
+                # Normalize voice_id to snake_case
+                import re
+                voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
+                # Format: {video_id}_{title_snake_60}_{tts_provider}_{voice_snake}.mp4
+                output_filename = f"{video_id}_{normalized_title}_{tts_provider}_{voice_snake}.mp4"
+                output_path = self.settings.output_dir / output_filename
 
             # Stage 7: Compose final video
             update_progress("COMPOSE", "Composing final video...")
@@ -342,7 +351,7 @@ class CondenserPipeline:
             sample_paths.append(normalized_path)
 
         # Clone voice
-        voice_name = f"conciser_{normalize_name(title[:30])}"
+        voice_name = f"conciser_{normalize_name(title, max_length=30)}"
         voice_id = self.voice_cloner.clone_voice(voice_name, sample_paths)
 
         # Cleanup samples

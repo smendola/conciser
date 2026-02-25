@@ -9,12 +9,13 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 
-def normalize_name(name: str) -> str:
+def normalize_name(name: str, max_length: int = 60) -> str:
     """
     Normalize a name to lowercase with underscores, alphanumeric only.
 
     Args:
         name: Input name
+        max_length: Maximum length of normalized name (default 60)
 
     Returns:
         Normalized name (e.g., "The CAPE Ratio — 150 Years" -> "the_cape_ratio_150_years")
@@ -29,6 +30,9 @@ def normalize_name(name: str) -> str:
     name = re.sub(r'_+', '_', name)
     # Strip leading/trailing underscores
     name = name.strip('_')
+    # Truncate to max_length
+    if len(name) > max_length:
+        name = name[:max_length].rstrip('_')
     return name
 
 
