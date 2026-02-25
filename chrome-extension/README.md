@@ -1,6 +1,6 @@
-# Conciser Remote - Chrome Extension
+# NBJ Condenser - Chrome Extension
 
-Chrome extension to submit YouTube videos to your Conciser server for AI-powered condensation.
+Chrome extension to submit YouTube videos to your NBJ Condenser server for AI-powered condensation.
 
 ## Installation
 
@@ -31,7 +31,7 @@ Chrome extension to submit YouTube videos to your Conciser server for AI-powered
 ### Usage
 
 1. Navigate to any YouTube video page
-2. Click the Conciser extension icon (it will be colored/active)
+2. Click the NBJ Condenser extension icon (it will be colored/active)
 3. Click "Condense Video"
 4. Wait for processing (status updates every 3 seconds)
 5. You can close the popup and reopen it later - it will resume tracking
@@ -41,7 +41,7 @@ Chrome extension to submit YouTube videos to your Conciser server for AI-powered
 
 - Detects YouTube video URLs automatically
 - Shows visual feedback via icon state (active/disabled)
-- Submits URL to your Conciser server
+- Submits URL to your NBJ Condenser server
 - Polls for status every 3 seconds
 - Opens video in new tab when complete
 

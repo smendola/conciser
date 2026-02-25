@@ -1,4 +1,4 @@
-# Conciser Remote Server
+# NBJ Condenser Remote Server
 
 HTTP server for remote video condensation via Chrome extension.
 
@@ -6,7 +6,7 @@ HTTP server for remote video condensation via Chrome extension.
 
 A production-ready Chrome extension package is available for easy installation. See `../CHROME_EXTENSION_INSTALL.md` for installation options:
 
-- **Quick Install**: Drag & drop `conciser-chrome-extension.zip` onto `chrome://extensions/`
+- **Quick Install**: Drag & drop `nbj-chrome-extension.zip` onto `chrome://extensions/`
 - **Chrome Web Store**: Submit for public distribution (recommended)
 - **Manual Install**: Load unpacked from `../chrome-extension/` directory
 
@@ -34,7 +34,7 @@ Server will start on `http://127.0.0.1:5000`
 In another terminal:
 
 ```bash
-ngrok start conciser
+ngrok start nbj
 ```
 
 Server will be available at the static URL: `https://conciser-aurora.ngrok.dev`
@@ -45,7 +45,7 @@ Server will be available at the static URL: `https://conciser-aurora.ngrok.dev`
 
 1. Install the Chrome extension (see above)
 2. Navigate to any YouTube video
-3. Click the Conciser icon in Chrome toolbar
+3. Click the NBJ Condenser icon in Chrome toolbar
 4. Click "Condense Video"
 5. Download when complete
 
@@ -117,7 +117,7 @@ Health check.
 ## How It Works
 
 1. Server accepts YouTube URL via POST request
-2. Runs conciser pipeline in background thread
+2. Runs nbj pipeline in background thread
 3. Client polls `/api/status/:id` every 3 seconds
 4. When complete, video is available at `/api/download/:id`
 
@@ -143,7 +143,7 @@ To customize, edit your `.env` file:
 - Static ngrok URL configured: `https://conciser-aurora.ngrok.dev`
 
 ### Chrome Extension
-- Packaged extension: `../conciser-chrome-extension.zip` (14 KB)
+- Packaged extension: `../nbj-chrome-extension.zip` (14 KB)
 - Smart icon state: colored when usable (on YouTube video), grayed when not
 - Ready to distribute or submit to Chrome Web Store
 - Server URL hardcoded in `popup.js` (update if using different ngrok URL)

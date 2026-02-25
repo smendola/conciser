@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Conciser Remote",
+  "name": "NBJ Condenser",
   "version": "1.0.0",
-  "description": "Send YouTube videos to Conciser for AI-powered condensation",
+  "description": "Send YouTube videos to NBJ Condenser for AI-powered condensation",
   "permissions": [
     "activeTab",
     "tabs",

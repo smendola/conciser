@@ -1,10 +1,10 @@
 #!/bin/bash
-# Installation script for Conciser
+# Installation script for NBJ Condenser
 
 set -e
 
 echo "================================"
-echo "Conciser Installation Script"
+echo "NBJ Condenser Installation Script"
 echo "================================"
 echo
 
@@ -49,8 +49,8 @@ pip install --upgrade pip
 echo "Installing dependencies..."
 pip install -r requirements.txt
 
-# Install Conciser
-echo "Installing Conciser..."
+# Install NBJ Condenser
+echo "Installing NBJ Condenser..."
 pip install -e .
 
 # Create directories
@@ -62,7 +62,7 @@ if [ ! -f .env ]; then
     echo
     echo "No .env file found. Running setup wizard..."
     echo
-    conciser setup
+    nbj setup
 else
     echo "✓ .env file exists"
 fi
@@ -74,9 +74,9 @@ echo "================================"
 echo
 echo "Next steps:"
 echo "  1. Activate virtual environment: source venv/bin/activate"
-echo "  2. Run configuration check: conciser check"
-echo "  3. Try condensing a video: conciser condense <youtube_url>"
+echo "  2. Run configuration check: nbj check"
+echo "  3. Try condensing a video: nbj condense <youtube_url>"
 echo
-echo "For help: conciser --help"
+echo "For help: nbj --help"
 echo "Quick start guide: cat QUICKSTART.md"
 echo

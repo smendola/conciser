@@ -1,6 +1,6 @@
-# Conciser Architecture
+# NBJ Condenser Architecture
 
-This document provides a technical overview of Conciser's architecture and implementation details.
+This document provides a technical overview of NBJ Condenser's architecture and implementation details.
 
 ## System Architecture
 
@@ -203,10 +203,10 @@ Uses Pydantic Settings for type-safe configuration:
 **Module**: `src/main.py`
 
 Built with Click framework:
-- `conciser condense` - Main condensation command
-- `conciser info` - Get video information
-- `conciser setup` - Interactive setup wizard
-- `conciser check` - Configuration diagnostics
+- `nbj condense` - Main condensation command
+- `nbj info` - Get video information
+- `nbj setup` - Interactive setup wizard
+- `nbj check` - Configuration diagnostics
 
 **Features**:
 - Colored output (colorama)
@@ -244,7 +244,7 @@ URL → Download → Video File → Audio Extraction → Audio File
 ## File Structure
 
 ```
-conciser/
+nbj/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                 # CLI entry point
@@ -279,7 +279,7 @@ conciser/
 
 ### Strategy
 - Fail fast with descriptive errors
-- Log all operations to `conciser.log`
+- Log all operations to `nbj.log`
 - User-friendly error messages in CLI
 - Detailed technical errors in logs
 
@@ -351,7 +351,7 @@ conciser/
 - User owns all generated content
 
 ### User Privacy
-- No data sent to Conciser servers (none exist)
+- No data sent to NBJ Condenser servers (none exist)
 - All processing via official APIs
 - Logs contain no sensitive data
 
@@ -399,7 +399,7 @@ conciser/
 
 ### Output
 - Console: Colored, user-friendly
-- File (`conciser.log`): Detailed, technical
+- File (`nbj.log`): Detailed, technical
 
 ## Dependencies
 

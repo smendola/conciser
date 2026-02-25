@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test that everything is set up correctly
 
-echo "Testing Conciser Setup"
+echo "Testing NBJ Condenser Setup"
 echo "====================="
 echo
 
@@ -32,13 +32,13 @@ echo "Checking directories..."
 # Check configuration
 echo
 echo "Checking configuration..."
-[ -f ".env" ] && echo "✓ .env exists" || echo "✗ .env missing (run: conciser setup)"
+[ -f ".env" ] && echo "✓ .env exists" || echo "✗ .env missing (run: nbj setup)"
 
-# Run conciser check
+# Run nbj check
 echo
-echo "Running conciser diagnostics..."
+echo "Running nbj diagnostics..."
 echo "================================"
-conciser check
+nbj check
 
 echo
 echo "Test complete!"

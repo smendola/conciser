@@ -1,4 +1,4 @@
-"""CLI interface for Conciser."""
+"""CLI interface for NBJ Condenser."""
 
 import sys
 import logging
@@ -84,7 +84,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('conciser.log'),
+        logging.FileHandler('nbj.log'),
         logging.StreamHandler()
     ]
 )
@@ -118,7 +118,7 @@ class ProgressDisplay:
 @click.version_option(version='0.1.0')
 def cli():
     """
-    Conciser - AI-Powered Video Condensation Tool
+    NBJ Condenser - AI-Powered Video Condensation Tool
 
     Condense videos by removing filler content while preserving key insights,
     using AI voice cloning and video generation.
@@ -187,27 +187,27 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
     Examples:
 
-        conciser condense https://youtube.com/watch?v=... -a 5
+        nbj condense https://youtube.com/watch?v=... -a 5
 
-        conciser condense https://youtube.com/watch?v=... -a 7 -q 720p
+        nbj condense https://youtube.com/watch?v=... -a 7 -q 720p
 
-        conciser condense https://youtube.com/watch?v=... --reduction 60
+        nbj condense https://youtube.com/watch?v=... --reduction 60
 
-        conciser condense https://youtube.com/watch?v=... --video-gen-mode=static
+        nbj condense https://youtube.com/watch?v=... --video-gen-mode=static
 
-        conciser condense https://youtube.com/watch?v=... --video-gen-mode=slideshow
+        nbj condense https://youtube.com/watch?v=... --video-gen-mode=slideshow
 
-        conciser condense https://youtube.com/watch?v=... --video-gen-mode=avatar
+        nbj condense https://youtube.com/watch?v=... --video-gen-mode=avatar
 
         # Free TTS with Edge
-        conciser condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Aria
+        nbj condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Aria
 
-        conciser condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Ryan
+        nbj condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Ryan
 
         # ElevenLabs TTS (default)
-        conciser condense https://youtube.com/watch?v=... --voice=George
+        nbj condense https://youtube.com/watch?v=... --voice=George
 
-        conciser condense https://youtube.com/watch?v=... --voice=Sarah
+        nbj condense https://youtube.com/watch?v=... --voice=Sarah
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -215,7 +215,7 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
     try:
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}Conciser - Video Condensation Pipeline{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}NBJ Condenser - Video Condensation Pipeline{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
 
         print(f"URL: {url}")
@@ -238,7 +238,7 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
                 voice_id = edge.resolve_voice_name(voice)
                 if not voice_id:
                     click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
-                    click.echo(f"{Fore.YELLOW}Run 'conciser voices --provider=edge' to see available voices.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Run 'nbj voices --provider=edge' to see available voices.{Style.RESET_ALL}")
                     sys.exit(1)
                 print(f"Voice: {voice} -> {voice_id}")
             else:
@@ -252,7 +252,7 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
                 voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
                 if not voice_id:
                     click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
-                    click.echo(f"{Fore.YELLOW}Run 'conciser voices' to see available voices.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Run 'nbj voices' to see available voices.{Style.RESET_ALL}")
                     sys.exit(1)
                 print(f"Voice: {voice} (ID: {voice_id})")
                 skip_voice_clone = True
@@ -334,7 +334,7 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             sys.exit(1)
         logger.exception("Pipeline failed")
         print(f"\n{Fore.RED}Error: {e}{Style.RESET_ALL}")
-        print(f"{Fore.RED}Check conciser.log for details.{Style.RESET_ALL}")
+        print(f"{Fore.RED}Check nbj.log for details.{Style.RESET_ALL}")
         sys.exit(1)
 
 
@@ -400,7 +400,7 @@ def setup():
     """
     Interactive setup wizard to configure API keys.
     """
-    print(f"\n{Fore.CYAN}Conciser Setup Wizard{Style.RESET_ALL}\n")
+    print(f"\n{Fore.CYAN}NBJ Condenser Setup Wizard{Style.RESET_ALL}\n")
 
     print("This wizard will help you configure API keys for Conciser.\n")
 
@@ -425,7 +425,7 @@ def setup():
     did_key = click.prompt("D-ID API Key (press Enter to skip for static/slideshow mode)", type=str, default="", show_default=False)
 
     # Write .env file
-    env_content = f"""# Conciser API Configuration
+    env_content = f"""# NBJ Condenser API Configuration
 
 # OpenAI (for Whisper transcription)
 OPENAI_API_KEY={openai_key}
@@ -536,23 +536,23 @@ def voices(provider, lang):
                 print()
 
             print(f"{Fore.YELLOW}Filter voices:{Style.RESET_ALL}")
-            print(f"  conciser voices --provider=edge --lang=en       # All English variants")
-            print(f"  conciser voices --provider=edge --lang=US       # US English only")
-            print(f"  conciser voices --provider=edge --lang=en-US    # US English only")
-            print(f"  conciser voices --provider=edge --lang=fr-FR    # French (France)")
+            print(f"  nbj voices --provider=edge --lang=en       # All English variants")
+            print(f"  nbj voices --provider=edge --lang=US       # US English only")
+            print(f"  nbj voices --provider=edge --lang=en-US    # US English only")
+            print(f"  nbj voices --provider=edge --lang=fr-FR    # French (France)")
             print(f"\n{Fore.YELLOW}Usage (short names):{Style.RESET_ALL}")
-            print(f"  conciser condense URL --tts-provider=edge --voice=Aria")
-            print(f"  conciser condense URL --tts-provider=edge --voice=Ryan")
-            print(f"  conciser condense URL --tts-provider=edge --voice=Denise")
+            print(f"  nbj condense URL --tts-provider=edge --voice=Aria")
+            print(f"  nbj condense URL --tts-provider=edge --voice=Ryan")
+            print(f"  nbj condense URL --tts-provider=edge --voice=Denise")
             print(f"\n{Fore.YELLOW}Usage (full names):{Style.RESET_ALL}")
-            print(f"  conciser condense URL --tts-provider=edge --voice=en-US-AriaNeural")
-            print(f"  conciser condense URL --tts-provider=edge --voice=en-GB-RyanNeural\n")
+            print(f"  nbj condense URL --tts-provider=edge --voice=en-US-AriaNeural")
+            print(f"  nbj condense URL --tts-provider=edge --voice=en-GB-RyanNeural\n")
             return
 
         # ElevenLabs
         if not settings.elevenlabs_api_key:
             print(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set.{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}Run 'conciser setup' to configure.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Run 'nbj setup' to configure.{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}Or use --provider=edge for free voices without API key.{Style.RESET_ALL}")
             sys.exit(1)
 
@@ -600,8 +600,8 @@ def voices(provider, lang):
             print()
 
         print(f"{Fore.YELLOW}Usage:{Style.RESET_ALL}")
-        print(f"  conciser condense URL --tts-provider=elevenlabs --voice=George")
-        print(f"  conciser condense URL --tts-provider=elevenlabs --voice=JBFqnCBsd6RMkjVDRZzb\n")
+        print(f"  nbj condense URL --tts-provider=elevenlabs --voice=George")
+        print(f"  nbj condense URL --tts-provider=elevenlabs --voice=JBFqnCBsd6RMkjVDRZzb\n")
 
     except Exception as e:
         print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
@@ -623,11 +623,11 @@ def show_script(url_or_video_id, format):
 
     Examples:
 
-        conciser show-script https://youtube.com/watch?v=IZD9jIOLPAw
+        nbj show-script https://youtube.com/watch?v=IZD9jIOLPAw
 
-        conciser show-script IZD9jIOLPAw
+        nbj show-script IZD9jIOLPAw
 
-        conciser show-script IZD9jIOLPAw --no-format  # Skip paragraph formatting
+        nbj show-script IZD9jIOLPAw --no-format  # Skip paragraph formatting
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -656,7 +656,7 @@ def show_script(url_or_video_id, format):
 
         if not video_folder:
             click.echo(f"{Fore.RED}Error: No condensed content found for video ID: {video_id}{Style.RESET_ALL}")
-            click.echo(f"{Fore.YELLOW}Hint: Run 'conciser condense' first to generate the condensed script.{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}Hint: Run 'nbj condense' first to generate the condensed script.{Style.RESET_ALL}")
             sys.exit(1)
 
         # Load condensed script
@@ -744,7 +744,7 @@ def check(verbose):
     import logging as stdlib_logging
     stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
 
-    print(f"\n{Fore.CYAN}Checking Conciser Configuration...{Style.RESET_ALL}\n")
+    print(f"\n{Fore.CYAN}Checking NBJ Condenser Configuration...{Style.RESET_ALL}\n")
 
     settings = get_settings()
 
@@ -838,9 +838,9 @@ def check(verbose):
         print(f"{Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL} All required API keys are valid and working!\n")
     else:
         print(f"{Fore.YELLOW}⚠ Some API keys are missing or invalid.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Run 'conciser setup' to configure missing keys.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Run 'nbj setup' to configure missing keys.{Style.RESET_ALL}")
         if not verbose:
-            print(f"{Fore.YELLOW}Use 'conciser check --verbose' for detailed error messages.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Use 'nbj check --verbose' for detailed error messages.{Style.RESET_ALL}")
         print()
 
 

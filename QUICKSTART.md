@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get started with Conciser in 5 minutes!
+Get started with NBJ Condenser in 5 minutes!
 
 ## Prerequisites
 
@@ -31,11 +31,11 @@ brew install ffmpeg
 **Windows:**
 Download from https://ffmpeg.org/download.html and add to PATH
 
-### 2. Install Conciser
+### 2. Install NBJ Condenser
 
 ```bash
 # Clone or download the repository
-cd conciser
+cd nbj
 
 # Create virtual environment
 python -m venv venv
@@ -46,7 +46,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Conciser
+# Install NBJ Condenser
 pip install -e .
 ```
 
@@ -55,7 +55,7 @@ pip install -e .
 Run the setup wizard:
 
 ```bash
-conciser setup
+nbj setup
 ```
 
 Or manually create a `.env` file:
@@ -69,7 +69,7 @@ Then edit `.env` and add your API keys.
 ### 4. Verify Installation
 
 ```bash
-conciser check
+nbj check
 ```
 
 You should see all checks pass.
@@ -89,7 +89,7 @@ Choose a YouTube video to condense. Good candidates:
 Check the video details and estimated cost:
 
 ```bash
-conciser info "https://youtube.com/watch?v=VIDEO_ID"
+nbj info "https://youtube.com/watch?v=VIDEO_ID"
 ```
 
 ### Step 3: Condense the Video
@@ -97,7 +97,7 @@ conciser info "https://youtube.com/watch?v=VIDEO_ID"
 Start with moderate aggressiveness (level 5):
 
 ```bash
-conciser condense "https://youtube.com/watch?v=VIDEO_ID" -a 5
+nbj condense "https://youtube.com/watch?v=VIDEO_ID" -a 5
 ```
 
 This will:
@@ -126,13 +126,13 @@ Try different levels to see what works best:
 
 ```bash
 # Light condensing - remove ~30%
-conciser condense "URL" -a 3
+nbj condense "URL" -a 3
 
 # Moderate - remove ~50% (recommended)
-conciser condense "URL" -a 5
+nbj condense "URL" -a 5
 
 # Aggressive - remove ~70%
-conciser condense "URL" -a 8
+nbj condense "URL" -a 8
 ```
 
 ## Common Options
@@ -141,26 +141,26 @@ conciser condense "URL" -a 8
 
 ```bash
 # 720p (faster, smaller file)
-conciser condense "URL" -a 5 -q 720p
+nbj condense "URL" -a 5 -q 720p
 
 # 1080p (default, balanced)
-conciser condense "URL" -a 5 -q 1080p
+nbj condense "URL" -a 5 -q 1080p
 
 # 4K (slower, larger file)
-conciser condense "URL" -a 5 -q 4k
+nbj condense "URL" -a 5 -q 4k
 ```
 
 ### Custom Output Location
 
 ```bash
-conciser condense "URL" -a 5 -o ./my_videos/condensed.mp4
+nbj condense "URL" -a 5 -o ./my_videos/condensed.mp4
 ```
 
 ### Exact Reduction Target
 
 ```bash
 # Remove exactly 60% of content
-conciser condense "URL" --reduction 60
+nbj condense "URL" --reduction 60
 ```
 
 ## Tips for Best Results
@@ -189,7 +189,7 @@ conciser condense "URL" --reduction 60
 ## Troubleshooting
 
 ### Error: "API key not set"
-Run `conciser setup` or check your `.env` file.
+Run `nbj setup` or check your `.env` file.
 
 ### Error: "ffmpeg not found"
 Install ffmpeg (see installation section above).
@@ -212,19 +212,19 @@ Check your API dashboards and add credits:
 ### Condense a Podcast
 ```bash
 # 2-hour podcast → 40-minute highlights
-conciser condense "https://youtube.com/watch?v=PODCAST_ID" -a 6 -q 1080p
+nbj condense "https://youtube.com/watch?v=PODCAST_ID" -a 6 -q 1080p
 ```
 
 ### Condense a Lecture
 ```bash
 # 1-hour lecture → 20-minute summary
-conciser condense "https://youtube.com/watch?v=LECTURE_ID" -a 7 -q 720p
+nbj condense "https://youtube.com/watch?v=LECTURE_ID" -a 7 -q 720p
 ```
 
 ### Light Cleanup
 ```bash
 # 30-minute video → 22-minute cleaned version
-conciser condense "https://youtube.com/watch?v=VIDEO_ID" -a 2 -q 1080p
+nbj condense "https://youtube.com/watch?v=VIDEO_ID" -a 2 -q 1080p
 ```
 
 ## Next Steps
@@ -236,8 +236,8 @@ conciser condense "https://youtube.com/watch?v=VIDEO_ID" -a 2 -q 1080p
 
 ## Getting Help
 
-- **Check the log**: `conciser.log` has detailed error messages
-- **Run diagnostics**: `conciser check` to verify setup
+- **Check the log**: `nbj.log` has detailed error messages
+- **Run diagnostics**: `nbj check` to verify setup
 - **Read documentation**: [README.md](README.md)
 - **Report issues**: GitHub Issues
 
@@ -261,7 +261,7 @@ conciser condense "https://youtube.com/watch?v=VIDEO_ID" -a 2 -q 1080p
 
 ## What's Next?
 
-You've successfully set up and run Conciser! Here are some ideas:
+You've successfully set up and run NBJ Condenser! Here are some ideas:
 
 1. Try different aggressiveness levels to find your sweet spot
 2. Experiment with different types of content

@@ -1,4 +1,4 @@
-// Conciser Remote - Chrome Extension
+// NBJ Condenser - Chrome Extension
 
 let currentUrl = null;
 let currentJobId = null;

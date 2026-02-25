@@ -1,7 +1,7 @@
 """
-Conciser Remote Server
+NBJ Condenser Remote Server
 
-Simple HTTP server that accepts YouTube URLs and processes them with conciser.
+Simple HTTP server that accepts YouTube URLs and processes them with nbj.
 Designed to run behind ngrok for remote access.
 """
 
@@ -14,7 +14,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template_string, send_from_directory
 from flask_cors import CORS
 
-# Add parent directory to path to import conciser modules
+# Add parent directory to path to import nbj modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import get_settings
@@ -116,7 +116,7 @@ def start_page():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conciser Remote - Get Started</title>
+    <title>NBJ Condenser Remote - Get Started</title>
     <style>
         * {
             margin: 0;
@@ -330,7 +330,7 @@ def start_page():
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 Conciser Remote</h1>
+            <h1>🎬 NBJ Condenser Remote</h1>
             <p>AI-Powered YouTube Video Condensation</p>
             <p style="font-size: 0.9em; margin-top: 10px;">Get the <span id="browser-name">browser</span> extension</p>
         </div>
@@ -338,10 +338,10 @@ def start_page():
         <div class="content">
             <div class="download-section">
                 <h2 style="margin: 0 0 10px 0; color: #1a73e8;">📦 Step 1: Download Extension</h2>
-                <p>Click the button below to download the Conciser extension</p>
+                <p>Click the button below to download the NBJ Condenser extension</p>
                 <a href="/extension.zip" class="download-btn" download>⬇ Download Extension</a>
                 <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
-                    File: <code>conciser-chrome-extension.zip</code> (14 KB)<br>
+                    File: <code>nbj-chrome-extension.zip</code> (14 KB)<br>
                     <em>Icon changes color when you're on a YouTube video page!</em>
                 </p>
             </div>
@@ -374,7 +374,7 @@ def start_page():
                         Drag and drop the ZIP file
                     </div>
                     <div class="step-detail">
-                        Find <code>conciser-chrome-extension.zip</code> in your Downloads folder<br>
+                        Find <code>nbj-chrome-extension.zip</code> in your Downloads folder<br>
                         <strong>Drag it directly onto the extensions page</strong><br>
                         Chrome will automatically install it - no extraction or developer mode needed!
                         <p style="margin-top: 12px; padding: 10px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #1a73e8;">
@@ -420,10 +420,10 @@ def start_page():
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
-                        Pin "Conciser Remote"
+                        Pin "NBJ Condenser Remote"
                     </div>
                     <div class="step-detail">
-                        Find "Conciser Remote" in the dropdown<br>
+                        Find "NBJ Condenser Remote" in the dropdown<br>
                         Click the <strong>pin icon (📌)</strong> next to it<br>
                         The blue "C" icon will now appear in your toolbar for easy access
                     </div>
@@ -459,7 +459,7 @@ def start_page():
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
-                        Click the Conciser icon
+                        Click the NBJ Condenser icon
                     </div>
                     <div class="step-detail">
                         Click the blue "C" icon in your toolbar (or the puzzle piece icon if you didn't pin it)<br>
@@ -475,7 +475,7 @@ def start_page():
                     </div>
                     <div class="step-detail">
                         Click the <strong>"Condense Video"</strong> button<br>
-                        The extension will submit the video to the Conciser server for processing
+                        The extension will submit the video to the NBJ Condenser server for processing
                     </div>
                 </div>
 
@@ -515,14 +515,14 @@ def start_page():
             </div>
 
             <div class="section">
-                <h2>🎨 What Does Conciser Do?</h2>
+                <h2>🎨 What Does NBJ Condenser Do?</h2>
 
                 <div class="step">
                     <div class="step-title" style="border: none;">
                         AI-Powered Condensation
                     </div>
                     <div class="step-detail">
-                        Conciser uses AI to intelligently condense YouTube videos:
+                        NBJ Condenser uses AI to intelligently condense YouTube videos:
                         <ul>
                             <li><strong>Extracts the script</strong> from the video using speech recognition</li>
                             <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness: 5/10)</li>
@@ -576,7 +576,7 @@ def start_page():
         </div>
 
         <div class="footer">
-            <p><strong>Conciser Remote Server</strong> • Powered by Claude AI</p>
+            <p><strong>NBJ Condenser Remote Server</strong> • Powered by Claude AI</p>
             <p style="margin-top: 10px; font-size: 0.9em;">
                 Need help? Check the server logs or contact your administrator
             </p>
@@ -591,7 +591,7 @@ def start_page():
             // Replace entire page content with message
             document.querySelector('.container').innerHTML = `
                 <div class="header">
-                    <h1>🎬 Conciser Remote</h1>
+                    <h1>🎬 NBJ Condenser Remote</h1>
                 </div>
                 <div class="content" style="text-align: center; padding: 60px 40px;">
                     <h2 style="font-size: 2em; color: #d32f2f; margin-bottom: 20px;">
@@ -654,7 +654,7 @@ def start_page():
 def download_extension():
     """Download the packaged Chrome extension."""
     # Serve the pre-packaged extension
-    extension_zip = Path(__file__).parent.parent / 'conciser-chrome-extension.zip'
+    extension_zip = Path(__file__).parent.parent / 'nbj-chrome-extension.zip'
 
     if not extension_zip.exists():
         return jsonify({'error': 'Extension package not found'}), 404
@@ -663,7 +663,7 @@ def download_extension():
         extension_zip,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='conciser-chrome-extension.zip'
+        download_name='nbj-chrome-extension.zip'
     )
 
 
@@ -781,10 +781,10 @@ def health():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("Conciser Remote Server")
+    print("NBJ Condenser Remote Server")
     print("=" * 60)
     print("\nServer starting on http://127.0.0.1:5000")
-    print("Expose with: ngrok start conciser")
+    print("Expose with: ngrok start nbj")
     print("\nPublic URL: https://conciser-aurora.ngrok.dev")
     print("\nEndpoints:")
     print("  GET    /start - Extension download & installation guide")

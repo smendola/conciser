@@ -1,8 +1,8 @@
-# Conciser - Implementation Complete ✅
+# NBJ Condenser - Implementation Complete ✅
 
 ## What Has Been Delivered
 
-This is a **complete, production-ready implementation** of Phase 1+ of the Conciser video condensation application with significant enhancements beyond the original plan.
+This is a **complete, production-ready implementation** of Phase 1+ of the NBJ Condenser video condensation application with significant enhancements beyond the original plan.
 
 ## Project Status: ✅ READY TO USE
 
@@ -184,7 +184,7 @@ Beyond the original Phase 1 plan, the following improvements have been implement
     - Directory management
 
 12. **CLI Interface** (`src/main.py`)
-    - `conciser condense` - Main command with options:
+    - `nbj condense` - Main command with options:
       - `--aggressiveness` / `-a` - Condensing level (1-10)
       - `--quality` / `-q` - Output quality (720p, 1080p, 4k)
       - `--reduction` - Target reduction percentage
@@ -192,10 +192,10 @@ Beyond the original Phase 1 plan, the following improvements have been implement
       - `--video-gen-mode` - Video mode (static, slideshow, avatar)
       - `--skip-voice-clone` - Use premade voice instead of cloning
       - `--voice-id` - Specify ElevenLabs voice ID
-    - `conciser show-script` - **NEW**: Display condensed script with AI formatting
-    - `conciser info` - Video information with cost estimates
-    - `conciser setup` - Setup wizard
-    - `conciser check` - Diagnostics
+    - `nbj show-script` - **NEW**: Display condensed script with AI formatting
+    - `nbj info` - Video information with cost estimates
+    - `nbj setup` - Setup wizard
+    - `nbj check` - Diagnostics
     - Colored output with stage-based progress
     - Progress display with "Resuming from step X" messages
 
@@ -227,7 +227,7 @@ Beyond the original Phase 1 plan, the following improvements have been implement
 ## File Structure
 
 ```
-conciser/
+nbj/
 ├── src/
 │   ├── __init__.py
 │   ├── main.py                     # CLI entry point
@@ -269,8 +269,8 @@ conciser/
 
 1. **Install Dependencies**
    ```bash
-   # Make sure you're in the conciser directory
-   cd /home/dev/conciser
+   # Make sure you're in the nbj directory
+   cd /home/dev/nbj
 
    # Run installation script
    chmod +x scripts/install.sh
@@ -305,10 +305,10 @@ conciser/
      - Get API key from dashboard
      - Cost: ~$0.10-0.30 per min of video
 
-3. **Configure Conciser**
+3. **Configure NBJ Condenser**
    ```bash
    # Run setup wizard
-   conciser setup
+   nbj setup
 
    # Or manually create .env file
    cp .env.example .env
@@ -317,7 +317,7 @@ conciser/
 
 4. **Verify Setup**
    ```bash
-   conciser check
+   nbj check
    ```
 
 ### First Test Run (~30-60 minutes)
@@ -325,8 +325,8 @@ conciser/
 Find a short YouTube video (5-10 minutes) to test with:
 
 ```bash
-conciser info "https://youtube.com/watch?v=VIDEO_ID"
-conciser condense "https://youtube.com/watch?v=VIDEO_ID" -a 5 -q 720p
+nbj info "https://youtube.com/watch?v=VIDEO_ID"
+nbj condense "https://youtube.com/watch?v=VIDEO_ID" -a 5 -q 720p
 ```
 
 Expected processing time for a 10-minute video:
@@ -464,7 +464,7 @@ Costs scale approximately linearly with video length.
 ### 1. ElevenLabs Voice Cloning Requires Paid Plan
 **Limitation**: Instant Voice Cloning (IVC) not available on free tier
 **Solution**: Use `--skip-voice-clone` flag with premade voices
-**Example**: `conciser condense URL --skip-voice-clone --voice-id=JBFqnCBsd6RMkjVDRZzb`
+**Example**: `nbj condense URL --skip-voice-clone --voice-id=JBFqnCBsd6RMkjVDRZzb`
 **Cost**: Free tier works fine with premade voices
 
 ### 2. ElevenLabs Quota Limits
@@ -474,7 +474,7 @@ Costs scale approximately linearly with video length.
   - Wait for monthly quota reset
   - Use shorter videos for testing
   - Script viewing works without generating audio
-**Workaround**: Use `conciser show-script VIDEO_ID` to see condensed content without audio generation
+**Workaround**: Use `nbj show-script VIDEO_ID` to see condensed content without audio generation
 
 ### 3. Video Generation is Slow (Avatar Mode)
 **Limitation**: D-ID processes video at ~2-5x real-time
@@ -517,7 +517,7 @@ Costs scale approximately linearly with video length.
 ### API Issues
 
 **Problem**: "API key not set"
-**Solution**: Run `conciser setup` or edit .env file
+**Solution**: Run `nbj setup` or edit .env file
 
 **Problem**: "Rate limit exceeded"
 **Solution**: Wait a few minutes, or upgrade API plan
@@ -626,7 +626,7 @@ This implementation is considered **successful** if:
 ### Getting Help
 - Read README.md and QUICKSTART.md
 - Check ARCHITECTURE.md for technical details
-- Review conciser.log for errors
+- Review nbj.log for errors
 - Open GitHub issues
 
 ### Contributing
@@ -669,19 +669,19 @@ The application has been successfully tested with:
 
 **Budget Mode** (Static video, premade voice):
 ```bash
-conciser condense "VIDEO_URL" --video-gen-mode=static --skip-voice-clone
+nbj condense "VIDEO_URL" --video-gen-mode=static --skip-voice-clone
 ```
 Cost: ~$0.25 per 10min condensed video
 
 **Standard Mode** (Slideshow, premade voice):
 ```bash
-conciser condense "VIDEO_URL" --video-gen-mode=slideshow --skip-voice-clone
+nbj condense "VIDEO_URL" --video-gen-mode=slideshow --skip-voice-clone
 ```
 Cost: ~$0.25 per 10min condensed video
 
 **Premium Mode** (Avatar, cloned voice):
 ```bash
-conciser condense "VIDEO_URL" --video-gen-mode=avatar
+nbj condense "VIDEO_URL" --video-gen-mode=avatar
 ```
 Cost: ~$62 per 10min condensed video (requires paid ElevenLabs + sufficient quota)
 

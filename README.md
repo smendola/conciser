@@ -1,6 +1,6 @@
-# Conciser - AI-Powered Video Condensation
+# NBJ Condenser - AI-Powered Video Condensation
 
-Conciser is an intelligent video condensation tool that automatically shortens videos by removing filler content while preserving key insights. It uses AI voice cloning and video generation to create a natural, condensed version with the original speaker's voice and appearance.
+NBJ Condenser is an intelligent video condensation tool that automatically shortens videos by removing filler content while preserving key insights. It uses AI voice cloning and video generation to create a natural, condensed version with the original speaker's voice and appearance.
 
 ## Features
 
@@ -13,7 +13,7 @@ Conciser is an intelligent video condensation tool that automatically shortens v
 
 ## How It Works
 
-Conciser processes videos through a 7-stage pipeline:
+NBJ Condenser processes videos through a 7-stage pipeline:
 
 1. **Download**: Downloads video from YouTube or other sources
 2. **Transcribe**: Converts speech to text using OpenAI Whisper
@@ -51,12 +51,12 @@ brew install ffmpeg
 **Windows:**
 Download from [ffmpeg.org](https://ffmpeg.org/download.html)
 
-### Install Conciser
+### Install NBJ Condenser
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/conciser.git
-cd conciser
+git clone https://github.com/yourusername/nbj.git
+cd nbj
 
 # Create virtual environment
 python -m venv venv
@@ -76,7 +76,7 @@ pip install -e .
 Run the interactive setup wizard:
 
 ```bash
-conciser setup
+nbj setup
 ```
 
 This will prompt you for your API keys and create a `.env` file.
@@ -103,7 +103,7 @@ DID_API_KEY=...
 Check that everything is configured correctly:
 
 ```bash
-conciser check
+nbj check
 ```
 
 ## Usage
@@ -113,7 +113,7 @@ conciser check
 Condense a video with default settings (50% reduction):
 
 ```bash
-conciser condense https://youtube.com/watch?v=VIDEO_ID
+nbj condense https://youtube.com/watch?v=VIDEO_ID
 ```
 
 ### Adjust Aggressiveness
@@ -122,27 +122,27 @@ Control how much content to remove (1-10 scale):
 
 ```bash
 # Conservative (remove ~25% - mostly filler)
-conciser condense https://youtube.com/watch?v=VIDEO_ID -a 1
+nbj condense https://youtube.com/watch?v=VIDEO_ID -a 1
 
 # Moderate (remove ~50% - filler + tangents)
-conciser condense https://youtube.com/watch?v=VIDEO_ID -a 5
+nbj condense https://youtube.com/watch?v=VIDEO_ID -a 5
 
 # Aggressive (remove ~75% - keep only key insights)
-conciser condense https://youtube.com/watch?v=VIDEO_ID -a 10
+nbj condense https://youtube.com/watch?v=VIDEO_ID -a 10
 ```
 
 ### Specify Output Quality
 
 ```bash
-conciser condense https://youtube.com/watch?v=VIDEO_ID -q 720p
-conciser condense https://youtube.com/watch?v=VIDEO_ID -q 1080p
-conciser condense https://youtube.com/watch?v=VIDEO_ID -q 4k
+nbj condense https://youtube.com/watch?v=VIDEO_ID -q 720p
+nbj condense https://youtube.com/watch?v=VIDEO_ID -q 1080p
+nbj condense https://youtube.com/watch?v=VIDEO_ID -q 4k
 ```
 
 ### Custom Output Path
 
 ```bash
-conciser condense https://youtube.com/watch?v=VIDEO_ID -o ./my_video.mp4
+nbj condense https://youtube.com/watch?v=VIDEO_ID -o ./my_video.mp4
 ```
 
 ### Target Specific Reduction
@@ -150,7 +150,7 @@ conciser condense https://youtube.com/watch?v=VIDEO_ID -o ./my_video.mp4
 Override aggressiveness with exact reduction percentage:
 
 ```bash
-conciser condense https://youtube.com/watch?v=VIDEO_ID --reduction 60
+nbj condense https://youtube.com/watch?v=VIDEO_ID --reduction 60
 ```
 
 ### Get Video Info
@@ -158,7 +158,7 @@ conciser condense https://youtube.com/watch?v=VIDEO_ID --reduction 60
 Preview information before processing:
 
 ```bash
-conciser info https://youtube.com/watch?v=VIDEO_ID
+nbj info https://youtube.com/watch?v=VIDEO_ID
 ```
 
 ## Aggressiveness Levels Guide
@@ -190,39 +190,39 @@ Costs scale roughly linearly with video length.
 
 ```bash
 # Condense a 1-hour lecture to 20 minutes
-conciser condense https://youtube.com/watch?v=LECTURE_ID -a 7
+nbj condense https://youtube.com/watch?v=LECTURE_ID -a 7
 ```
 
 ### Podcast Interview
 
 ```bash
 # Condense a 2-hour podcast to 40 minutes
-conciser condense https://youtube.com/watch?v=PODCAST_ID -a 6
+nbj condense https://youtube.com/watch?v=PODCAST_ID -a 6
 ```
 
 ### Tutorial Video
 
 ```bash
 # Light condensing, keep most content
-conciser condense https://youtube.com/watch?v=TUTORIAL_ID -a 3
+nbj condense https://youtube.com/watch?v=TUTORIAL_ID -a 3
 ```
 
 ## Output Structure
 
-Conciser creates the following directories:
+NBJ Condenser creates the following directories:
 
 ```
-conciser/
+nbj/
 ├── output/          # Final condensed videos
 ├── temp/            # Temporary processing files
-└── conciser.log     # Processing log
+└── nbj.log     # Processing log
 ```
 
 ## Troubleshooting
 
 ### "API key not set" error
 
-Run `conciser setup` or manually add keys to `.env` file.
+Run `nbj setup` or manually add keys to `.env` file.
 
 ### "ffmpeg not found" error
 
@@ -255,11 +255,11 @@ If a job fails mid-process, you can resume by examining the temp directory and c
 
 ### Batch Processing
 
-Process multiple videos by running conciser in a loop:
+Process multiple videos by running nbj in a loop:
 
 ```bash
 for url in $(cat video_urls.txt); do
-  conciser condense "$url" -a 5
+  nbj condense "$url" -a 5
 done
 ```
 
@@ -287,7 +287,7 @@ done
 
 ## Legal & Ethical Considerations
 
-- **Copyright**: Ensure you have rights to process the videos. Conciser is intended for fair use transformation.
+- **Copyright**: Ensure you have rights to process the videos. NBJ Condenser is intended for fair use transformation.
 - **Attribution**: Generated videos are watermarked as AI-generated.
 - **Accuracy**: AI condensation may miss context. Always review output before sharing.
 - **Deepfake concerns**: Use responsibly. Do not create misleading content.
@@ -302,8 +302,8 @@ MIT License - see LICENSE file for details.
 
 ## Support
 
-- **Issues**: https://github.com/yourusername/conciser/issues
-- **Discussions**: https://github.com/yourusername/conciser/discussions
+- **Issues**: https://github.com/yourusername/nbj/issues
+- **Discussions**: https://github.com/yourusername/nbj/discussions
 
 ## Credits
 
