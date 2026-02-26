@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import logging
 from openai import OpenAI
 from src.utils.audio_utils import split_audio_by_size, get_audio_duration
@@ -21,6 +21,72 @@ class Transcriber:
             api_key: OpenAI API key
         """
         self.client = OpenAI(api_key=api_key)
+
+    def fetch_youtube_transcript(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch transcript directly from YouTube if available.
+
+        Args:
+            video_id: YouTube video ID
+
+        Returns:
+            Dictionary with same format as transcribe():
+                - text: Full transcript text
+                - segments: List of transcript segments with timestamps
+                - language: Detected language
+                - duration: Audio duration
+            Returns None if transcript is not available
+        """
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            from youtube_transcript_api._errors import (
+                TranscriptsDisabled,
+                NoTranscriptFound,
+                VideoUnavailable
+            )
+
+            logger.info(f"Attempting to fetch YouTube transcript for video: {video_id}")
+
+            # Fetch transcript from YouTube using correct API
+            ytt_api = YouTubeTranscriptApi()
+            transcript_list = ytt_api.fetch(video_id)
+
+            # Convert to our format
+            # Segments are FetchedTranscriptSnippet objects with .text, .start, .duration attributes
+            segments = []
+            all_text = []
+
+            for entry in transcript_list:
+                start_time = entry.start
+                duration = entry.duration
+                text = entry.text
+
+                segments.append({
+                    'start': start_time,
+                    'end': start_time + duration,
+                    'text': text
+                })
+                all_text.append(text)
+
+            # Calculate total duration from last segment
+            total_duration = segments[-1]['end'] if segments else 0
+
+            result = {
+                'text': ' '.join(all_text),
+                'segments': segments,
+                'language': 'unknown',  # YouTube API doesn't always provide language
+                'duration': total_duration
+            }
+
+            logger.info(f"Successfully fetched YouTube transcript: {len(segments)} segments, {total_duration:.1f}s")
+            return result
+
+        except (TranscriptsDisabled, NoTranscriptFound, VideoUnavailable) as e:
+            logger.debug(f"YouTube transcript not available: {e}")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to fetch YouTube transcript: {e}")
+            return None
 
     def transcribe(
         self,

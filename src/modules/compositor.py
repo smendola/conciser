@@ -20,6 +20,27 @@ class VideoCompositor:
         """
         self.temp_dir = temp_dir
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self._drawtext_available = None  # Cache for drawtext filter availability
+
+    def _check_drawtext_available(self) -> bool:
+        """Check if FFmpeg has drawtext filter available."""
+        if self._drawtext_available is not None:
+            return self._drawtext_available
+
+        try:
+            result = subprocess.run(
+                ['ffmpeg', '-filters'],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            self._drawtext_available = 'drawtext' in result.stdout
+            if not self._drawtext_available:
+                logger.info("FFmpeg drawtext filter not available - watermarks will be skipped")
+            return self._drawtext_available
+        except Exception:
+            self._drawtext_available = False
+            return False
 
     def compose_final_video(
         self,
@@ -47,15 +68,17 @@ class VideoCompositor:
         try:
             logger.info("Composing final video")
 
-            # If watermark is requested, add it
-            if add_watermark:
+            # If watermark is requested, check if drawtext is available first
+            if add_watermark and self._check_drawtext_available():
                 video_with_watermark = self.temp_dir / f"watermarked_{video_path.name}"
                 self._add_watermark(video_path, video_with_watermark, watermark_text)
                 # Only use watermarked version if it was successfully created
                 if video_with_watermark.exists():
                     video_path = video_with_watermark
                 else:
-                    logger.warning("Watermark file not created, using original video")
+                    logger.debug("Watermark file not created, using original video")
+            elif add_watermark and not self._check_drawtext_available():
+                logger.debug("Watermark requested but drawtext filter not available, skipping")
 
             # Combine video and audio
             resolution_map = {
@@ -134,13 +157,21 @@ class VideoCompositor:
                 str(output_path)
             ]
 
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
-            logger.info("Watermark added")
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to add watermark: {e.stderr}")
+            if result.returncode == 0:
+                logger.info("Watermark added")
+            else:
+                # Check if it's a drawtext filter issue
+                if 'drawtext' in result.stderr or 'No such filter' in result.stderr:
+                    logger.debug("FFmpeg drawtext filter not available - skipping watermark")
+                else:
+                    logger.warning(f"Failed to add watermark: {result.stderr[:200]}")
+                # Continue without watermark rather than failing
+
+        except Exception as e:
+            logger.debug(f"Watermark error: {e}")
             # Continue without watermark rather than failing
-            logger.warning("Continuing without watermark")
 
     def add_intro_outro(
         self,

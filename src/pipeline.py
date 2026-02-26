@@ -137,13 +137,13 @@ class CondenserPipeline:
                     duration_minutes = metadata['duration'] / 60.0
                 else:
                     update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
-                    transcript_result = self._transcribe_video(video_path, video_folder)
+                    transcript_result = self._transcribe_video(video_path, video_folder, video_id)
                     transcript = transcript_result['text']
                     segments = transcript_result['segments']
                     duration_minutes = metadata['duration'] / 60.0
             else:
                 update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
-                transcript_result = self._transcribe_video(video_path, video_folder)
+                transcript_result = self._transcribe_video(video_path, video_folder, video_id)
                 transcript = transcript_result['text']
                 segments = transcript_result['segments']
                 duration_minutes = metadata['duration'] / 60.0
@@ -270,9 +270,32 @@ class CondenserPipeline:
         """Download video from URL."""
         return self.downloader.download(url, quality=quality)
 
-    def _transcribe_video(self, video_path: Path, video_folder: Path) -> Dict[str, Any]:
-        """Extract audio and transcribe."""
-        # Extract audio to video folder with generic name
+    def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None) -> Dict[str, Any]:
+        """
+        Extract audio and transcribe.
+
+        Tries to fetch YouTube transcript first if video_id is provided.
+        Falls back to Whisper transcription if YouTube transcript is unavailable.
+        """
+        from colorama import Fore, Style
+
+        # Try YouTube transcript first if we have a video ID
+        if video_id:
+            logger.info("Checking for YouTube transcript...")
+            youtube_transcript = self.transcriber.fetch_youtube_transcript(video_id)
+
+            if youtube_transcript:
+                logger.info("Using YouTube transcript (no Whisper API cost)")
+                # Save transcript
+                transcript_json_path = video_folder / "transcript.json"
+                self.transcriber.save_transcript(youtube_transcript, transcript_json_path)
+                return youtube_transcript
+            else:
+                # Log in yellow that we're falling back to Whisper
+                print(f"{Fore.RED}YouTube transcript not available, falling back to Whisper transcription...{Style.RESET_ALL}")
+                logger.warning("YouTube transcript not available, falling back to Whisper transcription")
+
+        # Fallback: Extract audio and use Whisper
         audio_path = video_folder / "extracted_audio.wav"
 
         if not audio_path.exists():

@@ -48,7 +48,7 @@ class ContentCondenser:
             if not key:
                 raise ValueError("OpenAI API key required for OpenAI provider")
             self.client = OpenAI(api_key=key)
-            self.model = model or "gpt-4o"
+            self.model = model or "gpt-5.2"
 
         else:
             raise ValueError(f"Unsupported provider: {provider}. Use 'claude' or 'openai'.")
@@ -146,9 +146,10 @@ class ContentCondenser:
                         response_text = message.content[0].text
 
                     elif self.provider == "openai":
-                        completion = self.client.chat.completions.create(
-                            model=self.model,
-                            messages=[
+                        # Prepare API call parameters
+                        api_params = {
+                            "model": self.model,
+                            "messages": [
                                 {
                                     "role": "system",
                                     "content": system_prompt
@@ -158,10 +159,17 @@ class ContentCondenser:
                                     "content": user_prompt
                                 }
                             ],
-                            temperature=0.3,
-                            max_tokens=16000,
-                            response_format={"type": "json_object"}
-                        )
+                            "temperature": 0.3,
+                            "response_format": {"type": "json_object"}
+                        }
+
+                        # Newer models (gpt-5+, o1) use max_completion_tokens instead of max_tokens
+                        if self.model.startswith("gpt-5") or self.model.startswith("o1"):
+                            api_params["max_completion_tokens"] = 16000
+                        else:
+                            api_params["max_tokens"] = 16000
+
+                        completion = self.client.chat.completions.create(**api_params)
                         response_text = completion.choices[0].message.content
 
                     break  # Success! Exit retry loop

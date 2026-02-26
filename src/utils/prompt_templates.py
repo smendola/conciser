@@ -14,7 +14,12 @@ flow and transitions may need to be sacrificed in order to meet the target word 
 
 **Condensing Strategy:**
 
-**What can be CUT:**
+At lower aggressiveness levels (1-3) you should mostly retain entire passages from the original transcript verbatim
+and not paraphrase. More like editing a movie; take out scenes, but can't change what the actors actually say.
+At medium aggressiveness levels (4-6) you should use a mix of outright cuts, verbatim retention, and paraphrasing
+At higher aggressiveness levels (7-10) it will be necessary to paraphrase more heavily, and of course, cut where possible.
+
+**What can always be CUT:**
 - Tangents, personal anecdotes, that don't support the main points
   For example, how this recipe came to be;
   The history of science from Aristotle to the discovery that's the subject of the video;
@@ -31,14 +36,29 @@ flow and transitions may need to be sacrificed in order to meet the target word 
 - The speaker's voice, personality, and speaking style
   Don't substitute less technical or less formal terminology if the speaker uses such
 
-**Requirements:**
+**Constraints:**
 1. The condensed script should sound natural when spoken aloud
 2. Maintain coherent narrative flow with smooth transitions
-3. Preserve the speaker's voice, personality, and speaking style
-4. Ensure each sentence is complete and grammatically correct
-5. Keep the content engaging and easy to follow
+3. Preserve the speaker's voice, personality, and speaking style even when paraphrasing
+4. Keep the content engaging and easy to follow
+
+Your condensed script should be approximately of a specified number of words. Do not over-condense beyond this target.
+
+It's important to approach the specified target word count, and not over-condense. Some source content
+is incredibly verbose and redundant and could stand to be condensed tremendously without losing information,
+but if the user only asks for a conservative reduction, then you should aim for that target word count.
+
+Conversely for some content, valuable information will have to be lost to meet the user's desired reduction;
+Honor the user's desired target word count, and do your best to preserve the most important insights within
+that word count constraint.
+
+Do not try to adapt your condensation aggressiveness to the information density of the source content.
+Instead, honor the user's target word counts, and do your best to preserve the most
+important insights within that constraint.
+
 
 **Output Instructions:**
+
 Generate a JSON response with the following structure:
 {{
   "condensed_script": "The full condensed script formatted naturally for speech. IMPORTANT: Format the script with paragraph breaks (using \\n\\n) at natural topic transitions and logical breaks. Each paragraph should cover a cohesive idea or topic. This makes the script easier to read and more natural when spoken.",
@@ -51,30 +71,16 @@ Generate a JSON response with the following structure:
   "quality_notes": "Any notes about the condensation quality or challenges encountered"
 }}
 
-Focus on creating a script that delivers maximum value in the target word count while sounding completely natural.
+Remember to format the condensed_script with paragraph breaks (\\n\\n) at natural transitions.
 
-Your condensed script should be approximately of a specified number of words. Do not over-condense beyond this target.
+"""
 
-It's important to hit the specified target word count, and not over-condense. Some source content
-is incredibly verbose and redundant and could stand to be condensed tremendously without losing information,
-but if the user only asks for a conservative reduction, then you should aim for that target word count.
-
-Conversely for some content, valuable information will have to be lost to meet the user's desired reduction;
-Honor the user's desired target word count, and do your best to preserve the most important insights within
-that constraint.
-
-In other words, do not try to adapt your condensation aggressiveness to the information density of the source content.
-Instead, honor the user's target word counts, and do your best to preserve the most
-important insights within that constraint. The user will ultimately adjust their desired compression level for
-different creator's content.
-
-Remember to format the condensed_script with paragraph breaks (\\n\\n) at natural transitions."""
+"""We can characterize the aggressiveness of condensation as:
+Aggressiveness level {aggressiveness}/10 "{strategy_description}"
+"""
 
 CONDENSE_USER_PROMPT = """
-**Original transcript word count:** {original_word_count} words
-**Target word count:** {target_word_count} words
-
-Please condense the following transcript to approximately {target_word_count} words:
+Condense the following transcript from {original_word_count} words down to approximately {target_word_count} words ({target_percentage:.0f}% of original length).
 
 <transcript>
 {transcript}
@@ -134,9 +140,16 @@ def get_condense_prompt(
     system_prompt = CONDENSE_SYSTEM_PROMPT.strip()
 
     # User prompt gets the specific parameters for this run
+    # Provide a range to give the LLM more flexibility while still hitting the target
+    target_word_count_low = int(target_word_count * 0.9)  # -10%
+    target_word_count_high = int(target_word_count * 1.1)  # +10%
+
     user_prompt = CONDENSE_USER_PROMPT.format(
         original_word_count=original_word_count,
         target_word_count=target_word_count,
+        target_word_count_low=target_word_count_low,
+        target_word_count_high=target_word_count_high,
+        target_percentage=retention_percentage,
         transcript=transcript
     )
 
