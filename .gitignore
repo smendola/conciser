@@ -86,6 +86,7 @@ temp/
 output/
 *.log
 conciser.log
+dist/
 
 # API keys and secrets
 *.key

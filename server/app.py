@@ -655,8 +655,8 @@ def start_page():
 @app.route('/extension.zip')
 def download_extension():
     """Download the packaged Chrome extension."""
-    # Serve the pre-packaged extension
-    extension_zip = Path(__file__).parent.parent / 'nbj-chrome-extension.zip'
+    # Serve the pre-packaged extension from dist/
+    extension_zip = Path(__file__).parent.parent / 'dist' / 'nbj-chrome-extension.zip'
 
     if not extension_zip.exists():
         return jsonify({'error': 'Extension package not found'}), 404
