@@ -113,7 +113,7 @@ async function loadSettings() {
   const settings = storage.settings || {
     aggressiveness: 5,
     voice: null,
-    speechSpeed: 1.12,
+    speechSpeed: 1.10,
     videoMode: 'slideshow'
   };
 

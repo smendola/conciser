@@ -77,7 +77,7 @@ def process_video(job_id):
                 'voice_id': 'en-GB-RyanNeural',
                 'skip_voice_clone': True,
                 'progress_callback': 'progress_callback',
-                'resume': True
+                'resume': False
             }
             print(f"\033[35mpipeline.run({params})\033[0m")
 
@@ -94,7 +94,7 @@ def process_video(job_id):
             tts_rate=getattr(job, 'speech_rate', '+12%'),
             skip_voice_clone=True,
             progress_callback=progress_callback,
-            resume=True
+            resume=False
         )
 
         job.output_file = str(result['output_video'])
