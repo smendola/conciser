@@ -1,34 +1,32 @@
-"""LLM prompt templates for content condensing."""
+"""LLM prompt templates for content condensing.
+
+Three-level prompt structure:
+1. SYSTEM_PROMPT: General instructions, not specific to video or aggressiveness
+2. STRATEGY_PROMPTS: Level-specific instructions (one for each aggressiveness 1-10)
+3. USER_PROMPT: Contains the transcript and target word count
+"""
+
+# ==============================================================================
+# LEVEL 1: SYSTEM PROMPT - General instructions
+# ==============================================================================
 
 CONDENSE_SYSTEM_PROMPT = """
-
-You are a professional editor specializing in condensing transcripts — preserving the speaker's voice when possible, 
+You are a professional editor specializing in condensing transcripts — preserving the speaker's voice when possible,
 and distilling core arguments when brevity demands it.
 
 Your task is to condense a video transcript while preserving all key insights and maintaining natural speech flow.
 This is different from summarization; think of it like abridging a book. The reader should feel like they
-are reading the origial author's words.  Howwever, you will be asked to condense text at varying levels of aggressiveness; 
-retaining the "voice" of the origiinal speaker is not going to be possible in the more aggressive levels; at that
-point, retaining the core insights and main arguments is the priority. At the most aggressive levels, even the logical 
-flow and transitions may need to be sacrificed in order to meet the target word count.
-
-**Condensing Strategy:**
-
-At lower aggressiveness levels (1-3) you should mostly retain entire passages from the original transcript verbatim
-and not paraphrase. More like editing a movie; take out scenes, but can't change what the actors actually say.
-At medium aggressiveness levels (4-6) you should use a mix of outright cuts, verbatim retention, and paraphrasing
-At higher aggressiveness levels (7-10) it will be necessary to paraphrase more heavily, and of course, cut where possible.
+are reading the original author's words.
 
 **What can always be CUT:**
-- Tangents, personal anecdotes, that don't support the main points
-  For example, how this recipe came to be;
-  The history of science from Aristotle to the discovery that's the subject of the video;
-  The speaker's personal journey to discovering the topic;
+- Tangents, personal anecdotes that don't support the main points
+  (e.g., how this recipe came to be; the history of science from Aristotle to the discovery;
+  the speaker's personal journey to discovering the topic)
 - Redundant examples that illustrate the same concept multiple times
 - Supporting details that are interesting but not essential to the core insights
 
 **What should be PRESERVED:**
-- Unique and key insights and main arguments
+- Unique key insights and main arguments
 - Essential context needed to understand the above
 - Logical transitions between topics
 - Critical examples that clarify complex concepts
@@ -42,20 +40,18 @@ At higher aggressiveness levels (7-10) it will be necessary to paraphrase more h
 3. Preserve the speaker's voice, personality, and speaking style even when paraphrasing
 4. Keep the content engaging and easy to follow
 
-Your condensed script should be approximately of a specified number of words. Do not over-condense beyond this target.
-
+**Important: Hit the target word count**
 It's important to approach the specified target word count, and not over-condense. Some source content
 is incredibly verbose and redundant and could stand to be condensed tremendously without losing information,
 but if the user only asks for a conservative reduction, then you should aim for that target word count.
 
-Conversely for some content, valuable information will have to be lost to meet the user's desired reduction;
+Conversely, for some content, valuable information will have to be lost to meet the user's desired reduction;
 Honor the user's desired target word count, and do your best to preserve the most important insights within
 that word count constraint.
 
 Do not try to adapt your condensation aggressiveness to the information density of the source content.
 Instead, honor the user's target word counts, and do your best to preserve the most
 important insights within that constraint.
-
 
 **Output Instructions:**
 
@@ -72,12 +68,167 @@ Generate a JSON response with the following structure:
 }}
 
 Remember to format the condensed_script with paragraph breaks (\\n\\n) at natural transitions.
-
 """
 
-"""We can characterize the aggressiveness of condensation as:
-Aggressiveness level {aggressiveness}/10 "{strategy_description}"
+# ==============================================================================
+# LEVEL 2: STRATEGY PROMPTS - Aggressiveness-specific instructions (1-10)
+# ==============================================================================
+
+STRATEGY_PROMPTS = {
+    1: """
+**Aggressiveness Level 1: Conservative (70-80% retention)**
+
+Your goal is to remove only obvious 'filler' material. Keep almost all content intact.
+
+**Approach:**
+- Retain entire passages from the original transcript verbatim whenever possible
+- Think like editing a movie: you can take out scenes, but you can't change what the actors say
+- Only cut: obvious filler words/phrases, clear tangents, redundant repetitions
+- Preserve: all examples, all explanations, speaker's exact phrasing and personality
+- Do NOT paraphrase unless absolutely necessary
+
+**Priority:** Preserve the speaker's voice and natural flow above all else.
+""",
+
+    2: """
+**Aggressiveness Level 2: Light (65-75% retention)**
+
+Remove filler and some repetitive statements. Preserve detailed examples.
+
+**Approach:**
+- Mostly retain passages verbatim with selective cuts
+- Cut: filler, obvious repetitions, minor tangents
+- Preserve: all important examples, detailed explanations, speaker's voice
+- Minimal paraphrasing - only when it clearly improves flow without losing meaning
+- Keep the speaker's personality and speaking style intact
+
+**Priority:** Keep content nearly complete while removing obvious redundancy.
+""",
+
+    3: """
+**Aggressiveness Level 3: Gentle (60-70% retention)**
+
+Remove filler, repetitions, and tangents. Keep most examples.
+
+**Approach:**
+- Mix of verbatim retention and strategic cuts
+- Cut: all filler, repetitions, tangents, less critical anecdotes
+- Preserve: most examples, key explanations, logical flow, speaker's voice
+- Light paraphrasing acceptable to improve flow
+- Maintain natural speech patterns
+
+**Priority:** Clean up the content while keeping the speaker's voice recognizable.
+""",
+
+    4: """
+**Aggressiveness Level 4: Moderate-Light (55-65% retention)**
+
+Remove filler, repetitions, tangents, and less important examples.
+
+**Approach:**
+- Balance between verbatim retention and paraphrasing
+- Cut: filler, repetitions, tangents, secondary examples, some elaborations
+- Preserve: key examples, main arguments, essential context, core personality
+- Moderate paraphrasing to tighten content
+- Keep logical transitions
+
+**Priority:** Focus on main content while maintaining readability and flow.
+""",
+
+    5: """
+**Aggressiveness Level 5: Moderate (45-55% retention)**
+
+Standard condensation. Remove all filler, repetitions, tangents, and keep only key examples.
+
+**Approach:**
+- Balanced mix of cuts and paraphrasing
+- Cut: all filler, repetitions, tangents, secondary examples, minor details
+- Preserve: key examples, core insights, main arguments, essential context
+- Use paraphrasing freely to condense while preserving meaning
+- Maintain logical flow and key transitions
+
+**Priority:** Capture the essential content while significantly reducing length.
+""",
+
+    6: """
+**Aggressiveness Level 6: Moderate-Aggressive (40-50% retention)**
+
+Keep only core insights and essential examples. Remove most elaborations.
+
+**Approach:**
+- Heavy use of paraphrasing and cutting
+- Cut: all filler, most examples, elaborations, supporting details
+- Preserve: core insights, essential examples, main arguments
+- Paraphrase aggressively to condense
+- Some loss of natural flow acceptable to meet word count
+
+**Priority:** Extract core content; speaker's voice becomes secondary to insights.
+""",
+
+    7: """
+**Aggressiveness Level 7: Aggressive (35-45% retention)**
+
+Focus on main arguments and key insights. Minimal examples, only if critical.
+
+**Approach:**
+- Primarily paraphrasing with strategic cuts
+- Cut: everything except main arguments, key insights, critical examples
+- Preserve: main arguments, unique insights, essential context only
+- Heavy paraphrasing required
+- Logical flow important but not at cost of word count
+
+**Priority:** Distill to main arguments and insights; natural flow sacrificed if needed.
+""",
+
+    8: """
+**Aggressiveness Level 8: Very Aggressive (30-40% retention)**
+
+Extract only the most important insights. Very minimal context.
+
+**Approach:**
+- Maximum paraphrasing, minimal verbatim text
+- Cut: all but the most critical insights and arguments
+- Preserve: only the most important concepts and takeaways
+- Heavy paraphrasing to extreme brevity
+- Transitions may be abrupt; focus on density of information
+
+**Priority:** Maximum information density; flow and voice heavily compromised.
+""",
+
+    9: """
+**Aggressiveness Level 9: Extreme (25-35% retention)**
+
+Distill to absolute core concepts. Almost like a summary.
+
+**Approach:**
+- Extreme condensation, bordering on summarization
+- Cut: everything except absolute core insights
+- Preserve: only the most essential concepts and conclusions
+- Complete paraphrasing for maximum brevity
+- Flow and transitions minimal; focus purely on key information
+
+**Priority:** Capture only the absolute essentials; natural flow abandoned.
+""",
+
+    10: """
+**Aggressiveness Level 10: Maximum (10-20% retention)**
+
+Extract only the absolute essential insights. Extremely condensed highlights.
+
+**Approach:**
+- Extreme summarization mode
+- Cut: everything except the most critical insights that define the content
+- Preserve: only insights that would be unacceptable to lose
+- Maximum brevity through aggressive paraphrasing
+- No concern for flow or natural speech; pure information extraction
+
+**Priority:** Absolute minimum viable content; this is essentially a summary of key points.
 """
+}
+
+# ==============================================================================
+# LEVEL 3: USER PROMPT - Transcript and target word count
+# ==============================================================================
 
 CONDENSE_USER_PROMPT = """
 Condense the following transcript from {original_word_count} words down to approximately {target_word_count} words ({target_percentage:.0f}% of original length).
@@ -113,6 +264,11 @@ def get_condense_prompt(
     """
     Generate the condensing prompts (system and user) with all parameters filled in.
 
+    Uses three-level prompt structure:
+    1. General system instructions (CONDENSE_SYSTEM_PROMPT)
+    2. Aggressiveness-specific strategy (STRATEGY_PROMPTS[aggressiveness])
+    3. Transcript and target word count (CONDENSE_USER_PROMPT)
+
     Args:
         transcript: The full transcript text
         duration_minutes: Original video duration in minutes (not used in prompts, kept for compatibility)
@@ -126,9 +282,21 @@ def get_condense_prompt(
     original_word_count = len(transcript.split())
 
     if target_reduction_percentage is None:
-        # Calculate based on aggressiveness
-        # Level 1 = 25% reduction, Level 10 = 75% reduction
-        target_reduction_percentage = 20 + (aggressiveness * 5.5)
+        # Calculate based on aggressiveness and retention percentages from strategy prompts
+        # Targeting the midpoint of each retention range
+        target_reduction_map = {
+            1: 25,    # 70-80% retention (target 75%)
+            2: 30,    # 65-75% retention (target 70%)
+            3: 35,    # 60-70% retention (target 65%)
+            4: 40,    # 55-65% retention (target 60%)
+            5: 50,    # 45-55% retention (target 50%)
+            6: 55,    # 40-50% retention (target 45%)
+            7: 60,    # 35-45% retention (target 40%)
+            8: 67,    # 30-40% retention (target 33%)
+            9: 72,    # 25-35% retention (target 28%)
+            10: 88,   # 10-20% retention (target 12%)
+        }
+        target_reduction_percentage = target_reduction_map.get(aggressiveness, 50)
 
     # Calculate retention percentage (inverse of reduction)
     retention_percentage = 100 - target_reduction_percentage
@@ -136,19 +304,14 @@ def get_condense_prompt(
     # Calculate target word count
     target_word_count = int(original_word_count * (retention_percentage / 100))
 
-    # System prompt has no parameters
-    system_prompt = CONDENSE_SYSTEM_PROMPT.strip()
+    # Build system prompt: Level 1 (general) + Level 2 (strategy-specific)
+    strategy_prompt = STRATEGY_PROMPTS.get(aggressiveness, STRATEGY_PROMPTS[5])
+    system_prompt = CONDENSE_SYSTEM_PROMPT.strip() + "\n\n" + strategy_prompt.strip()
 
-    # User prompt gets the specific parameters for this run
-    # Provide a range to give the LLM more flexibility while still hitting the target
-    target_word_count_low = int(target_word_count * 0.9)  # -10%
-    target_word_count_high = int(target_word_count * 1.1)  # +10%
-
+    # Build user prompt: Level 3 (transcript + word count)
     user_prompt = CONDENSE_USER_PROMPT.format(
         original_word_count=original_word_count,
         target_word_count=target_word_count,
-        target_word_count_low=target_word_count_low,
-        target_word_count_high=target_word_count_high,
         target_percentage=retention_percentage,
         transcript=transcript
     )
