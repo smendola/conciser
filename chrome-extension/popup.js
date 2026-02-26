@@ -4,6 +4,8 @@ let currentUrl = null;
 let currentJobId = null;
 let pollInterval = null;
 const serverUrl = 'https://conciser-aurora.ngrok.dev';
+let strategies = [];
+let voices = [];
 
 // Initialize popup
 async function initializePopup() {
@@ -29,6 +31,11 @@ async function initializePopup() {
     condenseBtn.disabled = true;
   }
 
+  // Load settings and populate controls
+  await loadSettings();
+  await fetchStrategies();
+  await fetchVoices();
+
   // Check for existing job in storage
   const storage = await chrome.storage.local.get(['activeJob', 'completedJobs']);
 
@@ -50,6 +57,118 @@ async function initializePopup() {
   }
 }
 
+// Fetch strategies from API
+async function fetchStrategies() {
+  try {
+    const response = await fetch(`${serverUrl}/api/strategies`);
+    const data = await response.json();
+    strategies = data.strategies;
+    updateStrategyDescription();
+  } catch (error) {
+    console.error('Failed to fetch strategies:', error);
+  }
+}
+
+// Fetch voices from API
+async function fetchVoices() {
+  try {
+    // Get user locale (e.g., 'en-US' -> 'en')
+    const locale = navigator.language.split('-')[0];
+
+    const response = await fetch(`${serverUrl}/api/voices?locale=${locale}`);
+    const data = await response.json();
+    voices = data.voices || [];
+
+    const voiceSelect = document.getElementById('voiceSelect');
+    voiceSelect.innerHTML = '';
+
+    if (voices.length === 0) {
+      voiceSelect.innerHTML = '<option value="">No voices available</option>';
+      return;
+    }
+
+    voices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.name;
+      option.textContent = `${voice.locale} - ${voice.friendly_name}`;
+      voiceSelect.appendChild(option);
+    });
+
+    // Load saved voice or use first one
+    const storage = await chrome.storage.local.get(['settings']);
+    if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
+      voiceSelect.value = storage.settings.voice;
+    } else if (voices.length > 0) {
+      voiceSelect.value = voices[0].name;
+    }
+  } catch (error) {
+    console.error('Failed to fetch voices:', error);
+    document.getElementById('voiceSelect').innerHTML = '<option value="">Error loading voices</option>';
+  }
+}
+
+// Load settings from storage
+async function loadSettings() {
+  const storage = await chrome.storage.local.get(['settings']);
+  const settings = storage.settings || {
+    aggressiveness: 5,
+    voice: null,
+    speechSpeed: 1.12
+  };
+
+  document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
+  document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
+  document.getElementById('speedSlider').value = settings.speechSpeed;
+  document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
+}
+
+// Save settings to storage
+async function saveSettings() {
+  const settings = {
+    aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
+    voice: document.getElementById('voiceSelect').value,
+    speechSpeed: parseFloat(document.getElementById('speedSlider').value)
+  };
+
+  await chrome.storage.local.set({ settings });
+}
+
+// Update strategy description based on slider value
+function updateStrategyDescription() {
+  const level = parseInt(document.getElementById('aggressivenessSlider').value);
+  const strategy = strategies.find(s => s.level === level);
+
+  if (strategy) {
+    // Extract just the retention percentage from description
+    const match = strategy.description.match(/\(([^)]+)\)/);
+    const desc = match ? match[1] : strategy.description;
+    document.getElementById('strategyDesc').textContent = desc;
+  }
+}
+
+// Convert speech speed (0.9x-2.0x) to backend format (+/-N%)
+function convertSpeedToRate(speed) {
+  const percentage = Math.round((speed - 1.0) * 100);
+  return percentage >= 0 ? `+${percentage}%` : `${percentage}%`;
+}
+
+// Setup event listeners for controls
+document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
+  document.getElementById('aggressivenessValue').textContent = e.target.value;
+  updateStrategyDescription();
+  saveSettings();
+});
+
+document.getElementById('speedSlider').addEventListener('input', (e) => {
+  const value = parseFloat(e.target.value);
+  document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
+  saveSettings();
+});
+
+document.getElementById('voiceSelect').addEventListener('change', () => {
+  saveSettings();
+});
+
 // Run initialization
 initializePopup();
 
@@ -60,12 +179,23 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
   condenseBtn.textContent = 'Submitting...';
 
   try {
+    // Get current settings
+    const aggressiveness = parseInt(document.getElementById('aggressivenessSlider').value);
+    const voice = document.getElementById('voiceSelect').value;
+    const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
+    const speechRate = convertSpeedToRate(speechSpeed);
+
     const response = await fetch(`${serverUrl}/api/condense`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ url: currentUrl })
+      body: JSON.stringify({
+        url: currentUrl,
+        aggressiveness: aggressiveness,
+        voice: voice,
+        speech_rate: speechRate
+      })
     });
 
     const data = await response.json();

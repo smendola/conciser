@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
+from src.modules.edge_tts import EdgeTTS
+from src.utils.prompt_templates import get_strategy_description
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from Chrome extension
@@ -79,14 +81,15 @@ def process_video(job_id):
             }
             print(f"\033[35mpipeline.run({params})\033[0m")
 
-        # Run with defaults (--voice implies skip_voice_clone=True)
+        # Run with job parameters (use stored values or defaults)
         result = pipeline.run(
             video_url=job.url,
-            aggressiveness=5,
+            aggressiveness=getattr(job, 'aggressiveness', 5),
             quality="1080p",
             video_gen_mode="slideshow",
             tts_provider="edge",
-            voice_id="en-GB-RyanNeural",
+            voice_id=getattr(job, 'voice', 'en-GB-RyanNeural'),
+            tts_rate=getattr(job, 'speech_rate', '+12%'),
             skip_voice_clone=True,
             progress_callback=progress_callback,
             resume=True
@@ -373,6 +376,18 @@ def start_page():
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
+                        Turn on <strong>Developer Mode</strong>
+                    </div>
+                    <div class="step-detail">
+                        <strong>Developer mode</strong> toggle is in the top-right corner of the extensions page<br>
+                        Enable it to allow installing extensions from files
+                    </div>
+                </div>
+
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">3</span>
                         Drag and drop the ZIP file
                     </div>
                     <div class="step-detail">
@@ -427,7 +442,7 @@ def start_page():
                     <div class="step-detail">
                         Find "NBJ Condenser Remote" in the dropdown<br>
                         Click the <strong>pin icon (📌)</strong> next to it<br>
-                        The blue "C" icon will now appear in your toolbar for easy access
+                        The "C" icon will now appear in your toolbar for easy access
                     </div>
                 </div>
             </div>
@@ -680,6 +695,15 @@ def condense():
     if not youtube_url:
         return jsonify({'error': 'Missing url parameter'}), 400
 
+    # Get optional parameters (with defaults)
+    aggressiveness = data.get('aggressiveness', 5)
+    voice = data.get('voice', 'en-GB-RyanNeural')
+    speech_rate = data.get('speech_rate', '+12%')  # Default to 1.12x
+
+    # Validate aggressiveness
+    if not isinstance(aggressiveness, int) or aggressiveness < 1 or aggressiveness > 10:
+        return jsonify({'error': 'aggressiveness must be between 1 and 10'}), 400
+
     # Check if already processing
     with current_job_lock:
         if currently_processing:
@@ -688,9 +712,12 @@ def condense():
                 'current_job': currently_processing
             }), 429
 
-        # Create job
+        # Create job and store parameters
         job_id = str(uuid.uuid4())[:8]
         job = Job(job_id, youtube_url)
+        job.aggressiveness = aggressiveness
+        job.voice = voice
+        job.speech_rate = speech_rate
         jobs[job_id] = job
         currently_processing = job_id
 
@@ -781,6 +808,52 @@ def health():
     })
 
 
+@app.route('/api/strategies', methods=['GET'])
+def get_strategies():
+    """Get condensation aggressiveness strategies."""
+    strategies = []
+    for level in range(1, 11):
+        description = get_strategy_description(level)
+        strategies.append({
+            'level': level,
+            'description': description
+        })
+
+    return jsonify({'strategies': strategies})
+
+
+@app.route('/api/voices', methods=['GET'])
+def get_voices():
+    """Get available Edge TTS voices filtered by user locale."""
+    locale = request.args.get('locale', 'en-US')
+
+    try:
+        edge_tts = EdgeTTS()
+        all_voices = edge_tts.list_voices()
+
+        # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
+        filtered_voices = sorted(
+            [
+                {
+                    'name': v['name'],
+                    'gender': v['gender'],
+                    'locale': v['locale'],
+                    'friendly_name': v['name'].split('-', 2)[-1]
+                                              .replace(r"Multilingual", "")
+                                              .replace(r"Expressive", "")
+                                              .replace(r"Neural", '')
+                }
+                for v in all_voices
+                if v['locale'].startswith(locale)
+            ],
+            key=lambda x: x['name']
+        )
+        return jsonify({'voices': filtered_voices})
+    except Exception as e:
+        logger.error(f"Failed to fetch voices: {e}")
+        return jsonify({'error': 'Failed to fetch voices', 'voices': []}), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("NBJ Condenser Remote Server")
@@ -793,6 +866,8 @@ if __name__ == '__main__':
     print("  POST   /api/condense  - Submit YouTube URL")
     print("  GET    /api/status/:id - Check job status")
     print("  GET    /api/download/:id - Download video")
+    print("  GET    /api/strategies - Get aggressiveness strategies")
+    print("  GET    /api/voices?locale=en - Get Edge TTS voices")
     print("  GET    /api/jobs - List all jobs")
     print("  GET    /health - Health check")
     print("\n👉 Share this link: https://conciser-aurora.ngrok.dev/start")

@@ -19,6 +19,8 @@ moviepy>=1.0.3
 pydub>=0.25.1
 
 # Utilities
+scenedetect[opencv-headless]==0.6.7.1
+
 colorama>=0.4.6
 tqdm>=4.66.0
 tenacity>=8.2.0
