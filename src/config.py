@@ -5,6 +5,9 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Project root directory (where src/ and server/ are located)
+PROJECT_ROOT = Path(__file__).parent.parent
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -25,8 +28,11 @@ class Settings(BaseSettings):
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
     default_output_quality: str = Field(default="1080p")
-    temp_dir: Path = Field(default=Path("./temp"))
-    output_dir: Path = Field(default=Path("./output"))
+
+    # Use absolute paths anchored to project root (not relative to cwd)
+    # This ensures CLI and server use the same directories
+    temp_dir: Path = Field(default=PROJECT_ROOT / "temp")
+    output_dir: Path = Field(default=PROJECT_ROOT / "output")
 
     # Service preferences
     transcription_service: str = Field(default="openai", description="openai or local")

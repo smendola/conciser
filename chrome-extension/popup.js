@@ -113,13 +113,15 @@ async function loadSettings() {
   const settings = storage.settings || {
     aggressiveness: 5,
     voice: null,
-    speechSpeed: 1.12
+    speechSpeed: 1.12,
+    videoMode: 'slideshow'
   };
 
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
   document.getElementById('speedSlider').value = settings.speechSpeed;
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
+  document.getElementById('videoModeSelect').value = settings.videoMode;
 }
 
 // Save settings to storage
@@ -127,7 +129,8 @@ async function saveSettings() {
   const settings = {
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
     voice: document.getElementById('voiceSelect').value,
-    speechSpeed: parseFloat(document.getElementById('speedSlider').value)
+    speechSpeed: parseFloat(document.getElementById('speedSlider').value),
+    videoMode: document.getElementById('videoModeSelect').value
   };
 
   await chrome.storage.local.set({ settings });
@@ -152,21 +155,60 @@ function convertSpeedToRate(speed) {
   return percentage >= 0 ? `+${percentage}%` : `${percentage}%`;
 }
 
+// Check if settings changed after video was watched
+async function handleSettingChange() {
+  saveSettings();
+
+  // Check if this video has been watched
+  const storage = await chrome.storage.local.get(['watchedVideos', 'completedJobs']);
+  const watchedVideos = storage.watchedVideos || {};
+
+  if (watchedVideos[currentUrl] && storage.completedJobs && storage.completedJobs[currentUrl]) {
+    // Video was watched and settings changed - allow re-condensing
+    console.log('Settings changed after watching - resetting to condense mode');
+
+    // Clear the completed job for this video
+    delete storage.completedJobs[currentUrl];
+    await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+
+    // Reset UI to condense mode
+    resetToCondenseMode();
+  }
+}
+
+function resetToCondenseMode() {
+  // Clear status container
+  document.getElementById('statusContainer').innerHTML = '';
+
+  // Show and enable condense button
+  const condenseBtn = document.getElementById('condenseBtn');
+  condenseBtn.style.display = '';
+  condenseBtn.disabled = false;
+  condenseBtn.textContent = 'Condense Video';
+
+  // Reset current job ID
+  currentJobId = null;
+}
+
 // Setup event listeners for controls
 document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
   document.getElementById('aggressivenessValue').textContent = e.target.value;
   updateStrategyDescription();
-  saveSettings();
+  handleSettingChange();
 });
 
 document.getElementById('speedSlider').addEventListener('input', (e) => {
   const value = parseFloat(e.target.value);
   document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
-  saveSettings();
+  handleSettingChange();
 });
 
 document.getElementById('voiceSelect').addEventListener('change', () => {
-  saveSettings();
+  handleSettingChange();
+});
+
+document.getElementById('videoModeSelect').addEventListener('change', () => {
+  handleSettingChange();
 });
 
 // Run initialization
@@ -184,6 +226,7 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
     const voice = document.getElementById('voiceSelect').value;
     const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
     const speechRate = convertSpeedToRate(speechSpeed);
+    const videoMode = document.getElementById('videoModeSelect').value;
 
     const response = await fetch(`${serverUrl}/api/condense`, {
       method: 'POST',
@@ -194,7 +237,8 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
         url: currentUrl,
         aggressiveness: aggressiveness,
         voice: voice,
-        speech_rate: speechRate
+        speech_rate: speechRate,
+        video_mode: videoMode
       })
     });
 
@@ -204,10 +248,16 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
       currentJobId = data.job_id;
 
       // Clear any previous completed job for this URL
-      const storage = await chrome.storage.local.get(['completedJobs']);
+      const storage = await chrome.storage.local.get(['completedJobs', 'watchedVideos']);
       if (storage.completedJobs && storage.completedJobs[currentUrl]) {
         delete storage.completedJobs[currentUrl];
         await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+      }
+
+      // Clear watched status for this URL (starting fresh)
+      if (storage.watchedVideos && storage.watchedVideos[currentUrl]) {
+        delete storage.watchedVideos[currentUrl];
+        await chrome.storage.local.set({ watchedVideos: storage.watchedVideos });
       }
 
       // Save job to storage for persistence
@@ -307,9 +357,17 @@ function showCompleted(data) {
     </button>
   `;
 
-  document.getElementById('downloadBtn').addEventListener('click', () => {
+  document.getElementById('downloadBtn').addEventListener('click', async () => {
     const downloadUrl = `${serverUrl}/api/download/${currentJobId}`;
     chrome.tabs.create({ url: downloadUrl });
+
+    // Mark this video as watched
+    const storage = await chrome.storage.local.get(['watchedVideos']);
+    const watchedVideos = storage.watchedVideos || {};
+    watchedVideos[currentUrl] = true;
+    await chrome.storage.local.set({ watchedVideos });
+
+    console.log('Video marked as watched - settings changes will now allow re-condensing');
   });
 }
 

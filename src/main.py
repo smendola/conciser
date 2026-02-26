@@ -157,9 +157,9 @@ def cli():
 )
 @click.option(
     '--video-gen-mode',
-    type=click.Choice(['static', 'slideshow', 'avatar']),
+    type=click.Choice(['static', 'slideshow', 'avatar', 'audio_only']),
     default='slideshow',
-    help='Video generation mode: static (single frame), slideshow (scene-detected frames), avatar (expensive, D-ID). Default: slideshow'
+    help='Video generation mode: static (single frame), slideshow (scene-detected frames), avatar (expensive, D-ID), audio_only (MP3 output, fastest). Default: slideshow'
 )
 @click.option(
     '--voice',

@@ -82,11 +82,13 @@ def process_video(job_id):
             print(f"\033[35mpipeline.run({params})\033[0m")
 
         # Run with job parameters (use stored values or defaults)
+        video_mode = getattr(job, 'video_mode', 'slideshow')
+
         result = pipeline.run(
             video_url=job.url,
             aggressiveness=getattr(job, 'aggressiveness', 5),
             quality="1080p",
-            video_gen_mode="slideshow",
+            video_gen_mode=video_mode,
             tts_provider="edge",
             voice_id=getattr(job, 'voice', 'en-GB-RyanNeural'),
             tts_rate=getattr(job, 'speech_rate', '+12%'),
@@ -699,6 +701,18 @@ def condense():
     aggressiveness = data.get('aggressiveness', 5)
     voice = data.get('voice', 'en-GB-RyanNeural')
     speech_rate = data.get('speech_rate', '+12%')  # Default to 1.12x
+    video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
+
+    # Log all received parameters
+    print(f"\n{'='*60}")
+    print(f"NEW CONDENSE REQUEST")
+    print(f"{'='*60}")
+    print(f"URL: {youtube_url}")
+    print(f"Aggressiveness: {aggressiveness}/10")
+    print(f"Voice: {voice}")
+    print(f"Speech Rate: {speech_rate}")
+    print(f"Video Mode: {video_mode}")
+    print(f"{'='*60}\n")
 
     # Validate aggressiveness
     if not isinstance(aggressiveness, int) or aggressiveness < 1 or aggressiveness > 10:
@@ -718,6 +732,7 @@ def condense():
         job.aggressiveness = aggressiveness
         job.voice = voice
         job.speech_rate = speech_rate
+        job.video_mode = video_mode
         jobs[job_id] = job
         currently_processing = job_id
 
@@ -774,9 +789,16 @@ def download(job_id):
     if not job.output_file or not Path(job.output_file).exists():
         return jsonify({'error': 'Output file not found'}), 404
 
+    # Detect file type and set appropriate MIME type
+    file_path = Path(job.output_file)
+    if file_path.suffix.lower() == '.mp3':
+        mimetype = 'audio/mpeg'
+    else:
+        mimetype = 'video/mp4'
+
     return send_file(
         job.output_file,
-        mimetype='video/mp4',
+        mimetype=mimetype,
         as_attachment=False
     )
 

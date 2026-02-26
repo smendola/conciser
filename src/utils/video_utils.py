@@ -179,11 +179,13 @@ def detect_scene_changes(
         logger.info(f"Detected {len(scenes)} scene changes")
         return scenes
 
-    except ImportError:
-        logger.warning("PySceneDetect not installed, falling back to evenly-spaced frames")
+    except ImportError as e:
+        logger.warning(f"PySceneDetect not installed: {e}, falling back to evenly-spaced frames")
         return []
     except Exception as e:
-        logger.error(f"Scene detection failed: {e}")
+        logger.error(f"Scene detection failed: {type(e).__name__}: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return []
 
 
