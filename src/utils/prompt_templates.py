@@ -7,6 +7,24 @@ Three-level prompt structure:
 """
 
 # ==============================================================================
+# TARGET RETENTION PERCENTAGES - Single source of truth
+# ==============================================================================
+
+# Target retention percentages (geometric progression from 75 to 10)
+TARGET_RETENTION = {
+    1: 75,   # 25% reduction, range 70-80%
+    2: 60,   # 40% reduction, range 55-65%
+    3: 50,   # 50% reduction, range 45-55%
+    4: 38,   # 62% reduction, range 33-43%
+    5: 30,   # 70% reduction, range 25-35%
+    6: 25,   # 75% reduction, range 20-30%
+    7: 20,   # 80% reduction, range 15-25%
+    8: 16,   # 84% reduction, range 11-21%
+    9: 13,   # 87% reduction, range 8-18%
+    10: 10,  # 90% reduction, range 5-15%
+}
+
+# ==============================================================================
 # LEVEL 1: SYSTEM PROMPT - General instructions
 # ==============================================================================
 
@@ -282,21 +300,9 @@ def get_condense_prompt(
     original_word_count = len(transcript.split())
 
     if target_reduction_percentage is None:
-        # Calculate based on aggressiveness and retention percentages from strategy prompts
-        # Targeting the midpoint of each retention range
-        target_reduction_map = {
-            1: 25,    # 70-80% retention (target 75%)
-            2: 30,    # 65-75% retention (target 70%)
-            3: 35,    # 60-70% retention (target 65%)
-            4: 40,    # 55-65% retention (target 60%)
-            5: 50,    # 45-55% retention (target 50%)
-            6: 55,    # 40-50% retention (target 45%)
-            7: 60,    # 35-45% retention (target 40%)
-            8: 67,    # 30-40% retention (target 33%)
-            9: 72,    # 25-35% retention (target 28%)
-            10: 88,   # 10-20% retention (target 12%)
-        }
-        target_reduction_percentage = target_reduction_map.get(aggressiveness, 50)
+        # Get retention percentage from table
+        retention_pct = TARGET_RETENTION.get(aggressiveness, 30)
+        target_reduction_percentage = 100 - retention_pct
 
     # Calculate retention percentage (inverse of reduction)
     retention_percentage = 100 - target_reduction_percentage

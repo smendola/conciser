@@ -22,7 +22,7 @@ from src.config import get_settings
 from src.modules.downloader import VideoDownloader
 from src.modules.transcriber import Transcriber
 from src.modules.condenser import ContentCondenser
-from src.utils.prompt_templates import get_condense_prompt
+from src.utils.prompt_templates import get_condense_prompt, TARGET_RETENTION
 
 colorama_init()
 
@@ -204,25 +204,15 @@ def condense_video_at_level(
         # Calculate stats
         original_word_count = len(transcript.split())
         condensed_word_count = len(condensed_result['condensed_script'].split())
-        actual_reduction = ((original_word_count - condensed_word_count) / original_word_count) * 100
 
-        # Calculate the ACTUAL target that was given to the LLM (not the result)
-        # Based on retention percentages in prompt_templates.py:
-        # Level 1: 75% retention = 25% reduction (conservative end of 70-80%)
-        # Level 10: 12.5% retention = 87.5% reduction (aggressive end of 10-20%)
-        target_reduction_map = {
-            1: 25,    # 70-80% retention (target 75%)
-            2: 30,    # 65-75% retention (target 70%)
-            3: 35,    # 60-70% retention (target 65%)
-            4: 40,    # 55-65% retention (target 60%)
-            5: 50,    # 45-55% retention (target 50%)
-            6: 55,    # 40-50% retention (target 45%)
-            7: 60,    # 35-45% retention (target 40%)
-            8: 67,    # 30-40% retention (target 33%)
-            9: 72,    # 25-35% retention (target 28%)
-            10: 88,   # 10-20% retention (target 12%)
-        }
-        target_reduction = target_reduction_map.get(aggressiveness, 50)
+        # Get target from imported table (single source of truth)
+        target_retention_pct = TARGET_RETENTION.get(aggressiveness, 30)
+        target_reduction = 100 - target_retention_pct
+        target_word_count = int(original_word_count * (target_retention_pct / 100))
+
+        # Calculate actual retention and reduction
+        actual_retention = (condensed_word_count / original_word_count) * 100
+        actual_reduction = 100 - actual_retention
 
         # Save condensed text with new filename format: yt_{vid_id}_agg_{agg}.txt
         output_file = output_dir / f"yt_{video_id}_agg_{aggressiveness}.txt"
@@ -262,9 +252,9 @@ def condense_video_at_level(
             }
             json.dump(result_data, f, indent=2, ensure_ascii=False)
 
-        error = abs(actual_reduction - target_reduction)
+        error = abs(actual_retention - target_retention_pct)
         error_color = Fore.GREEN if error < 5 else Fore.YELLOW if error < 10 else Fore.RED
-        print(f"  {Fore.GREEN}✓ Complete: {condensed_word_count:,} words (target: {target_reduction:.1f}%, actual: {actual_reduction:.1f}%, error: {error_color}{error:.1f}%{Style.RESET_ALL}{Fore.GREEN}){Style.RESET_ALL}")
+        print(f"  {Fore.GREEN}✓ Complete: {condensed_word_count:,} words (target: {target_retention_pct:.1f}%, actual: {actual_retention:.1f}%, error: {error_color}{error:.1f}%{Style.RESET_ALL}{Fore.GREEN}){Style.RESET_ALL}")
         print(f"  {Fore.GREEN}  Saved to: {output_file}{Style.RESET_ALL}")
 
         return {
@@ -272,7 +262,10 @@ def condense_video_at_level(
             'title': metadata.get('title', video_id),
             'aggressiveness': aggressiveness,
             'original_words': original_word_count,
+            'target_words': target_word_count,
             'condensed_words': condensed_word_count,
+            'target_retention': target_retention_pct,
+            'actual_retention': actual_retention,
             'target_reduction': target_reduction,
             'actual_reduction': actual_reduction,
             'success': True,
@@ -286,7 +279,10 @@ def condense_video_at_level(
             'title': video_id,
             'aggressiveness': aggressiveness,
             'original_words': 0,
+            'target_words': 0,
             'condensed_words': 0,
+            'target_retention': 0,
+            'actual_retention': 0,
             'target_reduction': 0,
             'actual_reduction': 0,
             'success': False,
@@ -422,7 +418,8 @@ def main(videos, aggressiveness, output_dir):
     with open(csv_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=[
             'video_id', 'title', 'aggressiveness',
-            'original_words', 'condensed_words',
+            'original_words', 'target_words', 'condensed_words',
+            'target_retention', 'actual_retention',
             'target_reduction', 'actual_reduction',
             'success', 'error'
         ])
@@ -430,8 +427,8 @@ def main(videos, aggressiveness, output_dir):
         writer.writerows(results)
 
     # Print summary table
-    print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Status':<10}")
-    print("-" * 80)
+    print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Status':<10}")
+    print("-" * 95)
 
     success_count = 0
     for r in results:
@@ -439,8 +436,8 @@ def main(videos, aggressiveness, output_dir):
         if r['success']:
             success_count += 1
 
-        print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['condensed_words']:<10,} "
-              f"{r['target_reduction']:<8.1f} {r['actual_reduction']:<8.1f} {status:<10}")
+        print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['target_words']:<10,} {r['condensed_words']:<10,} "
+              f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {status:<10}")
 
     print(f"\n{Fore.CYAN}Results:{Style.RESET_ALL}")
     print(f"  Total tests: {total_tests}")
@@ -450,11 +447,11 @@ def main(videos, aggressiveness, output_dir):
     print(f"  Directory: {output_path}")
     print(f"  Summary CSV: {csv_file}\n")
 
-    # Calculate average accuracy (how close to target reduction)
+    # Calculate average accuracy (how close to target retention)
     successful_results = [r for r in results if r['success']]
     if successful_results:
-        avg_error = sum(abs(r['actual_reduction'] - r['target_reduction']) for r in successful_results) / len(successful_results)
-        print(f"{Fore.CYAN}Average reduction error:{Style.RESET_ALL} {avg_error:.1f}% (distance from target)")
+        avg_error = sum(abs(r['actual_retention'] - r['target_retention']) for r in successful_results) / len(successful_results)
+        print(f"{Fore.CYAN}Average retention error:{Style.RESET_ALL} {avg_error:.1f}% (distance from target)")
         print()
 
 
