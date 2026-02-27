@@ -6,6 +6,7 @@ let pollInterval = null;
 const serverUrl = 'https://conciser-aurora.ngrok.dev';
 let strategies = [];
 let voices = [];
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // Initialize popup
 async function initializePopup() {
@@ -57,27 +58,41 @@ async function initializePopup() {
   }
 }
 
-// Fetch strategies from API
+// Fetch strategies from API (cached 1 hour)
 async function fetchStrategies() {
   try {
+    const storage = await chrome.storage.local.get(['strategiesCache']);
+    const cache = storage.strategiesCache;
+    if (cache && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
+      strategies = cache.data;
+      updateStrategyDescription();
+      return;
+    }
     const response = await fetch(`${serverUrl}/api/strategies`);
     const data = await response.json();
     strategies = data.strategies;
+    await chrome.storage.local.set({ strategiesCache: { data: strategies, timestamp: Date.now() } });
     updateStrategyDescription();
   } catch (error) {
     console.error('Failed to fetch strategies:', error);
   }
 }
 
-// Fetch voices from API
+// Fetch voices from API (cached 1 hour)
 async function fetchVoices() {
   try {
-    // Get user locale (e.g., 'en-US' -> 'en')
     const locale = navigator.language.split('-')[0];
+    const storage = await chrome.storage.local.get(['voicesCache', 'settings']);
+    const cache = storage.voicesCache;
 
-    const response = await fetch(`${serverUrl}/api/voices?locale=${locale}`);
-    const data = await response.json();
-    voices = data.voices || [];
+    if (cache && cache.locale === locale && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
+      voices = cache.data;
+    } else {
+      const response = await fetch(`${serverUrl}/api/voices?locale=${locale}`);
+      const data = await response.json();
+      voices = data.voices || [];
+      await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
+    }
 
     const voiceSelect = document.getElementById('voiceSelect');
     voiceSelect.innerHTML = '';
@@ -94,8 +109,7 @@ async function fetchVoices() {
       voiceSelect.appendChild(option);
     });
 
-    // Load saved voice or use first one
-    const storage = await chrome.storage.local.get(['settings']);
+    // Restore saved voice
     if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
       voiceSelect.value = storage.settings.voice;
     } else if (voices.length > 0) {

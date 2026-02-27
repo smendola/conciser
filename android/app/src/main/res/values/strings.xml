@@ -11,11 +11,12 @@
     <string name="server_url">Server URL</string>
     <string name="server_url_hint">https://conciser-aurora.ngrok.dev</string>
     <string name="save">Save</string>
-    <string name="video_mode">Video Mode</string>
+    <string name="video_mode">Output Mode</string>
     <string name="voice">Voice</string>
     <string name="aggressiveness">Aggressiveness</string>
     <string name="speech_speed">Speech Speed</string>
     <string name="condense_video">Condense Video</string>
     <string name="watch_video">Watch Video</string>
     <string name="waiting_for_video">Share a YouTube video to start</string>
+    <string name="recent_jobs">Recent</string>
 </resources>

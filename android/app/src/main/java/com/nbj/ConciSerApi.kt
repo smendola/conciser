@@ -1,6 +1,10 @@
 package com.nbj
 
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -65,6 +69,16 @@ interface ConciSerApiService {
     suspend fun getStrategies(): StrategiesResponse
 }
 
+data class OEmbedResponse(val title: String)
+
+data class RecentJob(
+    val jobId: String,
+    val title: String,
+    val videoMode: String,
+    val serverUrl: String,
+    val addedAt: Long = System.currentTimeMillis()
+)
+
 object ConciSerApi {
     const val DEFAULT_URL = "https://conciser-aurora.ngrok.dev/"
 
@@ -87,6 +101,28 @@ object ConciSerApi {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ConciSerApiService::class.java)
+    }
+
+    suspend fun fetchVideoTitle(videoUrl: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val oEmbedUrl = "https://www.youtube.com/oembed?url=${videoUrl}&format=json"
+            val request = Request.Builder().url(oEmbedUrl).build()
+            val body = client.newCall(request).execute().use { it.body?.string() }
+            Gson().fromJson(body, OEmbedResponse::class.java)?.title
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Returns true if the file is reachable; false only on a definitive 404/410. Network errors return true (don't prune). */
+    suspend fun checkFileExists(url: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(url).head().build()
+            val code = client.newCall(request).execute().use { it.code }
+            code != 404 && code != 410
+        } catch (e: Exception) {
+            true
+        }
     }
 
     fun getFullDownloadUrl(baseUrl: String, jobId: String): String {

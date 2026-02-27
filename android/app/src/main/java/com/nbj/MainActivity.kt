@@ -2,20 +2,29 @@ package com.nbj
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.nbj.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -41,8 +50,8 @@ class MainActivity : AppCompatActivity() {
     private var voices: List<VoiceItem> = emptyList()
     private var strategies: List<StrategyItem> = emptyList()
 
-    private val videoModeValues = listOf("slideshow", "static", "audio_only")
-    private val videoModeLabels = listOf("Slideshow", "Static Frame", "Audio Only (MP3)")
+    private val videoModeValues = listOf("slideshow", "audio_only")
+    private val videoModeLabels = listOf("Slideshow", "Audio Only (MP3)")
 
     // Background colors for layoutStatus — mirror Chrome popup CSS classes
     private val STATUS_BG_SUBMITTING = 0xFFE8F0FE.toInt() // blue-grey (default status)
@@ -61,15 +70,14 @@ class MainActivity : AppCompatActivity() {
 
         setupSettingsControls()
         loadSettingsToUI()
+        fetchVoicesAndStrategies()
         setupUI()
         handleIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
-        if (currentState == AppState.NO_URL || currentState == AppState.READY) {
-            fetchVoicesAndStrategies()
-        }
+        refreshRecentJobsUI()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -210,10 +218,16 @@ class MainActivity : AppCompatActivity() {
         if (url != null && isYouTubeUrl(url)) {
             currentVideoUrl = url
             currentJobId = null
-            // Show video ID — mirrors Chrome popup's "Video: {videoId}"
             val videoId = extractVideoId(url)
             binding.tvVideoInfo.text = if (videoId != null) "Video: $videoId" else url
             updateUI(AppState.READY)
+            // Fetch title asynchronously and update below the ID
+            lifecycleScope.launch {
+                val title = ConciSerApi.fetchVideoTitle(url)
+                if (title != null && currentVideoUrl == url) {
+                    binding.tvVideoInfo.text = if (videoId != null) "Video: $videoId\n$title" else title
+                }
+            }
         } else {
             currentVideoUrl = null
             updateUI(AppState.NO_URL)
@@ -275,6 +289,7 @@ class MainActivity : AppCompatActivity() {
                         "completed" -> {
                             isPolling = false
                             updateUI(AppState.COMPLETED)
+                            addCurrentJobToRecents()
                             // Auto-launch player immediately — key Android difference vs extension
                             playVideo(jobId)
                         }
@@ -459,6 +474,148 @@ class MainActivity : AppCompatActivity() {
             .putFloat("speech_speed", speechSpeed)
             .putString("voice", voiceName)
             .apply()
+    }
+
+    // -------------------------------------------------------------------------
+    // Recent Jobs
+    // -------------------------------------------------------------------------
+
+    private fun addCurrentJobToRecents() {
+        val jobId = currentJobId ?: return
+        val title = binding.tvVideoInfo.text.toString()
+        val job = RecentJob(
+            jobId = jobId,
+            title = title,
+            videoMode = currentVideoMode,
+            serverUrl = getServerUrl()
+        )
+        val jobs = loadRecentJobs().toMutableList()
+        jobs.removeAll { it.jobId == jobId }  // de-dupe
+        jobs.add(0, job)
+        saveRecentJobs(jobs.take(10))
+        refreshRecentJobsUI()
+    }
+
+    private fun loadRecentJobs(): List<RecentJob> {
+        val json = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+            .getString("recent_jobs", null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<RecentJob>>() {}.type
+            Gson().fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveRecentJobs(jobs: List<RecentJob>) {
+        getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit()
+            .putString("recent_jobs", Gson().toJson(jobs))
+            .apply()
+    }
+
+    private fun refreshRecentJobsUI() {
+        val jobs = loadRecentJobs()
+        val container = binding.layoutRecentJobs
+        container.removeAllViews()
+
+        if (jobs.isEmpty()) {
+            binding.tvRecentJobsHeader.visibility = View.GONE
+            return
+        }
+        binding.tvRecentJobsHeader.visibility = View.VISIBLE
+
+        val dp = resources.displayMetrics.density
+        val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+
+        for (job in jobs) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (10 * dp).toInt(), 0, (10 * dp).toInt())
+                isClickable = true
+                isFocusable = true
+                val tv = TypedValue()
+                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                setBackgroundResource(tv.resourceId)
+                setOnClickListener { openRecentJob(job) }
+            }
+
+            // Mode badge
+            val badge = TextView(this).apply {
+                text = if (job.videoMode == "audio_only") "MP3" else "MP4"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(0xFFFFFFFF.toInt())
+                val bg = if (job.videoMode == "audio_only") 0xFF6c757d.toInt() else 0xFF1a73e8.toInt()
+                setBackgroundColor(bg)
+                setPadding((4 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.marginEnd = (8 * dp).toInt() }
+            }
+
+            // Title + timestamp stacked vertically
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val titleView = TextView(this).apply {
+                text = job.title
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(0xFF212121.toInt())
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            val timeView = TextView(this).apply {
+                text = dateFormat.format(Date(job.addedAt))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTextColor(0xFF757575.toInt())
+            }
+            textCol.addView(titleView)
+            textCol.addView(timeView)
+
+            row.addView(badge)
+            row.addView(textCol)
+            container.addView(row)
+
+            // Divider (except after last row)
+            if (job != jobs.last()) {
+                val divider = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, (1 * dp).toInt()
+                    )
+                    setBackgroundColor(0xFFEEEEEE.toInt())
+                }
+                container.addView(divider)
+            }
+        }
+
+        // Background: prune deleted files silently
+        lifecycleScope.launch {
+            val surviving = jobs.filter { job ->
+                val url = ConciSerApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+                ConciSerApi.checkFileExists(url)
+            }
+            if (surviving.size < jobs.size) {
+                saveRecentJobs(surviving)
+                refreshRecentJobsUI()
+            }
+        }
+    }
+
+    private fun openRecentJob(job: RecentJob) {
+        val videoUrl = ConciSerApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+        val mimeType = if (job.videoMode == "audio_only") "audio/mpeg" else "video/mp4"
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(Uri.parse(videoUrl), mimeType)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "No media player found.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     // -------------------------------------------------------------------------

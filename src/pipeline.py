@@ -798,6 +798,8 @@ class CondenserPipeline:
             '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
             '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p',
+            '-g', '1',               # keyframe at every frame — makes all scene cuts seekable
+            '-movflags', '+faststart',
             str(temp_video)
         ]
 
@@ -814,7 +816,10 @@ class CondenserPipeline:
             'ffmpeg', '-y',
             '-i', str(temp_video),
             '-i', str(audio_path),
-            '-c:v', 'copy',
+            '-c:v', 'libx264',       # re-encode (not copy) to preserve keyframes and movflags
+            '-pix_fmt', 'yuv420p',
+            '-g', '1',
+            '-movflags', '+faststart',
             '-c:a', 'aac',
             '-b:a', '192k',
             '-shortest',
