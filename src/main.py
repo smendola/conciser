@@ -579,9 +579,8 @@ def voices(provider, lang):
                     print(f"{Fore.RED}No voices found for language: {lang}{Style.RESET_ALL}")
                     sys.exit(1)
 
-            # Show all locales, sorted with popular ones first
-            popular = ['en-US', 'en-GB', 'en-AU', 'en-CA', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'pt-BR']
-            all_locales = sorted(locales.keys(), key=lambda x: (x not in popular, x))
+            # Show all locales, sorted alphabetically
+            all_locales = sorted(locales.keys())
 
             for locale in all_locales:
                 print(f"{Fore.GREEN}{locale}:{Style.RESET_ALL}")
@@ -640,19 +639,19 @@ def voices(provider, lang):
 
         if premade:
             print(f"{Fore.GREEN}Premade Voices:{Style.RESET_ALL}")
-            for v in premade:
+            for v in sorted(premade, key=lambda x: x['name'].lower()):
                 print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
             print()
 
         if cloned:
             print(f"{Fore.GREEN}Your Cloned Voices:{Style.RESET_ALL}")
-            for v in cloned:
+            for v in sorted(cloned, key=lambda x: x['name'].lower()):
                 print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
             print()
 
         if generated:
             print(f"{Fore.GREEN}Generated Voices:{Style.RESET_ALL}")
-            for v in generated:
+            for v in sorted(generated, key=lambda x: x['name'].lower()):
                 print(f"  {Style.DIM}{Fore.CYAN}{v['voice_id']}{Style.RESET_ALL} {format_voice_name(v['name'])}")
             print()
 
@@ -975,6 +974,291 @@ def _validate_did_key(api_key: str) -> tuple[bool, str]:
             return False, f"HTTP {response.status_code}: {response.text}"
     except Exception as e:
         return False, str(e)
+
+
+@cli.command()
+@click.argument('files', nargs=-1, type=click.Path(exists=True), required=True)
+@click.option('--voice', '-v', default='ryan', help='Voice name or ID (e.g., ryan, edge/ryan, en-GB-RyanNeural)')
+@click.option('--rate', '-r', default='+12%', help='Speech rate (e.g., +12%, -10%, +0%)')
+def tts(files, voice, rate):
+    """
+    Convert condensed text files to MP3 using Edge TTS.
+
+    Examples:
+
+        # Single file with voice shortcut
+        nbj tts --voice=ryan test_outputs/yt_AnOduBHzmHs_agg_1.txt
+
+        # Multiple files with full voice ID
+        nbj tts --voice=en-GB-RyanNeural test_outputs/yt_*.txt
+
+        # With custom speech rate
+        nbj tts --voice=ryan --rate=+20% test_outputs/yt_AnOduBHzmHs_agg_1.txt
+
+        # Process multiple files
+        nbj tts --voice=ryan test_outputs/yt_*_agg_5.txt
+    """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
+    # Voice shortcuts for common Edge TTS voices
+    VOICE_SHORTCUTS = {
+        'ryan': 'en-GB-RyanNeural',
+        'sonia': 'en-GB-SoniaNeural',
+        'aria': 'en-US-AriaNeural',
+        'guy': 'en-US-GuyNeural',
+        'jenny': 'en-US-JennyNeural',
+        'davis': 'en-US-DavisNeural',
+        'jane': 'en-US-JaneNeural',
+    }
+
+    def extract_condensed_script(file_path: Path) -> str:
+        """Extract condensed script from test output file."""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Find text between first and second "===" lines
+        parts = content.split('=' * 80)
+
+        if len(parts) < 3:
+            raise ValueError(f"Invalid file format: expected metadata + script + footer, got {len(parts)} sections")
+
+        # The condensed script is in parts[1] (between first and second === lines)
+        script = parts[1].strip()
+
+        if not script:
+            raise ValueError("No condensed script found in file")
+
+        return script
+
+    # Initialize TTS provider
+    from .modules.edge_tts import EdgeTTS
+    tts_provider = EdgeTTS()
+
+    # Parse voice specification
+    if voice.startswith('edge/'):
+        voice = voice[5:]
+
+    # Apply shortcuts first, then try to resolve as voice name
+    if voice in VOICE_SHORTCUTS:
+        voice_id = VOICE_SHORTCUTS[voice]
+    else:
+        voice_id = tts_provider.resolve_voice_name(voice)
+        if not voice_id:
+            click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}Run 'nbj voices --provider=edge' to see available voices.{Style.RESET_ALL}")
+            sys.exit(1)
+
+    print(f"{Fore.CYAN}Using Edge TTS{Style.RESET_ALL}")
+    print(f"  Voice: {voice_id}")
+    print(f"  Rate: {rate}\n")
+
+    # Process each file
+    success_count = 0
+    error_count = 0
+
+    for file_path_str in files:
+        file_path = Path(file_path_str)
+
+        print(f"{Fore.CYAN}Processing: {file_path.name}{Style.RESET_ALL}")
+
+        try:
+            # Extract condensed script
+            script = extract_condensed_script(file_path)
+            word_count = len(script.split())
+            print(f"  Extracted script: {word_count:,} words")
+
+            # Generate output path
+            output_path = file_path.with_suffix('.mp3')
+
+            # Generate TTS
+            print(f"  Generating audio...")
+            tts_provider.generate_speech(
+                text=script,
+                output_path=output_path,
+                voice=voice_id,
+                rate=rate
+            )
+
+            print(f"  {Fore.GREEN}✓ Saved to: {output_path}{Style.RESET_ALL}\n")
+            success_count += 1
+
+        except Exception as e:
+            print(f"  {Fore.RED}✗ Error: {e}{Style.RESET_ALL}\n")
+            error_count += 1
+
+    # Summary
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Summary{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+    print(f"  Total files: {len(files)}")
+    print(f"  Successful: {Fore.GREEN}{success_count}{Style.RESET_ALL}")
+    print(f"  Failed: {Fore.RED}{error_count}{Style.RESET_ALL}")
+
+
+@cli.command(name='tts-samples')
+@click.option(
+    '--file', '-f',
+    type=click.Path(exists=True),
+    help='Custom text file to use for sample (instead of default "To be or not to be")'
+)
+@click.option(
+    '--output-dir', '-o',
+    type=click.Path(),
+    default='tts_samples',
+    help='Output directory for samples (default: tts_samples)'
+)
+@click.option(
+    '--rate', '-r',
+    default='+0%',
+    help='Speech rate (e.g., +12%, -10%, +0%)'
+)
+@click.option(
+    '--lang', '-l',
+    default='en',
+    help='Language filter: prefix (e.g., "en") or comma-separated locales (e.g., "en-US,en-GB,en-IN")'
+)
+def tts_samples(file, output_dir, rate, lang):
+    """
+    Generate TTS samples for Edge TTS voices.
+
+    For each voice, generates audio saying:
+    "Hello, I'm [VoiceName], and this is what my voice sounds like. [sample text]"
+
+    Examples:
+
+        # Generate samples for all English voices with default text
+        nbj tts-samples
+
+        # Use custom sample text from file
+        nbj tts-samples -f my_sample.txt
+
+        # Only test en-GB voices
+        nbj tts-samples --lang=en-GB
+
+        # Test multiple specific locales
+        nbj tts-samples --lang=en-US,en-GB,en-IN
+
+        # Test all Spanish voices
+        nbj tts-samples --lang=es
+
+        # Custom output directory and speech rate
+        nbj tts-samples -o voice_samples -r +20%
+    """
+    # Suppress httpx INFO logs
+    import logging as stdlib_logging
+    stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
+    DEFAULT_SAMPLE_TEXT = '"To be, or not to be. That is the question."'
+
+    def extract_voice_name(full_voice_id: str) -> str:
+        """Extract friendly name from full voice ID."""
+        parts = full_voice_id.split('-')
+        if len(parts) >= 3:
+            name = parts[-1].replace('Neural', '').replace('Multilingual', '')
+            return name
+        return full_voice_id
+
+    # Load sample text
+    if file:
+        sample_text = Path(file).read_text(encoding='utf-8').strip()
+        print(f"{Fore.CYAN}Using custom sample text from: {file}{Style.RESET_ALL}")
+    else:
+        sample_text = DEFAULT_SAMPLE_TEXT
+        print(f"{Fore.CYAN}Using default sample text{Style.RESET_ALL}")
+
+    print(f"Sample text: {Fore.YELLOW}{sample_text[:100]}{'...' if len(sample_text) > 100 else ''}{Style.RESET_ALL}\n")
+
+    # Create output directory
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Initialize TTS
+    from .modules.edge_tts import EdgeTTS
+    tts = EdgeTTS()
+
+    # Get all voices
+    print(f"{Fore.CYAN}Fetching available Edge TTS voices...{Style.RESET_ALL}")
+    all_voices = tts.list_voices()
+
+    # Parse language filter
+    if ',' in lang:
+        # Comma-separated list of specific locales
+        requested_locales = [l.strip() for l in lang.split(',')]
+        filtered_voices = [v for v in all_voices if v['locale'] in requested_locales]
+        print(f"Found {len(filtered_voices)} voices for locales: {', '.join(requested_locales)}\n")
+    elif '-' in lang:
+        # Specific locale (e.g., "en-GB")
+        filtered_voices = [v for v in all_voices if v['locale'] == lang]
+        print(f"Found {len(filtered_voices)} voices for locale: {lang}\n")
+    else:
+        # Language prefix (e.g., "en" matches all "en-*")
+        filtered_voices = [v for v in all_voices if v['locale'].startswith(f"{lang}-")]
+        print(f"Found {len(filtered_voices)} voices for language: {lang}\n")
+
+    if not filtered_voices:
+        print(f"{Fore.RED}No voices found matching criteria{Style.RESET_ALL}")
+        return
+
+    # Group by locale for organized output
+    voices_by_locale = {}
+    for voice in filtered_voices:
+        locale_key = voice['locale']
+        if locale_key not in voices_by_locale:
+            voices_by_locale[locale_key] = []
+        voices_by_locale[locale_key].append(voice)
+
+    # Generate samples
+    success_count = 0
+    error_count = 0
+    total_voices = len(filtered_voices)
+
+    for idx, (locale_name, voices) in enumerate(sorted(voices_by_locale.items()), 1):
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Locale: {locale_name} ({len(voices)} voices){Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+
+        for voice in sorted(voices, key=lambda v: v['name']):
+            full_voice_id = voice['name']
+            voice_name = extract_voice_name(full_voice_id)
+            gender = voice.get('gender', 'Unknown')
+
+            # Build full text with introduction
+            intro = f"Hello, I'm {voice_name}, and this is what my voice sounds like. "
+            full_text = intro + sample_text
+
+            # Output filename: locale_VoiceName_Gender.mp3
+            output_filename = f"{locale_name}_{voice_name}_{gender}.mp3"
+            output_file = output_path / output_filename
+
+            print(f"  [{success_count + error_count + 1}/{total_voices}] {voice_name} ({gender})... ", end='', flush=True)
+
+            try:
+                tts.generate_speech(
+                    text=full_text,
+                    output_path=output_file,
+                    voice=full_voice_id,
+                    rate=rate
+                )
+                print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
+                success_count += 1
+
+            except Exception as e:
+                print(f"{Fore.RED}✗ Error: {e}{Style.RESET_ALL}")
+                error_count += 1
+
+        print()  # Blank line between locales
+
+    # Summary
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}Summary{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+    print(f"  Total voices: {total_voices}")
+    print(f"  Successful: {Fore.GREEN}{success_count}{Style.RESET_ALL}")
+    print(f"  Failed: {Fore.RED}{error_count}{Style.RESET_ALL}")
+    print(f"  Output directory: {Fore.CYAN}{output_path.absolute()}{Style.RESET_ALL}")
+    print()
 
 
 if __name__ == '__main__':

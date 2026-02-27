@@ -91,7 +91,7 @@ def process_video(job_id):
             video_gen_mode=video_mode,
             tts_provider="edge",
             voice_id=getattr(job, 'voice', 'en-GB-RyanNeural'),
-            tts_rate=getattr(job, 'speech_rate', '+12%'),
+            tts_rate=getattr(job, 'speech_rate', '+0%'),
             skip_voice_clone=True,
             progress_callback=progress_callback,
             resume=False
@@ -700,7 +700,7 @@ def condense():
     # Get optional parameters (with defaults)
     aggressiveness = data.get('aggressiveness', 5)
     voice = data.get('voice', 'en-GB-RyanNeural')
-    speech_rate = data.get('speech_rate', '+12%')  # Default to 1.12x
+    speech_rate = data.get('speech_rate', '+0%')  # Default to 1.0x
     video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
 
     # Log all received parameters
