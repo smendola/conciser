@@ -85,6 +85,8 @@ Generate a JSON response with the following structure:
   "quality_notes": "Any notes about the condensation quality or challenges encountered"
 }}
 
+Don't forget to ESCAPE quotation marks in the condensed_script to ensure valid JSON output. TY.
+
 Remember to format the condensed_script with paragraph breaks (\\n\\n) at natural transitions.
 """
 

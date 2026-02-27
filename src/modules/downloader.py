@@ -104,8 +104,8 @@ class VideoDownloader:
             ydl_opts = {
                 'format': format_string,
                 'outtmpl': output_template,
-                'quiet': False,
-                'no_warnings': False,
+                'quiet': True,
+                'no_warnings': True,
                 'extract_flat': False,
                 'writethumbnail': True,
                 'writesubtitles': False,

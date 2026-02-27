@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_settings
 from src.modules.downloader import VideoDownloader
-from src.modules.transcriber import Transcriber
 from src.modules.condenser import ContentCondenser
+from src.pipeline import CondenserPipeline
 from src.utils.prompt_templates import get_condense_prompt, TARGET_RETENTION
 
 colorama_init()
@@ -145,31 +145,23 @@ def condense_video_at_level(
                     'metadata': metadata
                 }
             else:
-                # Need to download and transcribe
+                # Need to download and transcribe - use pipeline methods to avoid duplication
                 print(f"  {Fore.YELLOW}Downloading video...{Style.RESET_ALL}")
-                downloader = VideoDownloader(settings.temp_dir)
-                download_result = downloader.download(
+                pipeline = CondenserPipeline(settings)
+
+                # Download using pipeline method
+                download_result = pipeline._download_video(
                     f"https://youtube.com/watch?v={video_id}",
                     quality="720p"
                 )
                 video_path = Path(download_result['video_path'])
+                video_folder = Path(download_result['video_folder'])
                 metadata = download_result['metadata']
 
-                print(f"  {Fore.YELLOW}Transcribing video...{Style.RESET_ALL}")
-                transcriber = Transcriber(settings.openai_api_key)
-                result = transcriber.transcribe(video_path)
-                transcript = result['text']
-                segments = result['segments']
-
-                # Save transcript to disk
-                transcript_file = video_path.parent / "transcript.json"
-                transcript_data = {
-                    'text': transcript,
-                    'segments': segments,
-                    'created_at': datetime.now().isoformat()
-                }
-                with open(transcript_file, 'w', encoding='utf-8') as f:
-                    json.dump(transcript_data, f, indent=2, ensure_ascii=False)
+                # Transcribe using pipeline method (handles YouTube API + Whisper fallback)
+                print(f"  {Fore.YELLOW}Getting transcript...{Style.RESET_ALL}")
+                transcript_result = pipeline._transcribe_video(video_path, video_folder, video_id)
+                transcript = transcript_result['text']
 
                 # Cache it
                 transcript_cache[video_id] = {
@@ -183,8 +175,6 @@ def condense_video_at_level(
             print(f"{Fore.CYAN}INPUT TRANSCRIPT (Video: {video_id}){Style.RESET_ALL}")
             print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}Word count: {len(transcript.split()):,}{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}Character count: {len(transcript):,}{Style.RESET_ALL}")
-            print(f"\n{transcript[:2000]}...")  # Show first 2000 chars
             print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}\n")
 
         # Condense at specified aggressiveness level
@@ -252,9 +242,9 @@ def condense_video_at_level(
             }
             json.dump(result_data, f, indent=2, ensure_ascii=False)
 
-        error = abs(actual_retention - target_retention_pct)
-        error_color = Fore.GREEN if error < 5 else Fore.YELLOW if error < 10 else Fore.RED
-        print(f"  {Fore.GREEN}✓ Complete: {condensed_word_count:,} words (target: {target_retention_pct:.1f}%, actual: {actual_retention:.1f}%, error: {error_color}{error:.1f}%{Style.RESET_ALL}{Fore.GREEN}){Style.RESET_ALL}")
+        error = actual_retention - target_retention_pct
+        error_color = Fore.GREEN if abs(error) < 5 else Fore.YELLOW if abs(error) < 10 else Fore.RED
+        print(f"  {Fore.GREEN}✓ Complete: {condensed_word_count:,} words (target: {target_retention_pct:.1f}%, actual: {actual_retention:.1f}%, error: {error_color}{error:+.1f}%{Style.RESET_ALL}{Fore.GREEN}){Style.RESET_ALL}")
         print(f"  {Fore.GREEN}  Saved to: {output_file}{Style.RESET_ALL}")
 
         return {
@@ -268,6 +258,7 @@ def condense_video_at_level(
             'actual_retention': actual_retention,
             'target_reduction': target_reduction,
             'actual_reduction': actual_reduction,
+            'error_pct': error,  # actual - target (positive = over target)
             'success': True,
             'error': None
         }
@@ -285,6 +276,7 @@ def condense_video_at_level(
             'actual_retention': 0,
             'target_reduction': 0,
             'actual_reduction': 0,
+            'error_pct': 0,
             'success': False,
             'error': str(e)
         }
@@ -310,7 +302,12 @@ def condense_video_at_level(
     default='test_outputs',
     help='Output directory for test results (default: test_outputs)'
 )
-def main(videos, aggressiveness, output_dir):
+@click.option(
+    '--re-summarize',
+    is_flag=True,
+    help='Re-generate summary table from existing JSON outputs without re-running tests'
+)
+def main(videos, aggressiveness, output_dir, re_summarize):
     """
     Test driver for condensation prompt testing.
 
@@ -343,6 +340,91 @@ def main(videos, aggressiveness, output_dir):
     print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}Condensation Test Driver{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}\n")
+
+    # Handle --re-summarize: read JSONs and print summary without re-running
+    if re_summarize:
+        output_path = Path(output_dir)
+        if not output_path.exists():
+            print(f"{Fore.RED}Error: Output directory '{output_dir}' does not exist{Style.RESET_ALL}")
+            sys.exit(1)
+
+        # Find all JSON files matching pattern yt_*_agg_*.json
+        json_files = sorted(output_path.glob("yt_*_agg_*.json"))
+        if not json_files:
+            print(f"{Fore.RED}Error: No JSON output files found in '{output_dir}'{Style.RESET_ALL}")
+            sys.exit(1)
+
+        print(f"Found {len(json_files)} result files in {output_dir}\n")
+
+        # Read all JSONs and build results
+        results = []
+        for json_file in json_files:
+            try:
+                with open(json_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # Extract stats from JSON
+                original_words = data['original_word_count']
+                condensed_words = data['condensed_word_count']
+                target_reduction = data['target_reduction_percentage']
+                actual_reduction = data['actual_reduction_percentage']
+
+                # Calculate retention percentages
+                target_retention = 100 - target_reduction
+                actual_retention = 100 - actual_reduction
+                target_words = int(original_words * (target_retention / 100))
+
+                # Calculate error (actual - target)
+                error_pct = actual_retention - target_retention
+
+                results.append({
+                    'video_id': data['video_id'],
+                    'title': data['title'],
+                    'aggressiveness': data['aggressiveness'],
+                    'original_words': original_words,
+                    'target_words': target_words,
+                    'condensed_words': condensed_words,
+                    'target_retention': target_retention,
+                    'actual_retention': actual_retention,
+                    'target_reduction': target_reduction,
+                    'actual_reduction': actual_reduction,
+                    'error_pct': error_pct,
+                    'success': True,
+                    'error': None
+                })
+            except Exception as e:
+                print(f"{Fore.YELLOW}Warning: Failed to read {json_file.name}: {e}{Style.RESET_ALL}")
+                continue
+
+        # Sort results by video_id, then by aggressiveness (numerical)
+        results.sort(key=lambda r: (r['video_id'], r['aggressiveness']))
+
+        # Print summary table (reuse code below)
+        print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Test Summary (from cached results){Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}\n")
+
+        print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Error%':<10} {'Status':<10}")
+        print("-" * 108)
+
+        for r in results:
+            status = f"{Fore.GREEN}✓{Style.RESET_ALL}"
+            error_pct = r['error_pct']
+            error_color = Fore.GREEN if abs(error_pct) < 5 else Fore.YELLOW if abs(error_pct) < 10 else Fore.RED
+            error_num_str = f"{error_pct:+.0f}%"
+            error_str = f"{error_color}{error_num_str:<10}{Style.RESET_ALL}"
+
+            print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['target_words']:<10,} {r['condensed_words']:<10,} "
+                  f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {error_str} {status:<10}")
+
+        # Calculate average accuracy
+        avg_error = sum(abs(r['error_pct']) for r in results) / len(results) if results else 0
+        print(f"\n{Fore.CYAN}Results:{Style.RESET_ALL}")
+        print(f"  Total results: {len(results)}")
+        print(f"\n{Fore.CYAN}Average retention error:{Style.RESET_ALL} {avg_error:.1f}% (distance from target)")
+        print()
+
+        return
 
     # Load videos from videos.txt
     all_videos = load_videos_txt()
@@ -413,6 +495,9 @@ def main(videos, aggressiveness, output_dir):
     print(f"{Fore.CYAN}Test Summary{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}\n")
 
+    # Sort results by video_id, then by aggressiveness (numerical)
+    results.sort(key=lambda r: (r['video_id'], r['aggressiveness']))
+
     # Save CSV summary
     csv_file = output_path / f"summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     with open(csv_file, 'w', newline='', encoding='utf-8') as f:
@@ -421,23 +506,31 @@ def main(videos, aggressiveness, output_dir):
             'original_words', 'target_words', 'condensed_words',
             'target_retention', 'actual_retention',
             'target_reduction', 'actual_reduction',
+            'error_pct',
             'success', 'error'
         ])
         writer.writeheader()
         writer.writerows(results)
 
     # Print summary table
-    print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Status':<10}")
-    print("-" * 95)
+    print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Error%':<10} {'Status':<10}")
+    print("-" * 108)
 
     success_count = 0
     for r in results:
         status = f"{Fore.GREEN}✓{Style.RESET_ALL}" if r['success'] else f"{Fore.RED}✗{Style.RESET_ALL}"
         if r['success']:
             success_count += 1
+            # Colorize error percentage - pad BEFORE applying color
+            error_pct = r['error_pct']
+            error_color = Fore.GREEN if abs(error_pct) < 5 else Fore.YELLOW if abs(error_pct) < 10 else Fore.RED
+            error_num_str = f"{error_pct:+.0f}%"
+            error_str = f"{error_color}{error_num_str:<10}{Style.RESET_ALL}"
+        else:
+            error_str = "N/A       "  # Pad to match column width
 
         print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['target_words']:<10,} {r['condensed_words']:<10,} "
-              f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {status:<10}")
+              f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {error_str} {status:<10}")
 
     print(f"\n{Fore.CYAN}Results:{Style.RESET_ALL}")
     print(f"  Total tests: {total_tests}")

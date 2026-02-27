@@ -244,20 +244,29 @@ def split_audio_by_size(
             output_dir = audio_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Clean up any stale chunks from previous failed runs
+        base_name = audio_path.stem
+        import glob
+        stale_chunks = glob.glob(str(output_dir / f"{base_name}_chunk_*.mp3"))
+        for chunk in stale_chunks:
+            Path(chunk).unlink(missing_ok=True)
+            logger.debug(f"Removed stale chunk: {chunk}")
+
         # Split audio into chunks
         chunks = []
-        base_name = audio_path.stem
 
         for i in range(num_chunks):
             start_time = i * chunk_duration
-            chunk_path = output_dir / f"{base_name}_chunk_{i:03d}.wav"
+            chunk_path = output_dir / f"{base_name}_chunk_{i:03d}.mp3"
 
             cmd = [
                 'ffmpeg',
                 '-i', str(audio_path),
                 '-ss', str(start_time),
                 '-t', str(chunk_duration),
-                '-acodec', 'copy',
+                '-vn',  # No video
+                '-acodec', 'libmp3lame',  # Re-encode to MP3
+                '-q:a', '2',  # High quality MP3
                 '-y',
                 str(chunk_path)
             ]
