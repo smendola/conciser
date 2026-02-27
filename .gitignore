@@ -22,6 +22,11 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+test_outputs/
+tts_samples/
+videos.txt
+voice_samples/
+
 # Virtual environments
 venv/
 ENV/
