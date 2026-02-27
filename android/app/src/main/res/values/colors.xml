@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1a73e8</color>
+    <color name="primary_dark">#1557b0</color>
+    <color name="primary_light">#4285f4</color>
+    <color name="accent">#FF4081</color>
+    <color name="success">#28a745</color>
+    <color name="error">#d32f2f</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="background">#FFFFFF</color>
+    <color name="ic_launcher_background">#1a73e8</color>
+</resources>

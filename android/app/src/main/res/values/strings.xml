@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NBJ Condenser</string>
+    <string name="app_icon">NBJ Condenser icon</string>
+    <string name="idle_message">AI-Powered Video Condensation</string>
+    <string name="how_to_use">Share a YouTube video to NBJ Condenser to get started.\n\nTap the Share button on any YouTube video and select NBJ Condenser from the list.</string>
+    <string name="processing">Processing video…</string>
+    <string name="cancel">Cancel</string>
+    <string name="play_video">Play Video</string>
+    <string name="settings">Settings</string>
+    <string name="server_url">Server URL</string>
+    <string name="server_url_hint">https://conciser-aurora.ngrok.dev</string>
+    <string name="save">Save</string>
+    <string name="video_mode">Video Mode</string>
+    <string name="voice">Voice</string>
+    <string name="aggressiveness">Aggressiveness</string>
+    <string name="speech_speed">Speech Speed</string>
+    <string name="condense_video">Condense Video</string>
+    <string name="watch_video">Watch Video</string>
+    <string name="waiting_for_video">Share a YouTube video to start</string>
+</resources>
