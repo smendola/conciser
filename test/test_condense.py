@@ -28,7 +28,19 @@ colorama_init()
 
 
 def load_videos_txt(filepath: Path = Path("videos.txt")) -> List[str]:
-    """Load video IDs from videos.txt file (one ID per line)."""
+    """
+    Load video IDs from videos.txt file (one ID per line).
+
+    Format:
+        - One video ID per line
+        - Lines starting with # are ignored (comments)
+        - Text after the video ID on the same line is ignored (for annotations)
+
+    Examples:
+        BP171WxPXU4 US Panic: Japan's Debt Just Collapsed
+        dQw4w9WgXcQ
+        # This is a comment
+    """
     if not filepath.exists():
         print(f"{Fore.YELLOW}Warning: {filepath} not found. Creating example file.{Style.RESET_ALL}")
         with open(filepath, 'w') as f:
@@ -37,7 +49,12 @@ def load_videos_txt(filepath: Path = Path("videos.txt")) -> List[str]:
         return ["dQw4w9WgXcQ", "jNQXAC9IVRw"]
 
     with open(filepath, 'r') as f:
-        video_ids = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        video_ids = []
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                # Take only first token (video ID), ignore rest of line
+                video_ids.append(line.split()[0])
 
     return video_ids
 
