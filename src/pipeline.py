@@ -102,18 +102,18 @@ class CondenserPipeline:
                 existing_metadata = self._find_existing_metadata(video_id)
 
                 if existing_video and existing_metadata:
-                    update_progress("DOWNLOAD", f"Resuming from step DOWNLOAD - found existing video: {existing_video.name}")
+                    update_progress("FETCH", f"Resuming from step FETCH - found existing video: {existing_video.name}")
                     video_path = existing_video
                     metadata = existing_metadata
                     video_folder = video_path.parent  # Video folder is parent of video file
                 else:
-                    update_progress("DOWNLOAD", "Downloading video...")
+                    update_progress("FETCH", f"Fetching video {video_id}...")
                     download_result = self._download_video(video_url, quality)
                     video_path = download_result['video_path']
                     metadata = download_result['metadata']
                     video_folder = download_result['video_folder']
             else:
-                update_progress("DOWNLOAD", "Downloading video...")
+                update_progress("FETCH", f"Fetching video {video_id}...")
                 download_result = self._download_video(video_url, quality)
                 video_path = download_result['video_path']
                 metadata = download_result['metadata']
@@ -184,7 +184,7 @@ class CondenserPipeline:
                     condensed_result = existing_condensed
                     condensed_script = condensed_result['condensed_script']
                 else:
-                    update_progress("CONDENSE", f"Condensing content (aggressiveness: {aggressiveness}/10)...")
+                    update_progress("CONDENSE", f"Condensing content; aggressiveness {aggressiveness}/10...")
                     condensed_result = self._condense_transcript(
                         transcript,
                         duration_minutes,
@@ -193,7 +193,7 @@ class CondenserPipeline:
                     )
                     condensed_script = condensed_result['condensed_script']
             else:
-                update_progress("CONDENSE", f"Condensing content (aggressiveness: {aggressiveness}/10)...")
+                update_progress("CONDENSE", f"Condensing content; aggressiveness {aggressiveness}/10...")
                 condensed_result = self._condense_transcript(
                     transcript,
                     duration_minutes,
@@ -205,11 +205,11 @@ class CondenserPipeline:
             # Stage 4: Clone voice (or use premade voice)
             if tts_provider == 'edge':
                 # Edge TTS doesn't need voice cloning
-                update_progress("VOICE_CLONE", f"Using Edge TTS voice: {voice_id}...")
+                update_progress("VOICE_CLONE", f"Using Edge TTS; voice {voice_id}...")
                 used_voice_id = voice_id
                 cleanup_voice = False
             elif skip_voice_clone:
-                update_progress("VOICE_CLONE", f"Using premade voice (ID: {voice_id})...")
+                update_progress("VOICE_CLONE", f"Using premade voice; ID: {voice_id}...")
                 used_voice_id = voice_id
                 cleanup_voice = False
             else:
@@ -234,7 +234,7 @@ class CondenserPipeline:
 
             # Stage 6: Generate video (or skip for audio-only)
             if video_gen_mode == "audio_only":
-                update_progress("AUDIO_ONLY", "Skipping video generation (audio-only mode)...")
+                update_progress("AUDIO_ONLY", "Skipping video generation; audio-only mode...")
                 logger.info("Audio-only mode: skipping video generation")
 
                 # Generate output filename for MP3
