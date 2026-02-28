@@ -26,6 +26,8 @@ test_outputs/
 tts_samples/
 videos.txt
 voice_samples/
+condenser_chains.json
+test_outputs*/
 
 # Virtual environments
 venv/
