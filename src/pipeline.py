@@ -106,8 +106,9 @@ class CondenserPipeline:
             if progress_callback:
                 progress_callback(stage, message)
 
-        video_folder = None  # Track video-specific folder
+        video_folder = None   # Track video-specific folder
         cleanup_voice = False  # Track if we need to cleanup cloned voice
+        used_voice_id = None  # Set once voice is known; used by finally for cleanup
 
         try:
             # Extract video ID from URL for resume matching
@@ -358,15 +359,6 @@ class CondenserPipeline:
             )
             logger.info(f"COMPOSE: {time.time() - _t:.1f} sec")
 
-            # Cleanup voice clone (only if we created it)
-            _t = time.time()
-            if cleanup_voice:
-                update_progress("CLEANUP", "Cleaning up cloned voice...")
-                self.voice_cloner.delete_voice(used_voice_id)
-            else:
-                update_progress("CLEANUP", "Cleaning up...")
-            logger.info(f"CLEANUP: {time.time() - _t:.1f} sec")
-
             # Generate statistics
             stats = {
                 'original_duration_minutes': duration_minutes,
@@ -390,6 +382,15 @@ class CondenserPipeline:
             if not isinstance(e, ApiError):
                 logger.error(f"Pipeline failed: {e}")
             raise
+
+        finally:
+            # Always delete the cloned voice — even on exception or Ctrl+C
+            if cleanup_voice and used_voice_id:
+                try:
+                    update_progress("CLEANUP", "Cleaning up cloned voice...")
+                    self.voice_cloner.delete_voice(used_voice_id)
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to delete cloned voice {used_voice_id}: {cleanup_err}")
 
     def _download_video(self, url: str, quality: str, name_override: str = None) -> Dict[str, Any]:
         """Download video from URL."""
