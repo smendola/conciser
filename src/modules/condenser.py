@@ -13,6 +13,58 @@ from ..utils.prompt_templates import get_condense_prompt
 logger = logging.getLogger(__name__)
 
 
+def _print_stream_chunk(text: str, mode: str, char_count: list):
+    """Print a streaming chunk in dots or text mode. char_count is a 1-element list used as mutable int."""
+    import sys
+    if mode == "dots":
+        sys.stdout.write(".")
+        char_count[0] += 1
+        if char_count[0] % 128 == 0:
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+    elif mode == "text":
+        sys.stdout.write(text)
+        sys.stdout.flush()
+
+
+def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, mode: str) -> str:
+    """Call OpenAI Responses API with streaming; return full response text."""
+    import sys
+    from openai.lib.streaming.responses import ResponseTextDeltaEvent
+    char_count = [0]
+    chunks = []
+    with client.responses.stream(
+        model=model,
+        previous_response_id=chain_id,
+        input=user_prompt,
+        text={"format": {"type": "json_object"}},
+        max_output_tokens=16000,
+    ) as stream:
+        for event in stream:
+            if isinstance(event, ResponseTextDeltaEvent):
+                delta = event.delta
+                chunks.append(delta)
+                _print_stream_chunk(delta, mode, char_count)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return "".join(chunks)
+
+
+def _stream_chat_completions(client, api_params: dict, mode: str) -> str:
+    """Call OpenAI Chat Completions API with streaming; return full response text."""
+    import sys
+    char_count = [0]
+    chunks = []
+    for chunk in client.chat.completions.create(**api_params, stream=True):
+        delta = chunk.choices[0].delta.content
+        if delta:
+            chunks.append(delta)
+            _print_stream_chunk(delta, mode, char_count)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return "".join(chunks)
+
+
 class ContentCondenser:
     """Condenses transcript using Claude or OpenAI API."""
 
@@ -96,7 +148,8 @@ class ContentCondenser:
         aggressiveness: int = 5,
         target_reduction_percentage: int = None,
         max_retries: int = 5,
-        initial_retry_delay: float = 2.0
+        initial_retry_delay: float = 2.0,
+        llm_progress: str = None
     ) -> Dict[str, Any]:
         """
         Condense transcript to shorter version.
@@ -198,14 +251,20 @@ class ContentCondenser:
                     elif self.provider == "openai":
                         if openai_chain_id:
                             # Responses API: continue from pre-seeded chain (no system prompt needed)
-                            response = self.client.responses.create(
-                                model=self.model,
-                                previous_response_id=openai_chain_id,
-                                input=user_prompt,
-                                text={"format": {"type": "json_object"}},
-                                max_output_tokens=16000,
-                            )
-                            response_text = response.output_text
+                            if llm_progress:
+                                response_text = _stream_responses_api(
+                                    self.client, self.model, openai_chain_id,
+                                    user_prompt, llm_progress
+                                )
+                            else:
+                                response = self.client.responses.create(
+                                    model=self.model,
+                                    previous_response_id=openai_chain_id,
+                                    input=user_prompt,
+                                    text={"format": {"type": "json_object"}},
+                                    max_output_tokens=16000,
+                                )
+                                response_text = response.output_text
                         else:
                             # Fallback: chat completions with full system prompt
                             api_params = {
@@ -221,8 +280,13 @@ class ContentCondenser:
                                 api_params["max_completion_tokens"] = 16000
                             else:
                                 api_params["max_tokens"] = 16000
-                            completion = self.client.chat.completions.create(**api_params)
-                            response_text = completion.choices[0].message.content
+                            if llm_progress:
+                                response_text = _stream_chat_completions(
+                                    self.client, api_params, llm_progress
+                                )
+                            else:
+                                completion = self.client.chat.completions.create(**api_params)
+                                response_text = completion.choices[0].message.content
 
                     break  # Success! Exit retry loop
 

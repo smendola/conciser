@@ -329,7 +329,7 @@ def get_condense_prompt(
     # Build system prompt: Level 1 (general) + Level 2 (strategy-specific)
     retention_range = RETENTION_RANGES.get(aggressiveness, RETENTION_RANGES[5])
     strategy_prompt = STRATEGY_PROMPTS.get(aggressiveness, STRATEGY_PROMPTS[5]).format(retention_range=retention_range)
-    print(f"[DEBUG] Strategy prompt (aggressiveness {aggressiveness}):\n{strategy_prompt}")
+
     system_prompt = CONDENSE_SYSTEM_PROMPT.strip() + "\n\n" + strategy_prompt.strip()
 
     # Build user prompt: Level 3 (transcript + word count)

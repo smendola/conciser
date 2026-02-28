@@ -9,6 +9,28 @@ from typing import Dict, Any
 logger = logging.getLogger(__name__)
 
 
+def truncate_at_punctuation(title: str) -> str:
+    """
+    Truncate a YouTube title at the first 'hard' punctuation character.
+
+    Keeps apostrophes and hyphens (common within words) but stops at anything
+    that typically introduces a subtitle or parenthetical, e.g.:
+      "James Carville: yo mama..."  ->  "James Carville"
+      "US Panic: Japan's Debt..."   ->  "US Panic"
+      "Claude's Brain (stuff)"      ->  "Claude's Brain "  ->  "Claude's Brain"
+
+    If the truncated result is empty (e.g. title starts with '#'), the original
+    title is returned unchanged.
+    """
+    # Characters that signal a subtitle / parenthetical boundary
+    STOP_CHARS = set('!"#$%()*+,./:;<=>?@[\\]^{|}~')
+    for i, ch in enumerate(title):
+        if ch in STOP_CHARS:
+            result = title[:i].strip()
+            return result if result else title
+    return title
+
+
 def normalize_name(name: str, max_length: int = 60) -> str:
     """
     Normalize a name to lowercase with underscores, alphanumeric only.
@@ -84,7 +106,7 @@ class VideoDownloader:
             # Extract video ID and title
             video_id = info.get('id', 'unknown')
             title = info.get('title', 'unknown_video')
-            normalized_title = normalize_name(title)
+            normalized_title = normalize_name(truncate_at_punctuation(title))
 
             # Create video-specific folder: {video_id}_{normalized_title}/
             # Note: video_id is kept as-is (not lowercased or mangled)

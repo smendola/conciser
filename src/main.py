@@ -30,7 +30,7 @@ def _resolve_voice(voice: str, api_key: str) -> str:
 
     # Otherwise, look up by name
     try:
-        from .modules.voice_cloner import VoiceCloner
+        from .modules.tts import VoiceCloner
         cloner = VoiceCloner(api_key)
         voices = cloner.list_voices()
 
@@ -114,6 +114,32 @@ class ProgressDisplay:
         print(f"{color}[{stage}]{Style.RESET_ALL} {message}")
 
 
+def _load_videos_txt(filepath: Path = None) -> list:
+    """
+    Load (video_id, label_or_None) pairs from videos.txt.
+
+    Format: one entry per line — "<video_id>  [optional label text]"
+    Lines starting with # are comments and are ignored.
+
+    Returns list of (video_id, label) tuples; label is None if the line has
+    only a video ID with no following text.
+    """
+    if filepath is None:
+        filepath = Path("videos.txt")
+    if not filepath.exists():
+        return []
+    entries = []
+    for line in filepath.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split(None, 1)  # split on first whitespace, max 2 parts
+        video_id = parts[0]
+        label = parts[1].strip() if len(parts) > 1 else None
+        entries.append((video_id, label))
+    return entries
+
+
 @click.group()
 @click.version_option(version='0.1.0')
 def cli():
@@ -191,7 +217,13 @@ def cli():
     default=False,
     help='Prepend a numbered list of key take-aways to the TTS script.'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro):
+@click.option(
+    '--llm-progress',
+    type=click.Choice(['dots', 'text']),
+    default=None,
+    help='Show LLM streaming output: dots (one dot per chunk) or text (raw streamed text).'
+)
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress):
     """
     Condense a video from URL.
 
@@ -241,6 +273,22 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}NBJ Condenser - Video Condensation Pipeline{Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*60}{Style.RESET_ALL}\n")
+
+        # Resolve 1-based index into videos.txt → video ID + optional name override
+        name_override = None
+        if url.isdigit():
+            idx = int(url)
+            entries = _load_videos_txt()
+            if not entries:
+                click.echo(f"{Fore.RED}Error: videos.txt not found or empty.{Style.RESET_ALL}")
+                sys.exit(1)
+            if idx < 1 or idx > len(entries):
+                click.echo(f"{Fore.RED}Error: index {idx} out of range — videos.txt has {len(entries)} entries.{Style.RESET_ALL}")
+                sys.exit(1)
+            video_id_resolved, label = entries[idx - 1]
+            name_override = label  # None if no label text on that line
+            url = video_id_resolved
+            print(f"Video index: {idx} → {video_id_resolved}" + (f"  ({label})" if label else ""))
 
         print(f"URL: {url}")
         print(f"Aggressiveness: {aggressiveness}/10")
@@ -368,7 +416,9 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             tts_provider=tts_provider,
             slideshow_max_frames=slideshow_frames,
             tts_rate=speech_rate,
-            prepend_intro=prepend_intro
+            prepend_intro=prepend_intro,
+            llm_progress=llm_progress,
+            name_override=name_override
         )
 
         # Display results
@@ -654,7 +704,7 @@ def voices(provider, lang):
             print(f"{Fore.YELLOW}Or use --provider=edge for free voices without API key.{Style.RESET_ALL}")
             sys.exit(1)
 
-        from .modules.voice_cloner import VoiceCloner
+        from .modules.tts import VoiceCloner
 
         print(f"\n{Fore.CYAN}Available ElevenLabs Voices:{Style.RESET_ALL}\n")
 

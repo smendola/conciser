@@ -10,7 +10,7 @@ from .config import Settings
 from .modules.downloader import VideoDownloader
 from .modules.transcriber import Transcriber
 from .modules.condenser import ContentCondenser
-from .modules.voice_cloner import VoiceCloner
+from .modules.tts import VoiceCloner
 from .modules.edge_tts import EdgeTTS
 from .modules.video_generator import VideoGenerator
 from .modules.compositor import VideoCompositor
@@ -65,7 +65,9 @@ class CondenserPipeline:
         tts_provider: str = "elevenlabs",
         slideshow_max_frames: int = None,
         tts_rate: str = "+0%",
-        prepend_intro: bool = False
+        prepend_intro: bool = False,
+        llm_progress: str = None,
+        name_override: str = None
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -130,7 +132,11 @@ class CondenserPipeline:
 
             # Store video_id for output filename (will add tts/voice info later)
             video_id = metadata.get('video_id', 'unknown')
-            normalized_title = metadata.get('normalized_title', metadata['title'])
+            if name_override:
+                from .modules.downloader import normalize_name
+                normalized_title = normalize_name(name_override)
+            else:
+                normalized_title = metadata.get('normalized_title', metadata['title'])
             # Output filename will be generated after we know TTS provider and voice
 
             # Stage 2: Start frame extraction in parallel (for slideshow mode only)
@@ -202,7 +208,8 @@ class CondenserPipeline:
                         transcript,
                         duration_minutes,
                         aggressiveness,
-                        video_folder
+                        video_folder,
+                        llm_progress=llm_progress
                     )
                     condensed_script = condensed_result['condensed_script']
             else:
@@ -211,7 +218,8 @@ class CondenserPipeline:
                     transcript,
                     duration_minutes,
                     aggressiveness,
-                    video_folder
+                    video_folder,
+                    llm_progress=llm_progress
                 )
                 condensed_script = condensed_result['condensed_script']
 
@@ -427,13 +435,15 @@ class CondenserPipeline:
         transcript: str,
         duration_minutes: float,
         aggressiveness: int,
-        video_folder: Path
+        video_folder: Path,
+        llm_progress: str = None
     ) -> Dict[str, Any]:
         """Condense transcript using LLM."""
         condensed_result = self.condenser.condense(
             transcript,
             duration_minutes,
-            aggressiveness
+            aggressiveness,
+            llm_progress=llm_progress
         )
 
         # Validate
@@ -455,8 +465,10 @@ class CondenserPipeline:
         """Clone voice from video."""
         from .modules.downloader import normalize_name
 
-        # Get audio path
+        # Get audio path (extract from video if not already done by transcribe step)
         audio_path = video_folder / "extracted_audio.wav"
+        if not audio_path.exists():
+            extract_audio(video_path, audio_path)
 
         # Extract clean speech segments
         clean_segments = self.transcriber.extract_clean_speech_segments(
@@ -896,8 +908,11 @@ class CondenserPipeline:
         )
 
     def _extract_video_id(self, url: str) -> Optional[str]:
-        """Extract YouTube video ID from URL."""
+        """Extract YouTube video ID from URL, or return bare ID if one was passed directly."""
         import re
+        # Bare video ID (11 chars, YouTube-legal characters)
+        if re.fullmatch(r'[a-zA-Z0-9_-]{11}', url):
+            return url
         # Match YouTube URLs
         patterns = [
             r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})',

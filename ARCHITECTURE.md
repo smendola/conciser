@@ -50,11 +50,13 @@ NBJ Condenser is a YouTube video condensation system with three interfaces:
 Two-strategy approach — YouTube captions are tried first, Whisper is the fallback:
 
 1. **YouTube Transcript API** (primary, free): fetches captions directly from YouTube via `youtube_transcript_api`. Succeeds for most public videos that have auto-generated or manual captions.
-2. **OpenAI Whisper API** (fallback, paid): if YouTube captions are unavailable (disabled, private, or missing), ffmpeg extracts audio (WAV, 16kHz) and sends it to Whisper. Large files are auto-chunked at the 25MB API limit and timestamps are stitched back together.
+2. **Whisper** (fallback): if YouTube captions are unavailable (disabled, private, or missing), ffmpeg extracts audio (WAV, 16kHz) and sends it to Whisper. Large files are auto-chunked at the 25MB limit and timestamps are stitched back together. Two providers supported:
+   - **Groq** (default, free): `whisper-large-v3` via Groq's OpenAI-compatible API. Significantly faster than OpenAI due to Groq's LPU hardware.
+   - **OpenAI** (fallback if no `GROQ_API_KEY`): `whisper-1`, paid at ~$0.006/min.
 
 Resume support: skips both strategies if `transcript.json` already exists in the video's temp folder.
 
-**External Dependencies**: `youtube_transcript_api` (primary); OpenAI Whisper API + ffmpeg (fallback)
+**External Dependencies**: `youtube_transcript_api` (primary); Groq API or OpenAI API + ffmpeg (fallback)
 
 ---
 
@@ -297,7 +299,8 @@ Uses Pydantic Settings with `.env` file loading.
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | OpenAI key (Whisper transcription + optional condensation) |
+| `GROQ_API_KEY` | Groq key (free Whisper transcription, default) |
+| `OPENAI_API_KEY` | OpenAI key (condensation; Whisper fallback if no Groq key) |
 | `ANTHROPIC_API_KEY` | Anthropic key (optional Claude condensation) |
 | `ELEVENLABS_API_KEY` | ElevenLabs key (optional voice cloning TTS) |
 | `DID_API_KEY` | D-ID key (optional avatar video mode only) |
@@ -323,7 +326,8 @@ YouTube URL
     │                                                      │
     ▼                                                      │
 [TRANSCRIBE] YouTube captions (free) → transcript.json     |
-    │         └─ fallback: Whisper API (paid)              │
+    │         └─ fallback: Whisper via Groq (free/fast)    │
+    │                      or OpenAI (if no Groq key)      │
     │                                                      │
     ▼                                                      │
 [CONDENSE] OpenAI/Claude → condensed_script + key_points   │
@@ -356,7 +360,7 @@ nbj-condenser/
 │   ├── pipeline.py             # CondenserPipeline orchestrator
 │   ├── modules/
 │   │   ├── downloader.py       # Stage 1: Video download (yt-dlp)
-│   │   ├── transcriber.py      # Stage 2: Whisper transcription
+│   │   ├── transcriber.py      # Stage 2: Transcription (YouTube captions → Whisper via Groq/OpenAI)
 │   │   ├── condenser.py        # Stage 3: LLM condensation
 │   │   ├── edge_tts.py         # Stage 4: Edge TTS (free)
 │   │   ├── voice_cloner.py     # Stage 4 alt: ElevenLabs voice cloning
@@ -420,7 +424,7 @@ nbj-condenser/
 
 ### Pipeline Stage Timing (typical 10-min video)
 1. **Download**: 30–120s (network-dependent)
-2. **Transcribe**: ~60s (Whisper API, ~1/10 real-time)
+2. **Transcribe**: ~5s via YouTube captions; or ~10–60s via Whisper (Groq is much faster than OpenAI)
 3. **Condense**: 10–30s (LLM API call)
 4. **TTS (Edge)**: 5–15s (async, very fast)
 5. **Slideshow composition**: 30–90s (ffmpeg)
@@ -437,7 +441,8 @@ nbj-condenser/
 | Service | Use | Cost Estimate |
 |---------|-----|---------------|
 | YouTube Transcript API | Transcription (primary) | Free |
-| OpenAI Whisper | Transcription (fallback) | ~$0.006/min audio |
+| Groq Whisper (whisper-large-v3) | Transcription fallback (default) | Free |
+| OpenAI Whisper (whisper-1) | Transcription fallback (if no Groq key) | ~$0.006/min audio |
 | OpenAI (gpt-5.2) | Condensation (default) | varies |
 | Anthropic Claude | Condensation (optional) | ~$3–15/M tokens |
 | Edge TTS | Speech generation (default) | Free |
@@ -453,7 +458,8 @@ nbj-condenser/
 - ffmpeg, ffprobe
 - `yt-dlp` — Video downloading
 - `youtube_transcript_api` — YouTube captions (primary transcription)
-- `openai` — Whisper API (fallback transcription) + optional condensation
+- `openai` — OpenAI SDK used for both Groq and OpenAI endpoints (condensation + Whisper fallback)
+- Groq API key — free Whisper transcription fallback (recommended; get one at console.groq.com)
 - `edge-tts` — Free TTS
 - `flask`, `flask-cors` — Server
 - `click` — CLI framework
