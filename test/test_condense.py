@@ -299,6 +299,36 @@ def condense_video_at_level(
         }
 
 
+_ANSI_UNDERLINE = "\033[4m"
+
+
+def print_summary_table(results: list) -> int:
+    """Print summary table with underline on last row of each video group. Returns success count."""
+    print(f"{'Video ID':<15} {'Aggr':>6} {'Original':>10} {'Target':>10} {'Condensed':>10} {'Target%':>8} {'Actual%':>8} {'Error%':>10} {'Status':<10}")
+    print("-" * 108)
+
+    success_count = 0
+    for i, r in enumerate(results):
+        is_last_in_group = (i == len(results) - 1) or (results[i + 1]['video_id'] != r['video_id'])
+        ul = _ANSI_UNDERLINE if is_last_in_group else ""
+
+        succeeded = r.get('success', True)
+        status = f"{ul}{Fore.GREEN}✓{Style.RESET_ALL}" if succeeded else f"{ul}{Fore.RED}✗{Style.RESET_ALL}"
+        if succeeded:
+            success_count += 1
+            error_pct = r['error_pct']
+            error_color = Fore.GREEN if abs(error_pct) < 5 else Fore.YELLOW if abs(error_pct) < 10 else Fore.RED
+            error_num_str = f"{error_pct:+.0f}%"
+            error_str = f"{error_color}{error_num_str:>10}{Style.RESET_ALL}{ul}"
+        else:
+            error_str = f"       N/A"
+
+        print(f"{ul}{r['video_id']:<15} {r['aggressiveness']:>6} {r['original_words']:>10,} {r['target_words']:>10,} {r['condensed_words']:>10,} "
+              f"{r['target_retention']:>8.1f} {r['actual_retention']:>8.1f} {error_str} {status}")
+
+    return success_count
+
+
 @click.command()
 @click.option(
     '--videos',
@@ -416,23 +446,11 @@ def main(videos, aggressiveness, output_dir, re_summarize):
         # Sort results by video_id, then by aggressiveness (numerical)
         results.sort(key=lambda r: (r['video_id'], r['aggressiveness']))
 
-        # Print summary table (reuse code below)
         print(f"\n{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}Test Summary (from cached results){Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}\n")
 
-        print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Error%':<10} {'Status':<10}")
-        print("-" * 108)
-
-        for r in results:
-            status = f"{Fore.GREEN}✓{Style.RESET_ALL}"
-            error_pct = r['error_pct']
-            error_color = Fore.GREEN if abs(error_pct) < 5 else Fore.YELLOW if abs(error_pct) < 10 else Fore.RED
-            error_num_str = f"{error_pct:+.0f}%"
-            error_str = f"{error_color}{error_num_str:<10}{Style.RESET_ALL}"
-
-            print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['target_words']:<10,} {r['condensed_words']:<10,} "
-                  f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {error_str} {status:<10}")
+        print_summary_table(results)
 
         # Calculate average accuracy
         avg_error = sum(abs(r['error_pct']) for r in results) / len(results) if results else 0
@@ -530,24 +548,7 @@ def main(videos, aggressiveness, output_dir, re_summarize):
         writer.writerows(results)
 
     # Print summary table
-    print(f"{'Video ID':<15} {'Aggr':<6} {'Original':<10} {'Target':<10} {'Condensed':<10} {'Target%':<8} {'Actual%':<8} {'Error%':<10} {'Status':<10}")
-    print("-" * 108)
-
-    success_count = 0
-    for r in results:
-        status = f"{Fore.GREEN}✓{Style.RESET_ALL}" if r['success'] else f"{Fore.RED}✗{Style.RESET_ALL}"
-        if r['success']:
-            success_count += 1
-            # Colorize error percentage - pad BEFORE applying color
-            error_pct = r['error_pct']
-            error_color = Fore.GREEN if abs(error_pct) < 5 else Fore.YELLOW if abs(error_pct) < 10 else Fore.RED
-            error_num_str = f"{error_pct:+.0f}%"
-            error_str = f"{error_color}{error_num_str:<10}{Style.RESET_ALL}"
-        else:
-            error_str = "N/A       "  # Pad to match column width
-
-        print(f"{r['video_id']:<15} {r['aggressiveness']:<6} {r['original_words']:<10,} {r['target_words']:<10,} {r['condensed_words']:<10,} "
-              f"{r['target_retention']:<8.1f} {r['actual_retention']:<8.1f} {error_str} {status:<10}")
+    success_count = print_summary_table(results)
 
     print(f"\n{Fore.CYAN}Results:{Style.RESET_ALL}")
     print(f"  Total tests: {total_tests}")
