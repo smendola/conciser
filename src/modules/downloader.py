@@ -75,7 +75,8 @@ class VideoDownloader:
         self,
         url: str,
         quality: str = "1080p",
-        output_filename: str = None
+        output_filename: str = None,
+        folder_label: str = None
     ) -> Dict[str, Any]:
         """
         Download video from URL into organized folder structure.
@@ -106,7 +107,12 @@ class VideoDownloader:
             # Extract video ID and title
             video_id = info.get('id', 'unknown')
             title = info.get('title', 'unknown_video')
-            normalized_title = normalize_name(truncate_at_punctuation(title))
+            # If a label was supplied (e.g. from videos.txt), use it for the folder
+            # name instead of the YT title so folder names are human-meaningful.
+            if folder_label:
+                normalized_title = normalize_name(folder_label)
+            else:
+                normalized_title = normalize_name(truncate_at_punctuation(title))
 
             # Create video-specific folder: {video_id}_{normalized_title}/
             # Note: video_id is kept as-is (not lowercased or mangled)

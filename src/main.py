@@ -80,14 +80,36 @@ Script to format:
         return None
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('nbj.log'),
-        logging.StreamHandler()
-    ]
+# File paths in log messages are rendered in bright blue on the stream handler.
+_LOG_FMT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+_BLUE  = '\033[94m'   # bright blue
+_RESET = '\033[0m'
+_PATH_RE = __import__('re').compile(
+    r'(?:'
+    r'[\w./\\-]+/[\w./\\-]+'                                                    # path/with/slashes
+    r'|'
+    r'\w[\w._-]*\.(?:json|mp3|mp4|wav|txt|webm|mkv|log|py|zip|jpg|jpeg|png)'   # filename.ext
+    r')'
 )
+
+class _ColorStreamFormatter(logging.Formatter):
+    """Stream formatter that renders file paths in bright blue."""
+    def format(self, record: logging.LogRecord) -> str:
+        msg = super().format(record)
+        return _PATH_RE.sub(lambda m: f"{_BLUE}{m.group()}{_RESET}", msg)
+
+_file_handler = logging.FileHandler('nbj.log')
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(logging.Formatter(_LOG_FMT))
+
+_stream_handler = logging.StreamHandler()
+_stream_handler.setLevel(logging.INFO)
+_stream_handler.setFormatter(_ColorStreamFormatter(_LOG_FMT))
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.DEBUG)
+_root_logger.addHandler(_file_handler)
+_root_logger.addHandler(_stream_handler)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +133,7 @@ class ProgressDisplay:
     def show(stage: str, message: str):
         """Show progress message."""
         color = ProgressDisplay.STAGE_COLORS.get(stage, Fore.WHITE)
+        message = _PATH_RE.sub(lambda m: f"{_BLUE}{m.group()}{_RESET}", message)
         print(f"{color}[{stage}]{Style.RESET_ALL} {message}")
 
 
@@ -172,11 +195,6 @@ def cli():
     help='Output file path (default: auto-generated in output/ directory)'
 )
 @click.option(
-    '--reduction',
-    type=click.IntRange(10, 90),
-    help='Target reduction percentage (overrides aggressiveness)'
-)
-@click.option(
     '--resume/--no-resume',
     default=True,
     help='Resume from existing intermediate files (default: enabled)'
@@ -223,7 +241,7 @@ def cli():
     default=None,
     help='Show LLM streaming output: dots (one dot per chunk) or text (raw streamed text).'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress):
+def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress):
     """
     Condense a video from URL.
 
@@ -292,8 +310,6 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
         print(f"URL: {url}")
         print(f"Aggressiveness: {aggressiveness}/10")
-        if reduction:
-            print(f"Target Reduction: {reduction}%")
         print(f"Quality: {quality}")
         print(f"Video Mode: {video_gen_mode}")
 
@@ -392,10 +408,6 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
 
         # Initialize pipeline
         pipeline = CondenserPipeline(settings)
-
-        # Set target reduction if specified
-        if reduction:
-            settings.target_reduction_percentage = reduction
 
         # Parse output path
         output_path = Path(output) if output else None
@@ -560,6 +572,7 @@ TEMP_DIR=./temp
 OUTPUT_DIR=./output
 """
 
+    logger.info("Writing configuration: .env")
     with open('.env', 'w') as f:
         f.write(env_content)
 
@@ -763,7 +776,13 @@ def voices(provider, lang):
     default=True,
     help='Format script into paragraphs using AI (default: enabled)'
 )
-def show_script(url_or_video_id, format):
+@click.option(
+    '--aggressiveness', '-a',
+    type=click.IntRange(1, 10),
+    default=5,
+    help='Aggressiveness level used when condensing (must match). Default: 5'
+)
+def show_script(url_or_video_id, format, aggressiveness):
     """
     Display the condensed script for a video.
 
@@ -808,7 +827,7 @@ def show_script(url_or_video_id, format):
             sys.exit(1)
 
         # Load condensed script
-        script_path = video_folder / "condensed_script.json"
+        script_path = video_folder / f"condensed_script_a{aggressiveness}.json"
         if not script_path.exists():
             click.echo(f"{Fore.RED}Error: Condensed script not found at: {script_path}{Style.RESET_ALL}")
             sys.exit(1)
@@ -830,6 +849,7 @@ def show_script(url_or_video_id, format):
                     if formatted_script:
                         condensed_result['condensed_script'] = formatted_script
                         # Save the formatted version
+                        logger.debug(f"Saving formatted script: {script_path}")
                         with open(script_path, 'w', encoding='utf-8') as f:
                             json.dump(condensed_result, f, indent=2, ensure_ascii=False)
                         click.echo(f"{Fore.GREEN}Script formatted and saved!{Style.RESET_ALL}\n")

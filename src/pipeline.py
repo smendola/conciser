@@ -20,6 +20,16 @@ from .utils.video_utils import extract_frame, detect_scene_changes, extract_scen
 logger = logging.getLogger(__name__)
 
 
+def _encode_rate(rate: str) -> str:
+    """Encode TTS speech rate for use in filenames. '+25%' → 's25', '-10%' → 'sm10', '+0%' → 's0'."""
+    r = rate.strip().rstrip('%')
+    if r.startswith('+'):
+        return f"s{r[1:]}"
+    elif r.startswith('-'):
+        return f"sm{r[1:]}"
+    return f"s{r}"
+
+
 class CondenserPipeline:
     """Main pipeline for video condensation."""
 
@@ -117,13 +127,13 @@ class CondenserPipeline:
                     video_folder = video_path.parent  # Video folder is parent of video file
                 else:
                     update_progress("FETCH", f"Fetching video {video_id}...")
-                    download_result = self._download_video(video_url, quality)
+                    download_result = self._download_video(video_url, quality, name_override)
                     video_path = download_result['video_path']
                     metadata = download_result['metadata']
                     video_folder = download_result['video_folder']
             else:
                 update_progress("FETCH", f"Fetching video {video_id}...")
-                download_result = self._download_video(video_url, quality)
+                download_result = self._download_video(video_url, quality, name_override)
                 video_path = download_result['video_path']
                 metadata = download_result['metadata']
                 video_folder = download_result['video_folder']
@@ -196,7 +206,7 @@ class CondenserPipeline:
             _t = time.time()
             if resume:
                 # Check for existing condensed script
-                existing_condensed = self._find_existing_condensed_script(video_folder)
+                existing_condensed = self._find_existing_condensed_script(video_folder, aggressiveness)
 
                 if existing_condensed:
                     update_progress("CONDENSE", f"Resuming from step CONDENSE - found existing condensed script")
@@ -254,17 +264,17 @@ class CondenserPipeline:
             _t = time.time()
             if resume:
                 # Check for existing generated speech
-                existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id)
+                existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id, aggressiveness, tts_rate)
 
                 if existing_speech:
                     update_progress("VOICE_GENERATE", f"Resuming from step VOICE_GENERATE - found existing speech: {existing_speech.name}")
                     generated_audio_path = existing_speech
                 else:
                     update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate)
+                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness)
             else:
                 update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate)
+                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness)
 
             logger.info(f"VOICE_GENERATE: {time.time() - _t:.1f} sec")
 
@@ -278,7 +288,8 @@ class CondenserPipeline:
                 if output_path is None:
                     import re
                     voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
-                    output_filename = f"{video_id}_{normalized_title}_{tts_provider}_{voice_snake}.mp3"
+                    rate_str = _encode_rate(tts_rate)
+                    output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}.mp3"
                     output_path = self.settings.output_dir / output_filename
 
                 # Copy the generated audio as the final output
@@ -331,8 +342,9 @@ class CondenserPipeline:
                 # Normalize voice_id to snake_case
                 import re
                 voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
-                # Format: {video_id}_{title_snake_60}_{tts_provider}_{voice_snake}.mp4
-                output_filename = f"{video_id}_{normalized_title}_{tts_provider}_{voice_snake}.mp4"
+                # Format: {video_id}_{title_snake_60}_a{N}_{tts_provider}_{voice_snake}_{rate}.mp4
+                rate_str = _encode_rate(tts_rate)
+                output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}.mp4"
                 output_path = self.settings.output_dir / output_filename
 
             # Stage 7: Compose final video
@@ -379,9 +391,9 @@ class CondenserPipeline:
                 logger.error(f"Pipeline failed: {e}")
             raise
 
-    def _download_video(self, url: str, quality: str) -> Dict[str, Any]:
+    def _download_video(self, url: str, quality: str, name_override: str = None) -> Dict[str, Any]:
         """Download video from URL."""
-        return self.downloader.download(url, quality=quality)
+        return self.downloader.download(url, quality=quality, folder_label=name_override)
 
     def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None) -> Dict[str, Any]:
         """
@@ -404,7 +416,9 @@ class CondenserPipeline:
             if youtube_transcript:
                 logger.info("Using YouTube transcript (no Whisper API cost)")
                 # Save transcript
-                transcript_json_path = video_folder / "transcript.json"
+                import re as _re
+                _model_norm = _re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
+                transcript_json_path = video_folder / f"transcript_{_model_norm}.json"
                 self.transcriber.save_transcript(youtube_transcript, transcript_json_path)
                 return youtube_transcript
             else:
@@ -425,7 +439,9 @@ class CondenserPipeline:
         transcript_result = self.transcriber.transcribe(audio_path, include_timestamps=True)
 
         # Save transcript
-        transcript_json_path = video_folder / "transcript.json"
+        import re as _re
+        _model_norm = _re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
+        transcript_json_path = video_folder / f"transcript_{_model_norm}.json"
         self.transcriber.save_transcript(transcript_result, transcript_json_path)
 
         return transcript_result
@@ -450,7 +466,7 @@ class CondenserPipeline:
         self.condenser.validate_condensed_script(condensed_result)
 
         # Save condensed script
-        script_path = video_folder / "condensed_script.json"
+        script_path = video_folder / f"condensed_script_a{aggressiveness}.json"
         self.condenser.save_condensed_script(condensed_result, script_path)
 
         return condensed_result
@@ -512,12 +528,13 @@ class CondenserPipeline:
 
         return voice_id
 
-    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs", tts_rate: str = "+0%") -> Path:
+    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs", tts_rate: str = "+0%", aggressiveness: int = 5) -> Path:
         """Generate speech from script."""
-        # Create unique filename based on provider and voice
+        # Create unique filename encoding all params that affect the audio bytes
         import re
         voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
-        output_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}.mp3"
+        rate_str = _encode_rate(tts_rate)
+        output_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}.mp3"
 
         if tts_provider == "edge":
             # Use Edge TTS
@@ -537,7 +554,7 @@ class CondenserPipeline:
             )
 
         # Normalize audio
-        normalized_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}_normalized.mp3"
+        normalized_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_normalized.mp3"
         normalize_audio(output_path, normalized_path)
 
         return normalized_path
@@ -832,6 +849,7 @@ class CondenserPipeline:
 
         # Create concat file with timed durations (use absolute paths)
         concat_file = video_folder / "slideshow_concat.txt"
+        logger.debug(f"Writing slideshow concat list: {concat_file}")
         with open(concat_file, 'w') as f:
             for ft in frame_timings:
                 # Convert to absolute path for ffmpeg concat demuxer
@@ -977,10 +995,11 @@ class CondenserPipeline:
             return None
 
     def _find_existing_transcript(self, video_path: Path) -> Optional[Dict[str, Any]]:
-        """Find existing transcript JSON file."""
-        # Look for transcript JSON in video folder
+        """Find existing transcript JSON file (keyed by transcription model)."""
+        import re
         video_folder = video_path.parent
-        transcript_json = video_folder / "transcript.json"
+        model_norm = re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
+        transcript_json = video_folder / f"transcript_{model_norm}.json"
 
         if transcript_json.exists():
             logger.info(f"Found existing transcript: {transcript_json}")
@@ -988,9 +1007,9 @@ class CondenserPipeline:
 
         return None
 
-    def _find_existing_condensed_script(self, video_folder: Path) -> Optional[Dict[str, Any]]:
-        """Find existing condensed script JSON file."""
-        condensed_script_json = video_folder / "condensed_script.json"
+    def _find_existing_condensed_script(self, video_folder: Path, aggressiveness: int = 5) -> Optional[Dict[str, Any]]:
+        """Find existing condensed script JSON file for this aggressiveness level."""
+        condensed_script_json = video_folder / f"condensed_script_a{aggressiveness}.json"
 
         if condensed_script_json.exists():
             logger.info(f"Found existing condensed script: {condensed_script_json}")
@@ -998,11 +1017,12 @@ class CondenserPipeline:
 
         return None
 
-    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str) -> Optional[Path]:
-        """Find existing generated speech file for this provider and voice."""
+    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str, aggressiveness: int = 5, tts_rate: str = "+0%") -> Optional[Path]:
+        """Find existing generated speech file matching all generation params."""
         import re
         voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
-        speech_path = video_folder / f"generated_speech_{tts_provider}_{voice_normalized}_normalized.mp3"
+        rate_str = _encode_rate(tts_rate)
+        speech_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_normalized.mp3"
 
         if speech_path.exists():
             logger.info(f"Found existing generated speech: {speech_path}")
@@ -1012,6 +1032,7 @@ class CondenserPipeline:
 
     def save_pipeline_state(self, output_path: Path, state: Dict[str, Any]):
         """Save pipeline state for resume capability."""
+        logger.debug(f"Saving pipeline state: {output_path}")
         with open(output_path, 'w') as f:
             json.dump(state, f, indent=2, default=str)
 

@@ -206,11 +206,13 @@ class VideoCompositor:
             if len(videos_to_concat) == 1:
                 # No intro/outro, just copy
                 import shutil
+                logger.debug(f"Copying {main_video_path} to {output_path}")
                 shutil.copy(main_video_path, output_path)
                 return output_path
 
             # Create concat file
             concat_file = self.temp_dir / "concat_list.txt"
+            logger.debug(f"Writing video concat list: {concat_file}")
             with open(concat_file, 'w') as f:
                 for video in videos_to_concat:
                     f.write(f"file '{video.absolute()}'\n")

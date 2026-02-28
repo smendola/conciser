@@ -242,7 +242,7 @@ class VoiceCloner:
 
         # Create a concat file
         concat_file = output_path.with_suffix('.txt')
-
+        logger.debug(f"Writing audio concat list: {concat_file}")
         with open(concat_file, 'w') as f:
             for path in input_paths:
                 f.write(f"file '{path.absolute()}'\n")
