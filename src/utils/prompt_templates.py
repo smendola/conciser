@@ -108,157 +108,154 @@ Remember to format the condensed_script with paragraph breaks (\\n\\n) at natura
 
 STRATEGY_PROMPTS = {
     1: """
-**Aggressiveness Level 1 out of 10: Conservative ({retention_range} retention)**
+        **Aggressiveness Level 1 out of 10: Conservative ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Think like editing a movie: you can cut scenes or dialogue, but normally you don't change what the actors say
-- Retain some entire passages from the original transcript verbatim when it is not excesively verbose
-- Paraphrase sparingly to achieve word count
-- Phrases and entire sentences may be cut if they do not contribute to the key insights
+        **Approach:**
+        - Think like editing a movie: you can cut scenes or dialogue, but normally you don't change what the actors say
+        - Retain some entire passages from the original transcript verbatim when it is not excesively verbose
+        - Paraphrase sparingly to achieve word count
+        - Phrases and entire sentences may be cut if they do not contribute to the key insights
 
-**Priority:** Preserve the speaker's voice and natural flow.
-""",
+        **Priority:** Preserve the speaker's voice and natural flow.
+    """,
 
     2: """
-**Aggressiveness Level 2 out of 10: Light ({retention_range} retention)**
+        **Aggressiveness Level 2 out of 10: Light ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Light paraphrasing and strategic cuts
+        **Approach:**
+        - Light paraphrasing and strategic cuts
 
-**Priority:** Minimal loss of content, preserving the speaker's voice and natural flow.
-""",
+        **Priority:** Minimal loss of content, preserving the speaker's voice and natural flow.
+    """,
 
     3: """
-**Aggressiveness Level 3 out of 10: Gentle ({retention_range} retention)**
+        **Aggressiveness Level 3 out of 10: Gentle ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase more freely to tighten content and reduce word count
-- Some cutting is inevitable at this aggressiveness level
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase more freely to tighten content and reduce word count
+        - Some cutting is inevitable at this aggressiveness level
 
-**Priority:** Clean up the content while keeping the speaker's voice recognizable.
-""",
+        **Priority:** Clean up the content while keeping the speaker's voice recognizable.
+    """,
 
     4: """
-**Aggressiveness Level 4 out of 10: Moderate-Light ({retention_range} retention)**
+        **Aggressiveness Level 4 out of 10: Moderate-Light ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase more freely to tighten content and reduce word count
-- Some cutting is inevitable at this aggressiveness level
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase more freely to tighten content and reduce word count
+        - Some cutting is inevitable at this aggressiveness level
 
-**Priority:** Clean up the content while keeping the speaker's voice recognizable.
-""",
+        **Priority:** Clean up the content while keeping the speaker's voice recognizable.
+    """,
 
     5: """
-**Aggressiveness Level 5 out of 10: Moderate ({retention_range} retention)**
+        **Aggressiveness Level 5 out of 10: Moderate ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase very freely to tighten content and reduce word count
-- Cut freely but maintain logical flow and coherence
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase very freely to tighten content and reduce word count
+        - Cut freely but maintain logical flow and coherence
 
-**Priority:** Clean up the content while keeping the speaker's voice recognizable.
-
-**Priority:** Capture the essential content while significantly reducing length.
-""",
+        **Priority:** Clean up the content while keeping the speaker's voice recognizable.
+    """,
 
     6: """
-**Aggressiveness Level 6 out of 10: Moderate-Aggressive ({retention_range} retention)**
+        **Aggressiveness Level 6 out of 10: Moderate-Aggressive ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase very freely to tighten content and reduce word count
-- Cut freely but maintain logical flow and coherence
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase very freely to tighten content and reduce word count
+        - Cut freely but maintain logical flow and coherence
 
-**Priority:** Extract core content; speaker's voice becomes secondary to insights.
-""",
+        **Priority:** Extract core content; speaker's voice becomes secondary to insights.
+    """,
 
     7: """
-**Aggressiveness Level 7 out of 10: Aggressive ({retention_range} retention)**
+        **Aggressiveness Level 7 out of 10: Aggressive ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase very freely to tighten content and reduce word count
-- Cut freely but maintain logical flow and coherence
-- Not all arguments or insights must be preserved at this level; focus on the most important ones
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase very freely to tighten content and reduce word count
+        - Cut freely but maintain logical flow and coherence
+        - Not all arguments or insights must be preserved at this level; focus on the most important ones
 
-**Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
-is less of a concern.
-""",
+        **Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
+        is less of a concern.
+        """,
 
-    8: """
-**Aggressiveness Level 8 out of 10: Very Aggressive ({retention_range} retention)**
+            8: """
+        **Aggressiveness Level 8 out of 10: Very Aggressive ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
-- Paraphrase very freely to tighten content and reduce word count
-- In some case go beyond paraphrasing; summarize
-- Cut freely but maintain logical flow and coherence
-- Not all arguments or insights must be preserved at this level; focus on the most important ones
+        **Approach:**
+        - Verbatim retention only for sentences or phrases that are impactful or uniquely expressed
+        - Paraphrase very freely to tighten content and reduce word count
+        - In some case go beyond paraphrasing; summarize
+        - Cut freely but maintain logical flow and coherence
+        - Not all arguments or insights must be preserved at this level; focus on the most important ones
 
-**Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
-is less of a concern.
+        **Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
+        is less of a concern.
 
-**Priority:** High information density; flow possibly compromised; voice certainly (but not purposely) compromised.
-""",
+        **Priority:** High information density; flow possibly compromised; voice certainly (but not purposely) compromised.
+    """,
 
     9: """
-**Aggressiveness Level 9 out of 10: Extreme ({retention_range} retention)**
+        **Aggressiveness Level 9 out of 10: Extreme ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Verbatim retention is not desired
-- Summarize, not just paraphrase
-- Cut freely but maintain logical flow and coherence
-- Not all arguments or insights must be preserved at this level; focus on the most important ones
+        **Approach:**
+        - Verbatim retention is not desired
+        - Summarize, not just paraphrase
+        - Cut freely but maintain logical flow and coherence
+        - Not all arguments or insights must be preserved at this level; focus on the most important ones
 
-**Priority:** Distill to one or two main arguments and insights; natural flow still needed, but speaker's voice 
-is not a concern.
-
-""",
+        **Priority:** Distill to one or two main arguments and insights; natural flow still needed, but speaker's voice 
+        is not a concern.
+    """,
 
     10: """
-**Aggressiveness Level 10 out of 10: Maximum ({retention_range} retention)**
+        **Aggressiveness Level 10 out of 10: Maximum ({retention_range} retention)**
 
-The following instructions are additive of the general system instructions, and are specific
-to this particular aggressiveness level.
+        The following instructions are additive of the general system instructions, and are specific
+        to this particular aggressiveness level.
 
-**Approach:**
-- Cut ruthlessly
-- Summarize
-- Maximum one or two key insights preserved; minimal supporting context
-- Speaker's voice is not a concern
-- Natural flow desired to the extent possible but may be compromised if necessary to hit word count
+        **Approach:**
+        - Cut ruthlessly
+        - Summarize
+        - Maximum one or two key insights preserved; minimal supporting context
+        - Speaker's voice is not a concern
+        - Natural flow desired to the extent possible but may be compromised if necessary to hit word count
 
-**Priority:**  Maximum information density.
-"""
+        **Priority:**  Maximum information density.
+    """
 }
 
 # ==============================================================================

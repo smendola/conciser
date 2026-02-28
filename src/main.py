@@ -185,7 +185,13 @@ def cli():
     default='+0%',
     help='Speech speed for Edge TTS (e.g., "+50%" for faster, "-25%" for slower, "+0%" for normal). Only works with Edge TTS provider.'
 )
-def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate):
+@click.option(
+    '--prepend-intro',
+    is_flag=True,
+    default=False,
+    help='Prepend a numbered list of key take-aways to the TTS script.'
+)
+def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro):
     """
     Condense a video from URL.
 
@@ -361,7 +367,8 @@ def condense(url, aggressiveness, quality, output, reduction, resume, video_gen_
             voice_id=voice_id if skip_voice_clone else None,
             tts_provider=tts_provider,
             slideshow_max_frames=slideshow_frames,
-            tts_rate=speech_rate
+            tts_rate=speech_rate,
+            prepend_intro=prepend_intro
         )
 
         # Display results

@@ -67,14 +67,15 @@ class ContentCondenser:
         if self.provider != "openai":
             raise ValueError("Chain initialization is only supported for the OpenAI provider")
 
+        import textwrap
         from ..utils.chain_store import save_chains
         from ..utils.prompt_templates import CONDENSE_SYSTEM_PROMPT, STRATEGY_PROMPTS, RETENTION_RANGES
 
         chains = {}
         for level in range(1, 11):
             retention_range = RETENTION_RANGES[level]
-            strategy_prompt = STRATEGY_PROMPTS[level].format(retention_range=retention_range)
-            system_prompt = CONDENSE_SYSTEM_PROMPT.strip() + "\n\n" + strategy_prompt.strip()
+            strategy_prompt = textwrap.dedent(STRATEGY_PROMPTS[level]).strip().format(retention_range=retention_range)
+            system_prompt = CONDENSE_SYSTEM_PROMPT.strip() + "\n\n" + strategy_prompt
 
             logger.info(f"Initializing chain for aggressiveness {level}/10...")
             response = self.client.responses.create(

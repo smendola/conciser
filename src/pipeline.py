@@ -60,7 +60,8 @@ class CondenserPipeline:
         voice_id: str = None,
         tts_provider: str = "elevenlabs",
         slideshow_max_frames: int = None,
-        tts_rate: str = "+0%"
+        tts_rate: str = "+0%",
+        prepend_intro: bool = False
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -211,6 +212,13 @@ class CondenserPipeline:
                 condensed_script = condensed_result['condensed_script']
 
             logger.info(f"CONDENSE: {time.time() - _t:.1f} sec")
+
+            if prepend_intro:
+                key_points = condensed_result.get('key_points_preserved', [])
+                if key_points:
+                    numbered = "\n".join(f"{i+1}. {pt}" for i, pt in enumerate(key_points))
+                    intro = f"The key take-aways from this video are:\n\n{numbered}\n\n"
+                    condensed_script = intro + condensed_script
 
             # Stage 4: Clone voice (or use premade voice)
             _t = time.time()
