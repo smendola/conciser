@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import json
+import time
 
 from .config import Settings
 from .modules.downloader import VideoDownloader
@@ -96,6 +97,7 @@ class CondenserPipeline:
             video_id = self._extract_video_id(video_url)
 
             # Stage 1: Download video
+            _t = time.time()
             if resume:
                 # Check for existing video files FOR THIS SPECIFIC VIDEO ID
                 existing_video = self._find_existing_video(video_id)
@@ -118,6 +120,8 @@ class CondenserPipeline:
                 video_path = download_result['video_path']
                 metadata = download_result['metadata']
                 video_folder = download_result['video_folder']
+
+            logger.info(f"FETCH: {time.time() - _t:.1f} sec")
 
             # Store video_id for output filename (will add tts/voice info later)
             video_id = metadata.get('video_id', 'unknown')
@@ -151,6 +155,7 @@ class CondenserPipeline:
                     logger.info(f"Found {len(existing_frames)} existing frames, skipping extraction")
 
             # Stage 2: Extract and transcribe audio
+            _t = time.time()
             if resume:
                 # Check for existing transcript
                 existing_transcript = self._find_existing_transcript(video_path)
@@ -174,7 +179,10 @@ class CondenserPipeline:
                 segments = transcript_result['segments']
                 duration_minutes = metadata['duration'] / 60.0
 
+            logger.info(f"TRANSCRIBE: {time.time() - _t:.1f} sec")
+
             # Stage 3: Condense content
+            _t = time.time()
             if resume:
                 # Check for existing condensed script
                 existing_condensed = self._find_existing_condensed_script(video_folder)
@@ -202,7 +210,10 @@ class CondenserPipeline:
                 )
                 condensed_script = condensed_result['condensed_script']
 
+            logger.info(f"CONDENSE: {time.time() - _t:.1f} sec")
+
             # Stage 4: Clone voice (or use premade voice)
+            _t = time.time()
             if tts_provider == 'edge':
                 # Edge TTS doesn't need voice cloning
                 update_progress("VOICE_CLONE", f"Using Edge TTS; voice {voice_id}...")
@@ -217,7 +228,10 @@ class CondenserPipeline:
                 used_voice_id = self._clone_voice(video_path, segments, metadata['title'], video_folder)
                 cleanup_voice = True
 
+            logger.info(f"VOICE_CLONE: {time.time() - _t:.1f} sec")
+
             # Stage 5: Generate speech
+            _t = time.time()
             if resume:
                 # Check for existing generated speech
                 existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id)
@@ -232,7 +246,10 @@ class CondenserPipeline:
                 update_progress("VOICE_GENERATE", "Generating speech with voice...")
                 generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate)
 
+            logger.info(f"VOICE_GENERATE: {time.time() - _t:.1f} sec")
+
             # Stage 6: Generate video (or skip for audio-only)
+            _t = time.time()
             if video_gen_mode == "audio_only":
                 update_progress("AUDIO_ONLY", "Skipping video generation; audio-only mode...")
                 logger.info("Audio-only mode: skipping video generation")
@@ -258,6 +275,7 @@ class CondenserPipeline:
                     'quality': quality,
                 }
 
+                logger.info(f"VIDEO_GENERATE (audio_only): {time.time() - _t:.1f} sec")
                 update_progress("COMPLETE", f"Audio condensed successfully: {output_path}")
 
                 return {
@@ -286,6 +304,8 @@ class CondenserPipeline:
                 update_progress("VIDEO_GENERATE", "Creating static image video...")
                 generated_video_path = self._generate_video_static(video_path, generated_audio_path, video_folder)
 
+            logger.info(f"VIDEO_GENERATE: {time.time() - _t:.1f} sec")
+
             # Generate output filename if not provided
             if output_path is None:
                 # Normalize voice_id to snake_case
@@ -296,6 +316,7 @@ class CondenserPipeline:
                 output_path = self.settings.output_dir / output_filename
 
             # Stage 7: Compose final video
+            _t = time.time()
             update_progress("COMPOSE", "Composing final video...")
             final_video_path = self._compose_final_video(
                 generated_video_path,
@@ -303,13 +324,16 @@ class CondenserPipeline:
                 output_path,
                 quality
             )
+            logger.info(f"COMPOSE: {time.time() - _t:.1f} sec")
 
             # Cleanup voice clone (only if we created it)
+            _t = time.time()
             if cleanup_voice:
                 update_progress("CLEANUP", "Cleaning up cloned voice...")
                 self.voice_cloner.delete_voice(used_voice_id)
             else:
                 update_progress("CLEANUP", "Cleaning up...")
+            logger.info(f"CLEANUP: {time.time() - _t:.1f} sec")
 
             # Generate statistics
             stats = {

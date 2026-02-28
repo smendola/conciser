@@ -53,6 +53,41 @@ class ContentCondenser:
         else:
             raise ValueError(f"Unsupported provider: {provider}. Use 'claude' or 'openai'.")
 
+    def init_chains(self) -> dict:
+        """
+        Initialize OpenAI Responses API chains for all 10 aggressiveness levels.
+
+        For each level, sends the combined system prompt (level 1 + level 2) with
+        a seed "Ready." message and stores the resulting response ID. Subsequent
+        condense() calls continue from that chain tip, skipping the system prompt.
+
+        Returns:
+            Dict mapping aggressiveness level strings ("1"-"10") to response IDs.
+        """
+        if self.provider != "openai":
+            raise ValueError("Chain initialization is only supported for the OpenAI provider")
+
+        from ..utils.chain_store import save_chains
+        from ..utils.prompt_templates import CONDENSE_SYSTEM_PROMPT, STRATEGY_PROMPTS, RETENTION_RANGES
+
+        chains = {}
+        for level in range(1, 11):
+            retention_range = RETENTION_RANGES[level]
+            strategy_prompt = STRATEGY_PROMPTS[level].format(retention_range=retention_range)
+            system_prompt = CONDENSE_SYSTEM_PROMPT.strip() + "\n\n" + strategy_prompt.strip()
+
+            logger.info(f"Initializing chain for aggressiveness {level}/10...")
+            response = self.client.responses.create(
+                model=self.model,
+                instructions=system_prompt,
+                input="Ready.",
+            )
+            chains[str(level)] = response.id
+            logger.info(f"  aggressiveness {level} → {response.id}")
+
+        save_chains(self.model, chains)
+        return chains
+
     def condense(
         self,
         transcript: str,
@@ -123,6 +158,20 @@ class ContentCondenser:
                     print(user_prompt)
                 print(f"{'='*80}{Style.RESET_ALL}\n")
 
+            # For OpenAI: resolve chain ID once before entering the retry loop
+            openai_chain_id = None
+            if self.provider == "openai":
+                from ..utils.chain_store import load_chains
+                chains = load_chains(self.model)
+                if chains is None:
+                    logger.info("Chain IDs missing or stale — running init_chains()...")
+                    try:
+                        chains = self.init_chains()
+                    except Exception as e:
+                        logger.warning(f"init_chains() failed: {e} — falling back to chat completions")
+                if chains is not None:
+                    openai_chain_id = chains.get(str(aggressiveness))
+
             # Retry logic for transient errors
             response_text = None
             last_error = None
@@ -134,7 +183,7 @@ class ContentCondenser:
                         message = self.client.messages.create(
                             model=self.model,
                             max_tokens=16000,
-                            temperature=0.3,
+                            # temperature=0.3,
                             system=system_prompt,
                             messages=[
                                 {
@@ -146,31 +195,33 @@ class ContentCondenser:
                         response_text = message.content[0].text
 
                     elif self.provider == "openai":
-                        # Prepare API call parameters
-                        api_params = {
-                            "model": self.model,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": system_prompt
-                                },
-                                {
-                                    "role": "user",
-                                    "content": user_prompt
-                                }
-                            ],
-                            "temperature": 0.3,
-                            "response_format": {"type": "json_object"}
-                        }
-
-                        # Newer models (gpt-5+, o1) use max_completion_tokens instead of max_tokens
-                        if self.model.startswith("gpt-5") or self.model.startswith("o1"):
-                            api_params["max_completion_tokens"] = 16000
+                        if openai_chain_id:
+                            # Responses API: continue from pre-seeded chain (no system prompt needed)
+                            response = self.client.responses.create(
+                                model=self.model,
+                                previous_response_id=openai_chain_id,
+                                input=user_prompt,
+                                text={"format": {"type": "json_object"}},
+                                max_output_tokens=16000,
+                            )
+                            response_text = response.output_text
                         else:
-                            api_params["max_tokens"] = 16000
-
-                        completion = self.client.chat.completions.create(**api_params)
-                        response_text = completion.choices[0].message.content
+                            # Fallback: chat completions with full system prompt
+                            api_params = {
+                                "model": self.model,
+                                "messages": [
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": user_prompt},
+                                ],
+                                # "temperature": 0.3,
+                                "response_format": {"type": "json_object"},
+                            }
+                            if self.model.startswith("gpt-5") or self.model.startswith("o1"):
+                                api_params["max_completion_tokens"] = 16000
+                            else:
+                                api_params["max_tokens"] = 16000
+                            completion = self.client.chat.completions.create(**api_params)
+                            response_text = completion.choices[0].message.content
 
                     break  # Success! Exit retry loop
 
