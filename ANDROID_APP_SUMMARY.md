@@ -1,178 +1,132 @@
-# NBJ Condenser Android App - Complete
+# NBJ Condenser Android App
 
 ## Overview
 
-Created a native Android app that integrates with the NBJ Condenser server to condense YouTube videos directly from the YouTube app's share menu.
+Native Android app (Kotlin) that integrates with the NBJ Condenser server. Accepts YouTube video share intents and submits them for condensation, showing real-time progress and the final result.
 
-## Features Implemented
+## Package
 
-### ✅ Core Functionality
-- **YouTube Share Target**: App registers as a share target for YouTube videos
-- **API Integration**: Communicates with NBJ Condenser server via REST API
-- **Real-Time Progress**: Polls server every 3 seconds for job status updates
-- **Auto-Play**: Automatically opens condensed video when ready
-- **External Player Support**: Uses Android's intent system to let users choose their preferred video player
+`com.nbj`
 
-### ✅ UI/UX
-- **Material Design 3**: Modern, clean interface
-- **Three States**:
-  1. **Idle**: Welcome screen with instructions
-  2. **Processing**: Progress indicator with status updates
-  3. **Completed**: Success screen with "Play Video" button
-- **Settings Screen**: Configure server URL
-- **Menu**: Access settings from overflow menu
+## Features
 
-### ✅ Technical Features
-- **Kotlin**: Modern Android development
-- **Retrofit**: Type-safe REST client
-- **Coroutines**: Asynchronous networking
-- **ViewBinding**: Type-safe view access
-- **SharedPreferences**: Server URL persistence
+### Core
+- **YouTube Share Target**: Registered as a share handler for YouTube video URLs
+- **API Integration**: Communicates with the NBJ Condenser Flask server via Retrofit
+- **Real-Time Progress**: Polls server every 3 seconds during processing
+- **Auto-Play**: Opens condensed video or audio when complete (via Android intent chooser)
 
-## Project Structure
+### Settings (main screen)
+- **Voice**: Edge TTS voice picker (populated from server `/api/voices?locale=en`)
+- **Aggressiveness**: Slider 1–10
+- **Speech Speed**: Slider (-50% to +100%)
+- **Output Mode**: Spinner — `Slideshow` (MP4) or `Audio Only` (MP3)
+- **Prepend key take-aways intro**: Switch
 
+### Settings screen (overflow menu)
+- **Server URL**: Configurable base URL (default: `https://conciser-aurora.ngrok.dev/`)
+
+### Recent Jobs
+- Stores up to 10 recent jobs in SharedPreferences as JSON
+- Shows video title (fetched via YouTube oEmbed API) instead of raw video ID
+- Tap a job to re-open its download URL
+
+## Architecture
+
+### AppState Machine
 ```
-android/
-├── app/
-│   ├── src/main/
-│   │   ├── java/com/conciser/
-│   │   │   ├── MainActivity.kt          # Main activity
-│   │   │   ├── SettingsActivity.kt      # Settings
-│   │   │   └── ConciSerApi.kt          # API client
-│   │   ├── res/
-│   │   │   ├── layout/
-│   │   │   │   ├── activity_main.xml    # Main UI
-│   │   │   │   └── activity_settings.xml # Settings UI
-│   │   │   ├── values/
-│   │   │   │   ├── strings.xml
-│   │   │   │   ├── colors.xml
-│   │   │   │   └── themes.xml
-│   │   │   ├── drawable/
-│   │   │   │   └── ic_video.xml         # Video icon
-│   │   │   ├── menu/
-│   │   │   │   └── main_menu.xml        # App menu
-│   │   │   └── xml/
-│   │   │       ├── backup_rules.xml
-│   │   │       └── data_extraction_rules.xml
-│   │   └── AndroidManifest.xml          # App manifest
-│   └── build.gradle                     # App dependencies
-├── build.gradle                         # Project config
-├── settings.gradle                      # Project settings
-├── gradle.properties                    # Gradle config
-├── .gitignore                          # Git ignore
-├── README.md                           # Documentation
-└── INSTALL.md                          # Installation guide
+NO_URL → READY → SUBMITTING → PROCESSING → COMPLETED
+                                         → ERROR
 ```
 
-## How It Works
+- `NO_URL` — No video URL yet (app opened directly, not via share)
+- `READY` — URL received, settings visible, "Condense" button active
+- `SUBMITTING` — POST to `/api/condense` in progress
+- `PROCESSING` — Polling `/api/status/<job_id>` every 3 seconds
+- `COMPLETED` — Download URL available, "Play" button shown
+- `ERROR` — Error message shown, retry available
 
-### 1. User Shares YouTube Video
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `MainActivity.kt` | Main UI, AppState machine, intent handling, polling |
+| `SettingsActivity.kt` | Server URL configuration |
+| `ConciSerApi.kt` | Retrofit API client + data classes |
+| `activity_main.xml` | Single-screen NestedScrollView layout |
+| `strings.xml` | String resources |
+
+### API Data Classes (ConciSerApi.kt)
+
 ```kotlin
-// AndroidManifest.xml registers as share target
-<intent-filter>
-    <action android:name="android.intent.action.SEND" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <data android:mimeType="text/plain" />
-</intent-filter>
+data class CondenseRequest(
+    val url: String,
+    val aggressiveness: Int = 5,
+    val voice: String = "",
+    val speech_rate: String = "+10%",
+    val video_mode: String = "slideshow",
+    val prepend_intro: Boolean = false
+)
+
+data class CondenseResponse(val job_id: String, val status: String, val message: String)
+
+data class StatusResponse(
+    val job_id: String, val status: String,
+    val progress: String? = null, val download_url: String? = null,
+    val error: String? = null, val created_at: String? = null, val completed_at: String? = null
+)
 ```
 
-### 2. App Submits to Server
-```kotlin
-// ConciSerApi.kt
-@POST("api/condense")
-suspend fun condenseVideo(@Body request: CondenseRequest): CondenseResponse
-```
+## UI Layout
 
-### 3. Polls for Status
-```kotlin
-// MainActivity.kt - polls every 3 seconds
-lifecycleScope.launch {
-    while (isPolling) {
-        val status = ConciSerApi.service.getStatus(jobId)
-        when (status.status) {
-            "completed" -> showCompleted(jobId)
-            "error" -> showError(status.error)
-            "processing" -> updateProgress(status.progress)
-        }
-        delay(3000)
-    }
-}
-```
+Single-screen `NestedScrollView` with:
+- Video info header (title, bold; video URL)
+- Voice spinner (dialog mode, populated from server)
+- Aggressiveness seekbar (blue)
+- Speech speed seekbar (blue)
+- Output mode spinner
+- Prepend intro switch
+- Status text + progress bar
+- Action button (Condense / Play)
+- Recent jobs list
 
-### 4. Opens Video with External Player
-```kotlin
-// MainActivity.kt - uses Android's intent chooser
-val intent = Intent(Intent.ACTION_VIEW).apply {
-    setDataAndType(Uri.parse(videoUrl), "video/mp4")
-}
-val chooser = Intent.createChooser(intent, "Play condensed video with...")
-startActivity(chooser)
-```
+## Build
 
-## Installation
-
-### Quick Build
 ```bash
 cd android
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### From Android Studio
-1. Open `android/` folder
-2. Click Run (▶️)
-3. Select device
+Or open `android/` in Android Studio and click Run.
 
 ## Configuration
 
-Default server: `https://conciser-aurora.ngrok.dev/`
+**Default server**: `https://conciser-aurora.ngrok.dev/`
 
-To change:
-1. Open app → Menu (⋮) → Settings
-2. Enter new server URL
-3. Save
+To change: open app → menu (⋮) → Settings → enter new server URL → Save.
 
-Or edit `ConciSerApi.kt`:
-```kotlin
-private const val BASE_URL = "https://your-server.com/"
-```
+All settings (voice, aggressiveness, speed, output mode, prepend intro, server URL) are persisted in SharedPreferences.
 
 ## API Communication
 
-The app uses these endpoints:
-
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/api/voices?locale=en` | GET | Populate voice spinner |
 | `/api/condense` | POST | Submit video URL |
-| `/api/status/{id}` | GET | Check job status |
-| `/api/download/{id}` | GET | Get video URL |
+| `/api/status/<id>` | GET | Poll for progress |
+| `/api/download/<id>` | GET | Stream output file |
 
-## User Flow
-
-```
-1. User opens YouTube app
-2. Shares video → Selects "NBJ Condenser"
-3. NBJ Condenser app opens
-4. Shows "Processing..." with progress
-5. Polls server every 3s
-6. When complete → Shows "Video ready!"
-7. Automatically opens video chooser
-8. User selects VLC/MX Player/etc.
-9. Video plays!
-```
+Video title fetched via YouTube oEmbed: `https://www.youtube.com/oembed?url=<url>&format=json`
 
 ## Dependencies
 
 ```gradle
-// Networking
 implementation 'com.squareup.retrofit2:retrofit:2.9.0'
 implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
 implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-
-// Coroutines
+implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
 implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-
-// AndroidX
 implementation 'androidx.core:core-ktx:1.12.0'
 implementation 'androidx.appcompat:appcompat:1.6.1'
 implementation 'com.google.android.material:material:1.11.0'
@@ -183,104 +137,24 @@ implementation 'com.google.android.material:material:1.11.0'
 - **Minimum SDK**: Android 7.0 (API 24)
 - **Target SDK**: Android 14 (API 34)
 - **Permissions**: INTERNET, ACCESS_NETWORK_STATE
-- **External**: Video player app (VLC, MX Player, etc.)
+- **For playback**: Any video/audio player app (VLC, MX Player, system player, etc.)
 
-## Testing
+## User Flow
 
-### Test Flow
-1. Share a YouTube video to the app
-2. Verify progress updates appear
-3. Wait for completion
-4. Verify video player chooser appears
-5. Play video in chosen player
-
-### Manual Test Cases
-- ✅ Share from YouTube app
-- ✅ Share from YouTube in browser
-- ✅ Invalid URL handling
-- ✅ Network error handling
-- ✅ Server busy handling
-- ✅ Progress updates display
-- ✅ Video player chooser works
-- ✅ Settings persistence
-
-## Known Limitations
-
-1. **Single video at a time**: Can't queue multiple videos
-2. **No offline mode**: Requires internet connection
-3. **No download**: Videos stream, not saved to device
-4. **No customization**: Can't adjust aggressiveness/quality in-app
-
-## Future Enhancements
-
-- [ ] Queue multiple videos
-- [ ] Background processing with notifications
-- [ ] Download videos to device storage
-- [ ] Adjust condensing parameters in-app
-- [ ] View processing history
-- [ ] Dark theme
-- [ ] Tablet optimization
-- [ ] Wear OS companion app
+```
+1. User opens YouTube → shares video → selects "NBJ Condenser"
+2. App opens with video URL pre-filled
+3. User adjusts settings (voice, aggressiveness, etc.)
+4. Taps "Condense"
+5. App shows "Processing..." with live progress updates
+6. When complete: "Play Video" button appears
+7. Tap Play → Android intent chooser → watch in preferred player
+```
 
 ## Troubleshooting
 
-### "No video player found"
-**Solution**: Install VLC or MX Player from Play Store
+**"No video player found"** — Install VLC or MX Player from Play Store.
 
-### "Connection error"
-**Solution**:
-- Check server is running
-- Verify server URL in Settings
-- Ensure device can reach server
+**"Connection error"** — Check server is running and server URL in Settings is correct.
 
-### "Processing failed"
-**Solution**:
-- Check server logs
-- Verify video is public/accessible
-- Server may be busy (wait and retry)
-
-## Production Checklist
-
-Before publishing to Play Store:
-
-- [ ] Generate signing key
-- [ ] Configure ProGuard
-- [ ] Build release APK
-- [ ] Test on multiple devices/Android versions
-- [ ] Prepare store listing (screenshots, description)
-- [ ] Set up Google Play Console
-- [ ] Upload APK
-- [ ] Submit for review
-
-## Files Created
-
-**Core Files** (11):
-- `MainActivity.kt` - Main UI logic
-- `SettingsActivity.kt` - Settings screen
-- `ConciSerApi.kt` - API client
-- `activity_main.xml` - Main layout
-- `activity_settings.xml` - Settings layout
-- `AndroidManifest.xml` - App manifest
-- `strings.xml` - Text resources
-- `colors.xml` - Color palette
-- `themes.xml` - App theme
-- `ic_video.xml` - Vector icon
-- `main_menu.xml` - Menu
-
-**Build Files** (5):
-- `build.gradle` (app level)
-- `build.gradle` (project level)
-- `settings.gradle`
-- `gradle.properties`
-- `.gitignore`
-
-**Documentation** (3):
-- `README.md` - Full documentation
-- `INSTALL.md` - Installation guide
-- `ANDROID_APP_SUMMARY.md` - This file
-
-## Summary
-
-The Android app is **production-ready** and provides a seamless way to condense YouTube videos directly from the YouTube app. It integrates perfectly with the existing NBJ Condenser server infrastructure and follows Android best practices.
-
-**Ready to build and test!**
+**"Processing failed"** — Video may be private, age-restricted, or the server encountered an error. Check server logs.

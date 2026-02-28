@@ -19,11 +19,12 @@ class Settings(BaseSettings):
     )
 
     # API Keys
-    openai_api_key: str = Field(default="", description="OpenAI API key for Whisper")
+    openai_api_key: str = Field(default="", description="OpenAI API key for condensation (and Whisper fallback if not using Groq)")
     anthropic_api_key: str = Field(default="", description="Anthropic API key for Claude")
     elevenlabs_api_key: str = Field(default="", description="ElevenLabs API key for voice cloning")
     did_api_key: str = Field(default="", description="D-ID API key for video generation")
     heygen_api_key: str = Field(default="", description="HeyGen API key (alternative to D-ID)")
+    groq_api_key: str = Field(default="", description="Groq API key for free Whisper transcription (whisper-large-v3)")
 
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
@@ -35,7 +36,7 @@ class Settings(BaseSettings):
     output_dir: Path = Field(default=PROJECT_ROOT / "output")
 
     # Service preferences
-    transcription_service: str = Field(default="openai", description="openai or local")
+    transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
     condenser_service: str = Field(default="openai", description="openai or claude")
     voice_service: str = Field(default="elevenlabs", description="elevenlabs or coqui")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")

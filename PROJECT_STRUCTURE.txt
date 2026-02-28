@@ -1,54 +1,88 @@
-conciser/
-├── src/                           # Main source code
+nbj-condenser/
+├── src/                           # Core Python pipeline
 │   ├── __init__.py
-│   ├── main.py                    # CLI entry point - START HERE
-│   ├── config.py                  # Configuration system
-│   ├── pipeline.py                # Main pipeline orchestrator
-│   ├── modules/                   # Pipeline stage modules
+│   ├── main.py                    # CLI entry point (nbj commands)
+│   ├── config.py                  # Pydantic settings (reads .env)
+│   ├── pipeline.py                # CondenserPipeline orchestrator
+│   ├── modules/
 │   │   ├── __init__.py
-│   │   ├── downloader.py          # Stage 1: Video download
-│   │   ├── transcriber.py         # Stage 2: Audio transcription
-│   │   ├── condenser.py           # Stage 3: Content condensation
-│   │   ├── voice_cloner.py        # Stage 4-5: Voice clone & synthesis
-│   │   ├── video_generator.py     # Stage 6: Video generation
-│   │   └── compositor.py          # Stage 7: Final assembly
-│   └── utils/                     # Utility functions
+│   │   ├── downloader.py          # Stage 1: Video download (yt-dlp)
+│   │   ├── transcriber.py         # Stage 2: Whisper transcription
+│   │   ├── condenser.py           # Stage 3: LLM condensation (OpenAI/Claude)
+│   │   ├── edge_tts.py            # Stage 4: Edge TTS (free, default)
+│   │   ├── voice_cloner.py        # Stage 4 alt: ElevenLabs voice cloning
+│   │   ├── video_generator.py     # Stage 5: D-ID avatar (optional)
+│   │   └── compositor.py          # Stage 5: ffmpeg video assembly
+│   └── utils/
 │       ├── __init__.py
-│       ├── audio_utils.py         # Audio processing utilities
-│       ├── video_utils.py         # Video processing utilities
-│       └── prompt_templates.py    # LLM prompt templates
+│       ├── audio_utils.py         # Audio processing helpers
+│       ├── video_utils.py         # Video processing + scene detection
+│       ├── prompt_templates.py    # LLM prompt templates (L1/L2/L3)
+│       ├── chain_store.py         # OpenAI Responses API chain cache
+│       └── exceptions.py          # Custom exception types
 │
-├── tests/                         # Test suite
-│   ├── __init__.py
-│   └── test_pipeline.py           # Pipeline tests
+├── server/
+│   ├── app.py                     # Flask REST server (port 5000)
+│   ├── requirements.txt           # Server-specific dependencies
+│   ├── output/                    # Server-generated output files
+│   └── README.md
 │
-├── scripts/                       # Helper scripts
-│   ├── install.sh                 # Automated installation
+├── chrome-extension/
+│   ├── manifest.json              # Extension config, permissions
+│   ├── popup.html                 # Extension popup UI
+│   ├── popup.js                   # Extension logic
+│   ├── background.js              # Icon color management
+│   ├── build_extension.py         # Build script -> dist/nbj-chrome-extension.zip
+│   ├── icons/                     # 16/48/128px color + disabled (grayscale)
+│   └── README.md
+│
+├── android/
+│   └── app/src/main/
+│       ├── java/com/nbj/
+│       │   ├── MainActivity.kt    # Main UI, AppState machine
+│       │   ├── SettingsActivity.kt  # Server URL settings
+│       │   └── ConciSerApi.kt     # Retrofit API client + data classes
+│       ├── res/layout/
+│       │   ├── activity_main.xml
+│       │   └── activity_settings.xml
+│       ├── res/values/
+│       │   ├── strings.xml
+│       │   ├── colors.xml
+│       │   └── themes.xml
+│       └── AndroidManifest.xml
+│
+├── test/
+│   ├── test_condense.py           # Batch condensation quality tester
+│   ├── test_speech_rate.py        # TTS rate validation
+│   ├── test_rate_validation.py    # Speech rate format tests
+│   └── test_voice_shortcut.py     # Voice name resolution tests
+│
+├── tests/
+│   └── test_pipeline.py           # Unit tests (legacy)
+│
+├── scripts/
+│   ├── install.sh                 # Installation helper
 │   └── test_setup.sh              # Setup verification
 │
-├── temp/                          # Temporary processing files (created on first run)
-├── output/                        # Final condensed videos (created on first run)
+├── tts_samples/                   # Pre-generated voice preview audio files
+├── voice_samples/                 # Voice samples for ElevenLabs cloning
+├── temp/                          # Per-video intermediate files (gitignored)
+├── output/                        # CLI output files (gitignored)
+├── dist/
+│   └── nbj-chrome-extension.zip  # Packaged Chrome extension
 │
+├── condenser_chains.json          # Cached OpenAI Responses API chains
+├── .env                           # API keys (gitignored)
+├── .env.example                   # Template with all variables
 ├── requirements.txt               # Python dependencies
-├── setup.py                       # Package installation config
-├── .env.example                   # Environment variables template
-├── .gitignore                     # Git ignore rules
-├── LICENSE                        # MIT License
+├── setup.py                       # Package setup
+├── videos.txt                     # Example video URLs for testing
 │
-├── README.md                      # Main documentation - READ THIS FIRST
-├── QUICKSTART.md                  # 5-minute getting started guide
-├── ARCHITECTURE.md                # Technical architecture details
-├── IMPLEMENTATION_COMPLETE.md     # Implementation status & next steps
-└── PROJECT_STRUCTURE.txt          # This file
-
-WORKFLOW:
-1. Install dependencies: ./scripts/install.sh
-2. Configure API keys: conciser setup
-3. Verify setup: conciser check
-4. Condense a video: conciser condense <youtube_url> -a 5
-
-DOCUMENTATION READING ORDER:
-1. README.md - Overview and features
-2. QUICKSTART.md - Get started in 5 minutes
-3. IMPLEMENTATION_COMPLETE.md - What's included and next steps
-4. ARCHITECTURE.md - Technical deep dive
+├── ARCHITECTURE.md                # Full technical architecture docs
+├── ARCHITECTURE.txt               # Plain-text architecture summary
+├── PROJECT_STRUCTURE.txt          # This file
+├── README.md                      # Project overview and setup
+├── QUICKSTART.md                  # Quick setup guide
+├── ANDROID_APP_SUMMARY.md         # Android app details
+├── CHROME_EXTENSION_INSTALL.md    # Chrome extension install guide
+└── LICENSE

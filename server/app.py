@@ -94,7 +94,8 @@ def process_video(job_id):
             tts_rate=getattr(job, 'speech_rate', '+0%'),
             skip_voice_clone=True,
             progress_callback=progress_callback,
-            resume=False
+            resume=False,
+            prepend_intro=getattr(job, 'prepend_intro', False)
         )
 
         job.output_file = str(result['output_video'])
@@ -702,6 +703,7 @@ def condense():
     voice = data.get('voice', 'en-GB-RyanNeural')
     speech_rate = data.get('speech_rate', '+0%')  # Default to 1.0x
     video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
+    prepend_intro = bool(data.get('prepend_intro', False))
 
     # Log all received parameters
     print(f"\n{'='*60}")
@@ -712,6 +714,7 @@ def condense():
     print(f"Voice: {voice}")
     print(f"Speech Rate: {speech_rate}")
     print(f"Video Mode: {video_mode}")
+    print(f"Prepend Intro: {prepend_intro}")
     print(f"{'='*60}\n")
 
     # Validate aggressiveness
@@ -733,6 +736,7 @@ def condense():
         job.voice = voice
         job.speech_rate = speech_rate
         job.video_mode = video_mode
+        job.prepend_intro = prepend_intro
         jobs[job_id] = job
         currently_processing = job_id
 
@@ -895,4 +899,4 @@ if __name__ == '__main__':
     print("\n👉 Share this link: https://conciser-aurora.ngrok.dev/start")
     print("\n" + "=" * 60 + "\n")
 
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)

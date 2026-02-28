@@ -16,7 +16,8 @@ data class CondenseRequest(
     val aggressiveness: Int = 5,
     val voice: String = "",
     val speech_rate: String = "+10%",
-    val video_mode: String = "slideshow"
+    val video_mode: String = "slideshow",
+    val prepend_intro: Boolean = false
 )
 
 data class CondenseResponse(

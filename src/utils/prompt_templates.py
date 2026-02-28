@@ -62,6 +62,8 @@ are reading the original author's words.
   the speaker's personal journey to discovering the topic)
 - Redundant examples that illustrate the same concept multiple times
 - Supporting details that are interesting but not essential to the core insights
+- If the transcript begins with a "highlights reel", this should be cut, as you will be providing
+  your own "key points preserved" in the output
 
 **What should be PRESERVED:**
 - Unique key insights and main arguments
@@ -69,13 +71,14 @@ are reading the original author's words.
 - Logical transitions between topics
 - Critical examples that clarify complex concepts
 - Conclusions and takeaways
-- The speaker's voice, personality, and speaking style
+- The speaker's voice, personality, and speaking style at less aggressive levels.
   Don't substitute less technical or less formal terminology if the speaker uses such
 
 **Constraints:**
 1. The condensed script should sound natural when spoken aloud
 2. Maintain coherent narrative flow with smooth transitions
 3. Preserve the speaker's voice, personality, and speaking style even when paraphrasing
+   (not relevant when **summarizing** at higher aggressiveness levels)
 4. Keep the content engaging and easy to follow
 
 **Important: Hit the target word count**
@@ -108,7 +111,7 @@ Remember to format the condensed_script with paragraph breaks (\\n\\n) at natura
 
 STRATEGY_PROMPTS = {
     1: """
-        **Aggressiveness Level 1 out of 10: Conservative ({retention_range} retention)**
+        **Aggressiveness Level 1/10: Conservative ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -123,7 +126,7 @@ STRATEGY_PROMPTS = {
     """,
 
     2: """
-        **Aggressiveness Level 2 out of 10: Light ({retention_range} retention)**
+        **Aggressiveness Level 2/10: Light ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -135,7 +138,7 @@ STRATEGY_PROMPTS = {
     """,
 
     3: """
-        **Aggressiveness Level 3 out of 10: Gentle ({retention_range} retention)**
+        **Aggressiveness Level 3/10: Gentle ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -149,7 +152,7 @@ STRATEGY_PROMPTS = {
     """,
 
     4: """
-        **Aggressiveness Level 4 out of 10: Moderate-Light ({retention_range} retention)**
+        **Aggressiveness Level 4/10: Moderate-Light ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -163,7 +166,7 @@ STRATEGY_PROMPTS = {
     """,
 
     5: """
-        **Aggressiveness Level 5 out of 10: Moderate ({retention_range} retention)**
+        **Aggressiveness Level 5/10: Moderate ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -177,7 +180,7 @@ STRATEGY_PROMPTS = {
     """,
 
     6: """
-        **Aggressiveness Level 6 out of 10: Moderate-Aggressive ({retention_range} retention)**
+        **Aggressiveness Level 6/10: Moderate-Aggressive ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -191,7 +194,7 @@ STRATEGY_PROMPTS = {
     """,
 
     7: """
-        **Aggressiveness Level 7 out of 10: Aggressive ({retention_range} retention)**
+        **Aggressiveness Level 7/10: Aggressive ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -204,10 +207,10 @@ STRATEGY_PROMPTS = {
 
         **Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
         is less of a concern.
-        """,
+    """,
 
-            8: """
-        **Aggressiveness Level 8 out of 10: Very Aggressive ({retention_range} retention)**
+    8: """
+        **Aggressiveness Level 8/10: Very Aggressive ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -219,14 +222,11 @@ STRATEGY_PROMPTS = {
         - Cut freely but maintain logical flow and coherence
         - Not all arguments or insights must be preserved at this level; focus on the most important ones
 
-        **Priority:** Distill to main arguments and insights; natural flow still needed, but speaker's voice 
-        is less of a concern.
-
-        **Priority:** High information density; flow possibly compromised; voice certainly (but not purposely) compromised.
+        **Priority:** High information density
     """,
 
     9: """
-        **Aggressiveness Level 9 out of 10: Extreme ({retention_range} retention)**
+        **Aggressiveness Level 9/10: Extreme ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.
@@ -237,12 +237,11 @@ STRATEGY_PROMPTS = {
         - Cut freely but maintain logical flow and coherence
         - Not all arguments or insights must be preserved at this level; focus on the most important ones
 
-        **Priority:** Distill to one or two main arguments and insights; natural flow still needed, but speaker's voice 
-        is not a concern.
+        **Priority:** High information density
     """,
 
     10: """
-        **Aggressiveness Level 10 out of 10: Maximum ({retention_range} retention)**
+        **Aggressiveness Level 10/10: Maximum ({retention_range} retention)**
 
         The following instructions are additive of the general system instructions, and are specific
         to this particular aggressiveness level.

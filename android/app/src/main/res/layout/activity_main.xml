@@ -133,7 +133,9 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:max="9" />
+                    android:max="9"
+                    android:progressTint="@color/primary"
+                    android:thumbTint="@color/primary" />
 
                 <TextView
                     android:id="@+id/tvStrategyDesc"
@@ -176,7 +178,19 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:max="110" />
+                    android:max="110"
+                    android:progressTint="@color/primary"
+                    android:thumbTint="@color/primary" />
+
+                <!-- Prepend intro toggle -->
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchPrependIntro"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/prepend_intro"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_primary" />
 
             </LinearLayout>
 

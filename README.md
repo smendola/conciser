@@ -1,319 +1,127 @@
 # NBJ Condenser - AI-Powered Video Condensation
 
-NBJ Condenser is an intelligent video condensation tool that automatically shortens videos by removing filler content while preserving key insights. It uses AI voice cloning and video generation to create a natural, condensed version with the original speaker's voice and appearance.
+NBJ Condenser intelligently shortens YouTube videos by removing filler, repetitions, and tangents while preserving key insights. It uses AI transcription, LLM condensation, and text-to-speech to produce a condensed version — typically 30–70% shorter.
 
 ## Features
 
-- **Intelligent Content Analysis**: Uses Claude AI to identify and remove filler, repetitions, and tangents
-- **Voice Cloning**: Clones the original speaker's voice using ElevenLabs
-- **Video Regeneration**: Creates lip-synced talking head video using D-ID
-- **Adjustable Aggressiveness**: Control how much content to remove (1-10 scale)
-- **High Quality Output**: Supports 720p, 1080p, and 4K output
-- **Automatic Watermarking**: Adds AI-generated content watermark
+- **Intelligent Content Analysis**: OpenAI or Claude condenses the transcript, preserving key insights
+- **Free TTS**: Microsoft Edge TTS voices (no API key needed) — dozens of natural neural voices
+- **Adjustable Aggressiveness**: 1–10 scale controls how much content is removed
+- **Multiple Output Modes**: Slideshow (default), audio-only MP3, static frame, or D-ID avatar
+- **Resume Support**: Skips already-completed pipeline stages automatically
+- **Three Interfaces**: CLI, Chrome extension (via server), Android app (via server)
 
-## How It Works
+## Quick Start
 
-NBJ Condenser processes videos through a 7-stage pipeline:
-
-1. **Download**: Downloads video from YouTube or other sources
-2. **Transcribe**: Converts speech to text using OpenAI Whisper
-3. **Condense**: AI analyzes and condenses the transcript
-4. **Voice Clone**: Clones the speaker's voice from the original audio
-5. **Speech Generation**: Creates new audio with the condensed script
-6. **Video Generation**: Generates lip-synced talking head video
-7. **Final Assembly**: Combines everything into the final output
-
-## Installation
-
-### Prerequisites
-
-- Python 3.10 or higher
-- ffmpeg and ffprobe (for audio/video processing)
-- API keys from:
-  - [OpenAI](https://platform.openai.com/api-keys) (for Whisper)
-  - [Anthropic](https://console.anthropic.com/) (for Claude)
-  - [ElevenLabs](https://elevenlabs.io/) (for voice cloning)
-  - [D-ID](https://www.d-id.com/) (for video generation)
-
-### Install ffmpeg
-
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install ffmpeg
-```
-
-**macOS:**
-```bash
-brew install ffmpeg
-```
-
-**Windows:**
-Download from [ffmpeg.org](https://ffmpeg.org/download.html)
-
-### Install NBJ Condenser
+### 1. Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/nbj.git
-cd nbj
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install in development mode
+git clone <repo>
+cd nbj-condenser
+python -m venv venv && source venv/bin/activate
 pip install -e .
 ```
 
-## Configuration
-
-### Quick Setup
-
-Run the interactive setup wizard:
-
-```bash
-nbj setup
-```
-
-This will prompt you for your API keys and create a `.env` file.
-
-### Manual Setup
-
-Copy the example environment file and fill in your API keys:
+### 2. Configure
 
 ```bash
 cp .env.example .env
+# Edit .env and add your API keys:
+#   OPENAI_API_KEY=sk-...   (required: Whisper + condensation)
 ```
 
-Edit `.env` and add your API keys:
-
-```env
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-ELEVENLABS_API_KEY=...
-DID_API_KEY=...
-```
-
-### Verify Configuration
-
-Check that everything is configured correctly:
+### 3. Condense a video
 
 ```bash
+nbj condense https://youtu.be/VIDEO_ID
+```
+
+Output file is saved to `output/` and opened automatically.
+
+## CLI Usage
+
+```bash
+# Basic (slideshow output, Edge TTS, aggressiveness 5)
+nbj condense https://youtu.be/VIDEO_ID
+
+# Audio only (fastest — no video)
+nbj condense https://youtu.be/VIDEO_ID --video-gen-mode audio_only
+
+# Choose a voice and speed
+nbj condense https://youtu.be/VIDEO_ID --voice en-US-AriaNeural --speech-rate "+20%"
+
+# Maximum condensation
+nbj condense https://youtu.be/VIDEO_ID --aggressiveness 10
+
+# Add key take-aways intro
+nbj condense https://youtu.be/VIDEO_ID --prepend-intro
+
+# List available voices
+nbj voices --provider edge
+
+# Check your configuration
 nbj check
 ```
 
-## Usage
+## Options
 
-### Basic Usage
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--aggressiveness`, `-a` | `5` | Condensing level 1–10 |
+| `--quality`, `-q` | `1080p` | Video quality: `720p`, `1080p`, `4k` |
+| `--video-gen-mode` | `slideshow` | `slideshow`, `audio_only`, `static`, `avatar` |
+| `--voice` | auto | Edge voice (e.g., `en-GB-RyanNeural`) or `edge/ryan` |
+| `--tts-provider` | `edge` | `edge` (free) or `elevenlabs` (paid) |
+| `--speech-rate` | `+0%` | TTS speed: `+50%` faster, `-25%` slower |
+| `--prepend-intro` | off | Prepend numbered key take-aways to speech |
+| `--resume/--no-resume` | resume | Resume from existing intermediate files |
 
-Condense a video with default settings (50% reduction):
+## Server Mode (for Chrome Extension / Android App)
 
-```bash
-nbj condense https://youtube.com/watch?v=VIDEO_ID
-```
-
-### Adjust Aggressiveness
-
-Control how much content to remove (1-10 scale):
-
-```bash
-# Conservative (remove ~25% - mostly filler)
-nbj condense https://youtube.com/watch?v=VIDEO_ID -a 1
-
-# Moderate (remove ~50% - filler + tangents)
-nbj condense https://youtube.com/watch?v=VIDEO_ID -a 5
-
-# Aggressive (remove ~75% - keep only key insights)
-nbj condense https://youtube.com/watch?v=VIDEO_ID -a 10
-```
-
-### Specify Output Quality
+Run the Flask server to use the Chrome extension or Android app:
 
 ```bash
-nbj condense https://youtube.com/watch?v=VIDEO_ID -q 720p
-nbj condense https://youtube.com/watch?v=VIDEO_ID -q 1080p
-nbj condense https://youtube.com/watch?v=VIDEO_ID -q 4k
+# From project root (with venv active)
+python server/app.py
 ```
 
-### Custom Output Path
-
+Then expose it via ngrok:
 ```bash
-nbj condense https://youtube.com/watch?v=VIDEO_ID -o ./my_video.mp4
+ngrok start nbj
 ```
 
-### Target Specific Reduction
+Users can install the Chrome extension from: `https://your-ngrok-url/start`
 
-Override aggressiveness with exact reduction percentage:
+## API Keys
 
-```bash
-nbj condense https://youtube.com/watch?v=VIDEO_ID --reduction 60
-```
+| Key | Required | Used For |
+|-----|----------|---------|
+| `OPENAI_API_KEY` | **Yes** | Whisper transcription + LLM condensation (default) |
+| `ANTHROPIC_API_KEY` | No | Alternative Claude condensation provider |
+| `ELEVENLABS_API_KEY` | No | Voice cloning TTS (paid alternative to Edge TTS) |
+| `DID_API_KEY` | No | Avatar video mode only |
 
-### Get Video Info
+Run `nbj init` for interactive setup, or `nbj check` to verify configuration.
 
-Preview information before processing:
+## Output Modes
 
-```bash
-nbj info https://youtube.com/watch?v=VIDEO_ID
-```
+| Mode | Output | Speed | Description |
+|------|--------|-------|-------------|
+| `slideshow` | MP4 | Medium | Scene-detected keyframes synced to TTS audio |
+| `audio_only` | MP3 | Fast | TTS audio only, no video |
+| `static` | MP4 | Medium | Single frame as video background |
+| `avatar` | MP4 | Slow | D-ID talking head (requires DID_API_KEY) |
 
-## Aggressiveness Levels Guide
-
-| Level | Reduction | What's Removed | Best For |
-|-------|-----------|----------------|----------|
-| 1-2 | 20-30% | Filler words, long pauses | Light cleanup |
-| 3-4 | 35-45% | Filler, some repetitions | Gentle condensing |
-| 5-6 | 50-60% | Filler, repetitions, tangents | Standard use |
-| 7-8 | 65-75% | All above + detailed examples | Aggressive condensing |
-| 9-10 | 75-85% | Everything except core insights | Maximum condensing |
-
-## Cost Estimates
-
-Typical costs for a 30-minute podcast → 10-minute condensed version:
-
-- **Transcription** (Whisper): ~$0.18
-- **Condensing** (Claude): ~$3-5
-- **Voice Cloning** (ElevenLabs): ~$2
-- **Video Generation** (D-ID): ~$3-5
-
-**Total: $8-12 per video**
-
-Costs scale roughly linearly with video length.
-
-## Examples
-
-### Educational Content
-
-```bash
-# Condense a 1-hour lecture to 20 minutes
-nbj condense https://youtube.com/watch?v=LECTURE_ID -a 7
-```
-
-### Podcast Interview
-
-```bash
-# Condense a 2-hour podcast to 40 minutes
-nbj condense https://youtube.com/watch?v=PODCAST_ID -a 6
-```
-
-### Tutorial Video
-
-```bash
-# Light condensing, keep most content
-nbj condense https://youtube.com/watch?v=TUTORIAL_ID -a 3
-```
-
-## Output Structure
-
-NBJ Condenser creates the following directories:
+## Project Structure
 
 ```
-nbj/
-├── output/          # Final condensed videos
-├── temp/            # Temporary processing files
-└── nbj.log     # Processing log
+src/          Python pipeline (download, transcribe, condense, TTS, video)
+server/       Flask REST server (used by extension and Android app)
+chrome-extension/   Chrome/Edge browser extension
+android/      Native Android app (Kotlin)
+test/         Batch testing and quality evaluation tools
+tts_samples/  Pre-generated voice preview audio files
 ```
 
-## Troubleshooting
-
-### "API key not set" error
-
-Run `nbj setup` or manually add keys to `.env` file.
-
-### "ffmpeg not found" error
-
-Install ffmpeg using your package manager (see Installation section).
-
-### Video generation takes too long
-
-This is normal. Video generation can take 2-5 minutes per minute of output video. For a 10-minute video, expect 20-50 minutes processing time.
-
-### Voice quality is poor
-
-The quality depends on the source audio. Ensure:
-- Original video has clear audio
-- Minimal background noise
-- Speaker is the primary audio source
-
-### Out of credits errors
-
-Check your API credits:
-- OpenAI: https://platform.openai.com/account/usage
-- Anthropic: https://console.anthropic.com/
-- ElevenLabs: https://elevenlabs.io/
-- D-ID: https://studio.d-id.com/
-
-## Advanced Usage
-
-### Resume Failed Jobs
-
-If a job fails mid-process, you can resume by examining the temp directory and calling individual pipeline stages. Full resume support coming in a future update.
-
-### Batch Processing
-
-Process multiple videos by running nbj in a loop:
-
-```bash
-for url in $(cat video_urls.txt); do
-  nbj condense "$url" -a 5
-done
-```
-
-## Limitations
-
-- **Phase 1 only**: Currently only processes talking head videos. Graphics/B-roll preservation coming in Phase 2.
-- **Single speaker**: Multi-speaker support coming in Phase 3.
-- **English only**: Best results with English content (Whisper supports other languages but quality varies).
-- **API dependent**: Requires internet connection and API credits.
-
-## Roadmap
-
-### Phase 2: Graphics & Visual Enhancement
-- Automatic graphics detection
-- B-roll preservation
-- Intelligent re-insertion of visual elements
-
-### Phase 3: Advanced Features
-- Web UI
-- Multi-speaker support
-- Batch processing
-- Custom voice/face selection
-- Resume capability
-- Preview mode
-
-## Legal & Ethical Considerations
-
-- **Copyright**: Ensure you have rights to process the videos. NBJ Condenser is intended for fair use transformation.
-- **Attribution**: Generated videos are watermarked as AI-generated.
-- **Accuracy**: AI condensation may miss context. Always review output before sharing.
-- **Deepfake concerns**: Use responsibly. Do not create misleading content.
-
-## Contributing
-
-Contributions welcome! Please open an issue or PR.
-
-## License
-
-MIT License - see LICENSE file for details.
-
-## Support
-
-- **Issues**: https://github.com/yourusername/nbj/issues
-- **Discussions**: https://github.com/yourusername/nbj/discussions
-
-## Credits
-
-Built with:
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - Video downloading
-- [OpenAI Whisper](https://openai.com/research/whisper) - Transcription
-- [Anthropic Claude](https://www.anthropic.com/) - Content analysis
-- [ElevenLabs](https://elevenlabs.io/) - Voice cloning
-- [D-ID](https://www.d-id.com/) - Video generation
-
-## Disclaimer
-
-This tool is for educational and research purposes. Users are responsible for compliance with applicable laws and terms of service. The authors are not liable for misuse.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for full technical details.
+See [QUICKSTART.md](QUICKSTART.md) for step-by-step setup.

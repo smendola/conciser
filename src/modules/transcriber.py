@@ -11,16 +11,31 @@ logger = logging.getLogger(__name__)
 
 
 class Transcriber:
-    """Transcribes audio using OpenAI Whisper API."""
+    """Transcribes audio using Whisper (via Groq or OpenAI)."""
 
-    def __init__(self, api_key: str):
+    GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+    GROQ_MODEL = "whisper-large-v3"
+    OPENAI_MODEL = "whisper-1"
+
+    def __init__(self, api_key: str, provider: str = "openai", groq_api_key: str = ""):
         """
         Initialize the transcriber.
 
         Args:
-            api_key: OpenAI API key
+            api_key: OpenAI API key (used when provider="openai", or as fallback)
+            provider: "groq" (free, whisper-large-v3) or "openai" (paid, whisper-1)
+            groq_api_key: Groq API key (required when provider="groq")
         """
-        self.client = OpenAI(api_key=api_key)
+        if provider == "groq" and groq_api_key:
+            self.client = OpenAI(api_key=groq_api_key, base_url=self.GROQ_BASE_URL)
+            self.model = self.GROQ_MODEL
+            logger.info("Transcriber using Groq (free whisper-large-v3)")
+        else:
+            if provider == "groq":
+                logger.warning("Groq provider requested but no GROQ_API_KEY set — falling back to OpenAI Whisper")
+            self.client = OpenAI(api_key=api_key)
+            self.model = self.OPENAI_MODEL
+            logger.info("Transcriber using OpenAI (whisper-1)")
 
     def fetch_youtube_transcript(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -145,7 +160,7 @@ class Transcriber:
             # Use timestamp granularities for word-level timing
             kwargs = {
                 'file': audio_file,
-                'model': 'whisper-1',
+                'model': self.model,
                 'response_format': 'verbose_json',
             }
 

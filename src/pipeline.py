@@ -34,7 +34,11 @@ class CondenserPipeline:
 
         # Initialize modules
         self.downloader = VideoDownloader(settings.temp_dir)
-        self.transcriber = Transcriber(settings.openai_api_key)
+        self.transcriber = Transcriber(
+            api_key=settings.openai_api_key,
+            provider=settings.transcription_service,
+            groq_api_key=settings.groq_api_key
+        )
         self.condenser = ContentCondenser(
             provider=settings.condenser_service,
             openai_api_key=settings.openai_api_key,
@@ -380,8 +384,12 @@ class CondenserPipeline:
         """
         from colorama import Fore, Style
 
+        # ── TESTING: force Whisper ── remove this block to restore YouTube-first behaviour ──
+        FORCE_WHISPER = False
+        # ── END TESTING ──────────────────────────────────────────────────────────────────
+
         # Try YouTube transcript first if we have a video ID
-        if video_id:
+        if video_id and not FORCE_WHISPER:
             logger.info("Checking for YouTube transcript...")
             youtube_transcript = self.transcriber.fetch_youtube_transcript(video_id)
 
@@ -392,11 +400,14 @@ class CondenserPipeline:
                 self.transcriber.save_transcript(youtube_transcript, transcript_json_path)
                 return youtube_transcript
             else:
-                # Log in yellow that we're falling back to Whisper
                 print(f"{Fore.RED}YouTube transcript not available, falling back to Whisper transcription...{Style.RESET_ALL}")
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
 
         # Fallback: Extract audio and use Whisper
+        if FORCE_WHISPER:
+            print(f"{Fore.YELLOW}FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly...{Style.RESET_ALL}")
+            logger.warning("FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly")
+
         audio_path = video_folder / "extracted_audio.wav"
 
         if not audio_path.exists():

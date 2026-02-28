@@ -27,6 +27,16 @@ async function initializePopup() {
     videoInfo.textContent = `Video: ${videoId}`;
     videoInfo.title = currentUrl;
     condenseBtn.disabled = false;
+
+    // Fetch title async — update when ready without blocking init
+    fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(currentUrl)}&format=json`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.title) {
+          videoInfo.innerHTML = `Video: ${videoId}<br><span style="font-weight:700;color:#555;">${data.title}</span>`;
+        }
+      })
+      .catch(() => {}); // silently ignore — title is decorative
   } else {
     videoInfo.textContent = '⚠️ Not a YouTube video page';
     condenseBtn.disabled = true;
@@ -128,7 +138,8 @@ async function loadSettings() {
     aggressiveness: 5,
     voice: null,
     speechSpeed: 1.10,
-    videoMode: 'slideshow'
+    videoMode: 'slideshow',
+    prependIntro: false
   };
 
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
@@ -136,6 +147,7 @@ async function loadSettings() {
   document.getElementById('speedSlider').value = settings.speechSpeed;
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
   document.getElementById('videoModeSelect').value = settings.videoMode;
+  document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
 }
 
 // Save settings to storage
@@ -144,7 +156,8 @@ async function saveSettings() {
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
     voice: document.getElementById('voiceSelect').value,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
-    videoMode: document.getElementById('videoModeSelect').value
+    videoMode: document.getElementById('videoModeSelect').value,
+    prependIntro: document.getElementById('prependIntroCheck').checked
   };
 
   await chrome.storage.local.set({ settings });
@@ -225,6 +238,10 @@ document.getElementById('videoModeSelect').addEventListener('change', () => {
   handleSettingChange();
 });
 
+document.getElementById('prependIntroCheck').addEventListener('change', () => {
+  handleSettingChange();
+});
+
 // Run initialization
 initializePopup();
 
@@ -241,6 +258,7 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
     const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
     const speechRate = convertSpeedToRate(speechSpeed);
     const videoMode = document.getElementById('videoModeSelect').value;
+    const prependIntro = document.getElementById('prependIntroCheck').checked;
 
     const response = await fetch(`${serverUrl}/api/condense`, {
       method: 'POST',
@@ -252,7 +270,8 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
         aggressiveness: aggressiveness,
         voice: voice,
         speech_rate: speechRate,
-        video_mode: videoMode
+        video_mode: videoMode,
+        prepend_intro: prependIntro
       })
     });
 

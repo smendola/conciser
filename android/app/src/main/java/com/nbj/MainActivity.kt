@@ -3,6 +3,9 @@ package com.nbj
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.net.Uri
 import android.os.Bundle
 import android.util.TypedValue
@@ -43,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var currentState = AppState.NO_URL
     private var currentVideoUrl: String? = null
+    private var currentVideoTitle: String? = null
     private var currentJobId: String? = null
     private var currentVideoMode: String = "slideshow"
     private var isPolling = false
@@ -217,6 +221,7 @@ class MainActivity : AppCompatActivity() {
 
         if (url != null && isYouTubeUrl(url)) {
             currentVideoUrl = url
+            currentVideoTitle = null
             currentJobId = null
             val videoId = extractVideoId(url)
             binding.tvVideoInfo.text = if (videoId != null) "Video: $videoId" else url
@@ -225,7 +230,12 @@ class MainActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 val title = ConciSerApi.fetchVideoTitle(url)
                 if (title != null && currentVideoUrl == url) {
-                    binding.tvVideoInfo.text = if (videoId != null) "Video: $videoId\n$title" else title
+                    currentVideoTitle = title
+                    val full = if (videoId != null) "Video: $videoId\n$title" else title
+                    val span = SpannableString(full)
+                    val titleStart = full.length - title.length
+                    span.setSpan(StyleSpan(Typeface.BOLD), titleStart, full.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    binding.tvVideoInfo.text = span
                 }
             }
         } else {
@@ -247,6 +257,7 @@ class MainActivity : AppCompatActivity() {
         val voice = prefs.getString("voice", "") ?: ""
         val speechSpeed = prefs.getFloat("speech_speed", 1.10f)
         val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
+        val prependIntro = prefs.getBoolean("prepend_intro", false)
 
         currentVideoMode = videoMode
 
@@ -255,7 +266,8 @@ class MainActivity : AppCompatActivity() {
             aggressiveness = aggressiveness,
             voice = voice,
             speech_rate = convertSpeedToRate(speechSpeed),
-            video_mode = videoMode
+            video_mode = videoMode,
+            prepend_intro = prependIntro
         )
 
         lifecycleScope.launch {
@@ -388,6 +400,8 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        binding.switchPrependIntro.setOnCheckedChangeListener { _, _ -> autoSaveSettings() }
     }
 
     private fun loadSettingsToUI() {
@@ -404,6 +418,8 @@ class MainActivity : AppCompatActivity() {
         val speedProgress = ((speechSpeed - 0.90f) / 0.01f).roundToInt().coerceIn(0, 110)
         binding.seekbarSpeechSpeed.progress = speedProgress
         binding.tvSpeechSpeedValue.text = String.format("%.2fx", speechSpeed)
+
+        binding.switchPrependIntro.isChecked = prefs.getBoolean("prepend_intro", false)
     }
 
     private fun fetchVoicesAndStrategies() {
@@ -473,6 +489,7 @@ class MainActivity : AppCompatActivity() {
             .putInt("aggressiveness", aggressiveness)
             .putFloat("speech_speed", speechSpeed)
             .putString("voice", voiceName)
+            .putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
             .apply()
     }
 
@@ -482,7 +499,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun addCurrentJobToRecents() {
         val jobId = currentJobId ?: return
-        val title = binding.tvVideoInfo.text.toString()
+        val videoId = currentVideoUrl?.let { extractVideoId(it) }
+        val title = currentVideoTitle ?: (if (videoId != null) "Video: $videoId" else currentVideoUrl ?: jobId)
         val job = RecentJob(
             jobId = jobId,
             title = title,

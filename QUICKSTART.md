@@ -1,18 +1,17 @@
 # Quick Start Guide
 
-Get started with NBJ Condenser in 5 minutes!
+Get started with NBJ Condenser in minutes.
 
 ## Prerequisites
 
-Before you begin, make sure you have:
+1. **Python 3.10+**
+2. **ffmpeg** (required for video/audio processing)
+3. **OpenAI API key** (required — for Whisper transcription and condensation)
 
-1. **Python 3.10+** installed
-2. **ffmpeg** installed (required for video processing)
-3. API keys from:
-   - OpenAI: https://platform.openai.com/api-keys
-   - Anthropic: https://console.anthropic.com/
-   - ElevenLabs: https://elevenlabs.io/
-   - D-ID: https://www.d-id.com/
+Optional API keys:
+- `ANTHROPIC_API_KEY` — use Claude as the condensation provider instead of OpenAI
+- `ELEVENLABS_API_KEY` — paid voice cloning (Edge TTS is free and used by default)
+- `DID_API_KEY` — D-ID avatar video mode only
 
 ## Installation
 
@@ -29,244 +28,162 @@ brew install ffmpeg
 ```
 
 **Windows:**
-Download from https://ffmpeg.org/download.html and add to PATH
+Download from https://ffmpeg.org/download.html and add to PATH.
 
 ### 2. Install NBJ Condenser
 
 ```bash
-# Clone or download the repository
-cd nbj
-
-# Create virtual environment
+cd nbj-condenser
 python -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install NBJ Condenser
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e .
 ```
 
 ### 3. Configure API Keys
 
-Run the setup wizard:
-
-```bash
-nbj setup
-```
-
-Or manually create a `.env` file:
-
 ```bash
 cp .env.example .env
+# Edit .env and add at minimum:
+#   OPENAI_API_KEY=sk-...
 ```
 
-Then edit `.env` and add your API keys.
+Or run the interactive wizard:
+```bash
+nbj init
+```
 
-### 4. Verify Installation
+### 4. Verify Setup
 
 ```bash
 nbj check
 ```
 
-You should see all checks pass.
+---
 
 ## Your First Condensed Video
 
-### Step 1: Find a Video
-
-Choose a YouTube video to condense. Good candidates:
-- Podcasts with lots of filler
-- Long educational lectures
-- Interview videos
-- Talking head videos (no complex graphics yet)
-
-### Step 2: Get Video Info (Optional)
-
-Check the video details and estimated cost:
+### Option A: Slideshow (default, MP4 output)
 
 ```bash
-nbj info "https://youtube.com/watch?v=VIDEO_ID"
+nbj condense "https://youtube.com/watch?v=VIDEO_ID"
 ```
 
-### Step 3: Condense the Video
+Pipeline stages:
+1. **Download** — yt-dlp fetches the video (~30s)
+2. **Transcribe** — Whisper API transcribes audio (~1–2 min)
+3. **Condense** — OpenAI/Claude rewrites the script (~15–30s)
+4. **TTS** — Edge TTS generates speech (~5–15s)
+5. **Slideshow** — ffmpeg builds a video from scene keyframes (~30–90s)
 
-Start with moderate aggressiveness (level 5):
+Total: **3–5 minutes** for a typical 10-minute video.
+
+### Option B: Audio Only (fastest, MP3 output)
 
 ```bash
-nbj condense "https://youtube.com/watch?v=VIDEO_ID" -a 5
+nbj condense "https://youtube.com/watch?v=VIDEO_ID" --video-gen-mode audio_only
 ```
 
-This will:
-1. Download the video (~30 seconds)
-2. Transcribe audio (~1-2 minutes)
-3. Condense with AI (~2-3 minutes)
-4. Clone voice (~1-2 minutes)
-5. Generate speech (~2-5 minutes)
-6. Generate video (~20-50 minutes for a 10-min output)
-7. Compose final video (~1 minute)
+No video generation step — just the condensed speech as an MP3.
+Total: **1–3 minutes**.
 
-**Total time: ~30-60 minutes for a 30-minute source video**
-
-### Step 4: Review Output
-
-Your condensed video will be in the `output/` directory:
-
-```
-output/
-└── Your_Video_Title_condensed.mp4
-```
-
-## Understanding Aggressiveness Levels
-
-Try different levels to see what works best:
-
-```bash
-# Light condensing - remove ~30%
-nbj condense "URL" -a 3
-
-# Moderate - remove ~50% (recommended)
-nbj condense "URL" -a 5
-
-# Aggressive - remove ~70%
-nbj condense "URL" -a 8
-```
+---
 
 ## Common Options
 
-### Choose Output Quality
+### Adjust condensation level
 
 ```bash
-# 720p (faster, smaller file)
-nbj condense "URL" -a 5 -q 720p
+# Conservative — remove ~20%
+nbj condense "URL" --aggressiveness 3
 
-# 1080p (default, balanced)
-nbj condense "URL" -a 5 -q 1080p
+# Moderate (default) — remove ~50%
+nbj condense "URL" --aggressiveness 5
 
-# 4K (slower, larger file)
-nbj condense "URL" -a 5 -q 4k
+# Aggressive — remove ~75%
+nbj condense "URL" --aggressiveness 8
 ```
 
-### Custom Output Location
+### Choose a voice
 
 ```bash
-nbj condense "URL" -a 5 -o ./my_videos/condensed.mp4
+# List all English voices
+nbj voices --provider edge
+
+# Use a specific voice
+nbj condense "URL" --voice en-US-AriaNeural
+
+# Shortcut names also work
+nbj condense "URL" --voice ryan
 ```
 
-### Exact Reduction Target
+### Adjust speech speed
 
 ```bash
-# Remove exactly 60% of content
-nbj condense "URL" --reduction 60
+nbj condense "URL" --speech-rate "+20%"   # 20% faster
+nbj condense "URL" --speech-rate "-15%"   # 15% slower
 ```
+
+### Add key take-aways intro
+
+```bash
+nbj condense "URL" --prepend-intro
+```
+
+Prepends a numbered list of key take-aways to the TTS output.
+
+### Resume interrupted jobs
+
+Resume is **on by default**. If a run was interrupted, just re-run the same command and it will skip already-completed stages.
+
+```bash
+nbj condense "URL"              # resumes automatically
+nbj condense "URL" --no-resume  # force restart from scratch
+```
+
+---
+
+## Output
+
+Files are saved to `output/` with auto-generated names:
+```
+output/<video_id>_<title>_edge_<voice>.mp4
+output/<video_id>_<title>_edge_<voice>.mp3
+```
+
+---
+
+## Server Mode (Chrome Extension / Android App)
+
+To use the Chrome extension or Android app, run the Flask server:
+
+```bash
+python server/app.py
+```
+
+Expose it with ngrok:
+```bash
+ngrok start nbj
+```
+
+Then share the install link: `https://your-ngrok-url/start`
+
+---
 
 ## Tips for Best Results
 
-### 1. Choose Good Source Videos
-- Clear audio with minimal background noise
-- Single speaker (multi-speaker coming in Phase 2)
-- Mostly talking head (graphics preservation coming in Phase 2)
-- English language (best support)
+- **Clear audio** with a single speaker works best
+- Start at aggressiveness **5**, then adjust up/down
+- Very high levels (9–10) may lose important context
+- Audio-only mode is great for listening while commuting
 
-### 2. Start Conservative
-- Try aggressiveness 3-4 first
-- Increase if you want more condensing
-- Very high levels (9-10) may lose important context
-
-### 3. Monitor Costs
-- Check API usage after first video
-- Typical cost: $8-12 per 30-minute video
-- Set up billing alerts in your API dashboards
-
-### 4. Review Output
-- Always watch the condensed video before sharing
-- AI may occasionally miss context or create artifacts
-- Lip sync quality varies based on source material
+---
 
 ## Troubleshooting
 
-### Error: "API key not set"
-Run `nbj setup` or check your `.env` file.
+**"API key not set"** → Run `nbj check` to see which keys are missing, then edit `.env`.
 
-### Error: "ffmpeg not found"
-Install ffmpeg (see installation section above).
+**"ffmpeg not found"** → Install ffmpeg (see above) and ensure it's on your PATH.
 
-### Video generation is very slow
-This is normal. D-ID processes video in real-time or slower. A 10-minute output takes 20-50 minutes.
+**Output sounds cut off** → Try `--no-resume` to regenerate the condensed script fresh.
 
-### Voice doesn't sound like original
-Try using a longer source video (30+ minutes) for better voice cloning samples.
-
-### Out of credits
-Check your API dashboards and add credits:
-- OpenAI: https://platform.openai.com/account/billing
-- Anthropic: https://console.anthropic.com/settings/billing
-- ElevenLabs: https://elevenlabs.io/subscription
-- D-ID: https://studio.d-id.com/billing
-
-## Example Workflows
-
-### Condense a Podcast
-```bash
-# 2-hour podcast → 40-minute highlights
-nbj condense "https://youtube.com/watch?v=PODCAST_ID" -a 6 -q 1080p
-```
-
-### Condense a Lecture
-```bash
-# 1-hour lecture → 20-minute summary
-nbj condense "https://youtube.com/watch?v=LECTURE_ID" -a 7 -q 720p
-```
-
-### Light Cleanup
-```bash
-# 30-minute video → 22-minute cleaned version
-nbj condense "https://youtube.com/watch?v=VIDEO_ID" -a 2 -q 1080p
-```
-
-## Next Steps
-
-- Read the full [README.md](README.md) for detailed documentation
-- Check [examples/](examples/) for sample outputs
-- Join our community to share results and get help
-- Star the repo if you find it useful!
-
-## Getting Help
-
-- **Check the log**: `nbj.log` has detailed error messages
-- **Run diagnostics**: `nbj check` to verify setup
-- **Read documentation**: [README.md](README.md)
-- **Report issues**: GitHub Issues
-
-## Cost Management
-
-### Estimated Costs (per video)
-
-30-minute video → 10-minute condensed:
-- Whisper: $0.18
-- Claude: $3-5
-- ElevenLabs: $2
-- D-ID: $3-5
-- **Total: ~$8-12**
-
-### Ways to Reduce Costs
-
-1. **Use lower quality**: `-q 720p` uses fewer D-ID credits
-2. **Conservative aggressiveness**: Less condensing = shorter output = lower cost
-3. **Batch processing**: Process multiple videos when you have time
-4. **Monitor usage**: Check API dashboards regularly
-
-## What's Next?
-
-You've successfully set up and run NBJ Condenser! Here are some ideas:
-
-1. Try different aggressiveness levels to find your sweet spot
-2. Experiment with different types of content
-3. Compare output quality at different resolutions
-4. Set up batch processing for multiple videos
-5. Contribute improvements or report issues on GitHub
-
-Happy condensing! 🎬✨
+**TTS sounds wrong** → Try a different voice: `nbj voices` to browse, then `--voice <name>`.
