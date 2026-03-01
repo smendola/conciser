@@ -1,7 +1,7 @@
 import sys
 
 import click
-from colorama import Fore, Style
+from colorama import Fore, Back, Style
 
 from ...config import get_settings
 
@@ -31,8 +31,8 @@ def check(verbose):
     print("Directories:")
     temp_exists = settings.temp_dir.exists()
     output_exists = settings.output_dir.exists()
-    print(f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL}" if temp_exists else f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL}")
-    print(f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL}" if output_exists else f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL}")
+    print(f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if temp_exists else f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL}")
+    print(f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if output_exists else f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL}")
     print()
 
     # Check dependencies
@@ -49,8 +49,8 @@ def check(verbose):
     # ffmpeg/ffprobe use -version (single dash), not --version
     ffmpeg_found = check_command('ffmpeg', '-version')
     ffprobe_found = check_command('ffprobe', '-version')
-    print(f"  ffmpeg: {Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL}" if ffmpeg_found else f"  ffmpeg: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not found")
-    print(f"  ffprobe: {Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL}" if ffprobe_found else f"  ffprobe: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not found")
+    print(f"  ffmpeg: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffmpeg_found else f"  ffmpeg: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not found")
+    print(f"  ffprobe: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffprobe_found else f"  ffprobe: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not found")
     print()
 
     # Check API keys with parallel validation
@@ -60,25 +60,38 @@ def check(verbose):
 
     # Prepare validation tasks
     tasks = []
+    required_services_missing = False
     if settings.openai_api_key:
         tasks.append(('OpenAI', settings.openai_api_key, _validate_openai_key))
     else:
-        print(f"  OpenAI: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not set")
+        print(f"  OpenAI: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        required_services_missing = True
+
+    if settings.groq_api_key:
+        tasks.append(('Groq', settings.groq_api_key, _validate_groq_key))
+    else:
+        if settings.transcription_service == 'groq':
+            print(f"  Groq: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (required when transcription_service=groq)")
+            required_services_missing = True
+        else:
+            print(f"  Groq: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (optional)")
 
     if settings.anthropic_api_key:
         tasks.append(('Anthropic', settings.anthropic_api_key, _validate_anthropic_key))
     else:
-        print(f"  Anthropic: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not set")
+        print(f"  Anthropic: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        required_services_missing = True
 
     if settings.elevenlabs_api_key:
         tasks.append(('ElevenLabs', settings.elevenlabs_api_key, _validate_elevenlabs_key))
     else:
-        print(f"  ElevenLabs: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not set")
+        print(f"  ElevenLabs: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        required_services_missing = True
 
     if settings.did_api_key:
         tasks.append(('D-ID', settings.did_api_key, _validate_did_key))
     else:
-        print(f"  D-ID: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
+        print(f"  D-ID: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
 
     # Run validations in parallel
     results = {}
@@ -99,22 +112,28 @@ def check(verbose):
 
     # Display results in order
     all_valid = True
-    for service_name in ['OpenAI', 'Anthropic', 'ElevenLabs', 'D-ID']:
+    if required_services_missing:
+        all_valid = False
+    for service_name in ['OpenAI', 'Groq', 'Anthropic', 'ElevenLabs', 'D-ID']:
         if service_name in results:
             status, error = results[service_name]
             if status:
-                print(f"  {service_name}: {Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL} Valid")
+                print(f"  {service_name}: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL} Valid")
             else:
-                print(f"  {service_name}: {Style.BRIGHT}{Fore.RED}✗{Style.RESET_ALL} Invalid")
+                print(f"  {service_name}: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Invalid")
                 if verbose and error:
                     print(f"    {Fore.RED}Error: {error}{Style.RESET_ALL}")
-                if service_name != 'D-ID':  # D-ID is optional
+                if service_name == 'D-ID':
+                    pass
+                elif service_name == 'Groq' and settings.transcription_service != 'groq':
+                    pass
+                else:
                     all_valid = False
 
     print()
 
-    if all_valid and len(results) >= 3:  # At least OpenAI, Anthropic, ElevenLabs
-        print(f"{Style.BRIGHT}{Fore.GREEN}✓{Style.RESET_ALL} All required API keys are valid and working!\n")
+    if all_valid:
+        print(f"{Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL} {Fore.GREEN}All required API keys are valid and working{Style.RESET_ALL}\n")
     else:
         print(f"{Fore.YELLOW}⚠ Some API keys are missing or invalid.{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Run 'nbj setup' to configure missing keys.{Style.RESET_ALL}")
@@ -138,6 +157,21 @@ def _validate_openai_key(api_key: str) -> tuple[bool, str]:
             return False, "Invalid API key or authentication failed"
         elif "quota" in error_msg.lower() or "insufficient" in error_msg.lower():
             return False, "Insufficient quota or credits"
+        return False, error_msg
+
+
+def _validate_groq_key(api_key: str) -> tuple[bool, str]:
+    """Validate Groq API key (OpenAI-compatible)."""
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+        client.models.list()
+        return True, None
+    except Exception as e:
+        error_msg = str(e)
+        if "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower() or "invalid" in error_msg.lower():
+            return False, "Invalid API key or authentication failed"
         return False, error_msg
 
 
