@@ -25,14 +25,46 @@ def check(verbose):
 
     print(f"\n{Fore.CYAN}Checking NBJ Condenser Configuration...{Style.RESET_ALL}\n")
 
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except Exception as e:
+        try:
+            from pydantic import ValidationError
+
+            if isinstance(e, ValidationError):
+                print(f"{Style.BRIGHT}{Fore.RED}Configuration error:{Style.RESET_ALL}")
+                unknown_settings = []
+                for err in e.errors():
+                    if err.get('type') == 'extra_forbidden':
+                        loc = err.get('loc')
+                        if loc:
+                            unknown_settings.append(str(loc[0]))
+
+                if unknown_settings:
+                    unknown_settings_str = ', '.join(sorted(set(unknown_settings)))
+                    print(f"  {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Unknown setting(s): {unknown_settings_str}")
+                    print(f"  {Fore.YELLOW}These usually come from unexpected environment variables or .env entries.{Style.RESET_ALL}")
+                else:
+                    for err in e.errors():
+                        loc = '.'.join(str(x) for x in err.get('loc', []))
+                        msg = err.get('msg', 'Invalid value')
+                        print(f"  {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} {loc}: {msg}")
+
+                print()
+                sys.exit(1)
+        except Exception:
+            pass
+
+        print(f"{Style.BRIGHT}{Fore.RED}Configuration error:{Style.RESET_ALL} {e}")
+        print()
+        sys.exit(1)
 
     # Check directories
     print("Directories:")
     temp_exists = settings.temp_dir.exists()
     output_exists = settings.output_dir.exists()
-    print(f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if temp_exists else f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL}")
-    print(f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if output_exists else f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL}")
+    print(f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if temp_exists else f"  Temp: {settings.temp_dir} {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL}")
+    print(f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if output_exists else f"  Output: {settings.output_dir} {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL}")
     print()
 
     # Check dependencies
@@ -49,8 +81,8 @@ def check(verbose):
     # ffmpeg/ffprobe use -version (single dash), not --version
     ffmpeg_found = check_command('ffmpeg', '-version')
     ffprobe_found = check_command('ffprobe', '-version')
-    print(f"  ffmpeg: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffmpeg_found else f"  ffmpeg: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not found")
-    print(f"  ffprobe: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffprobe_found else f"  ffprobe: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not found")
+    print(f"  ffmpeg: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffmpeg_found else f"  ffmpeg: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not found")
+    print(f"  ffprobe: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffprobe_found else f"  ffprobe: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not found")
     print()
 
     # Check API keys with parallel validation
@@ -64,34 +96,34 @@ def check(verbose):
     if settings.openai_api_key:
         tasks.append(('OpenAI', settings.openai_api_key, _validate_openai_key))
     else:
-        print(f"  OpenAI: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        print(f"  OpenAI: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set")
         required_services_missing = True
 
     if settings.groq_api_key:
         tasks.append(('Groq', settings.groq_api_key, _validate_groq_key))
     else:
         if settings.transcription_service == 'groq':
-            print(f"  Groq: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (required when transcription_service=groq)")
+            print(f"  Groq: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set (required when transcription_service=groq)")
             required_services_missing = True
         else:
-            print(f"  Groq: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (optional)")
+            print(f"  Groq: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set (optional)")
 
     if settings.anthropic_api_key:
         tasks.append(('Anthropic', settings.anthropic_api_key, _validate_anthropic_key))
     else:
-        print(f"  Anthropic: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        print(f"  Anthropic: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set")
         required_services_missing = True
 
     if settings.elevenlabs_api_key:
         tasks.append(('ElevenLabs', settings.elevenlabs_api_key, _validate_elevenlabs_key))
     else:
-        print(f"  ElevenLabs: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set")
+        print(f"  ElevenLabs: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set")
         required_services_missing = True
 
     if settings.did_api_key:
         tasks.append(('D-ID', settings.did_api_key, _validate_did_key))
     else:
-        print(f"  D-ID: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
+        print(f"  D-ID: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
 
     # Run validations in parallel
     results = {}
@@ -120,7 +152,7 @@ def check(verbose):
             if status:
                 print(f"  {service_name}: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL} Valid")
             else:
-                print(f"  {service_name}: {Style.BRIGHT}{Fore.RED} ✗ {Style.RESET_ALL} Invalid")
+                print(f"  {service_name}: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Invalid")
                 if verbose and error:
                     print(f"    {Fore.RED}Error: {error}{Style.RESET_ALL}")
                 if service_name == 'D-ID':
