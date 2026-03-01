@@ -156,30 +156,44 @@ class ContentCondenser:
 
     def __init__(
         self,
-        provider: Literal["claude", "openai"] = "openai",
+        provider: Literal["anthropic", "openai"] = "openai",
         api_key: str = None,
         openai_api_key: str = None,
         anthropic_api_key: str = None,
-        model: str = None
+        model: str = None,
+        condensation_model_openai: str = None,
+        condensation_model_anthropic: str = None,
+        takeaways_model_openai: str = None,
+        takeaways_model_anthropic: str = None
     ):
         """
         Initialize the condenser.
 
         Args:
-            provider: LLM provider to use ("claude" or "openai")
+            provider: LLM provider to use ("anthropic" or "openai")
             api_key: API key (deprecated, use provider-specific keys)
             openai_api_key: OpenAI API key
             anthropic_api_key: Anthropic API key
-            model: Model to use (provider-specific defaults if not specified)
+            model: Model to use for condensation (provider-specific defaults if not specified)
+            condensation_model_openai: OpenAI model for condensation (overrides default)
+            condensation_model_anthropic: Anthropic model for condensation (overrides default)
+            takeaways_model_openai: OpenAI model for takeaways (overrides default)
+            takeaways_model_anthropic: Anthropic model for takeaways (overrides default)
         """
         self.provider = provider.lower()
 
-        if self.provider == "claude":
+        # Store model configuration
+        self.condensation_model_openai = condensation_model_openai or CONDENSATION_MODEL_OPENAI
+        self.condensation_model_anthropic = condensation_model_anthropic or CONDENSATION_MODEL_ANTHROPIC
+        self.takeaways_model_openai = takeaways_model_openai or TAKEAWAYS_MODEL_OPENAI
+        self.takeaways_model_anthropic = takeaways_model_anthropic or TAKEAWAYS_MODEL_ANTHROPIC
+
+        if self.provider == "anthropic":
             key = anthropic_api_key or api_key
             if not key:
-                raise ValueError("Anthropic API key required for Claude provider")
+                raise ValueError("Anthropic API key required for Anthropic provider")
             self.client = Anthropic(api_key=key)
-            self.model = model or CONDENSATION_MODEL_ANTHROPIC
+            self.model = model or self.condensation_model_anthropic
 
         elif self.provider == "openai":
             key = openai_api_key or api_key
@@ -191,10 +205,10 @@ class ContentCondenser:
                 self.client = OpenAI(api_key=key, http_client=_make_openai_httpx_client_for_debug())
             else:
                 self.client = OpenAI(api_key=key)
-            self.model = model or CONDENSATION_MODEL_OPENAI
+            self.model = model or self.condensation_model_openai
 
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Use 'claude' or 'openai'.")
+            raise ValueError(f"Unsupported provider: {provider}. Use 'anthropic' or 'openai'.")
 
     def init_chains(self) -> dict:
         """
@@ -331,7 +345,7 @@ class ContentCondenser:
             for attempt in range(max_retries + 1):
                 try:
                     # Call LLM API based on provider
-                    if self.provider == "claude":
+                    if self.provider == "anthropic":
                         message = self.client.messages.create(
                             model=self.model,
                             max_tokens=16000,
@@ -511,7 +525,7 @@ class ContentCondenser:
         last_error = None
         for attempt in range(max_retries + 1):
             try:
-                if self.provider == "claude":
+                if self.provider == "anthropic":
                     message = self.client.messages.create(
                         model=self.model,
                         max_tokens=16000,
@@ -654,9 +668,9 @@ class ContentCondenser:
 
         # Select appropriate model for takeaways (cheaper/faster than condensation models)
         if self.provider == 'openai':
-            model = TAKEAWAYS_MODEL_OPENAI
-        else:  # claude
-            model = TAKEAWAYS_MODEL_ANTHROPIC
+            model = self.takeaways_model_openai
+        else:  # anthropic
+            model = self.takeaways_model_anthropic
 
         logger.info(f"Extracting takeaways (top={top if top else 'auto'}) using {self.provider} model {model}")
 
@@ -684,7 +698,7 @@ class ContentCondenser:
 
                 takeaways = response.output_text.strip()
 
-            else:  # claude
+            else:  # anthropic
                 response = self.client.messages.create(
                     model=model,
                     max_tokens=2048,  # Takeaways are shorter than full scripts

@@ -32,6 +32,10 @@ def init():
     condenser = ContentCondenser(
         provider="openai",
         openai_api_key=settings.openai_api_key,
+        condensation_model_openai=settings.condensation_model_openai,
+        condensation_model_anthropic=settings.condensation_model_anthropic,
+        takeaways_model_openai=settings.takeaways_model_openai,
+        takeaways_model_anthropic=settings.takeaways_model_anthropic
     )
 
     try:

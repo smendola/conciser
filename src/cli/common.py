@@ -40,8 +40,9 @@ def _resolve_voice(voice: str, api_key: str) -> str:
 def _format_script_into_paragraphs(script_text: str, api_key: str) -> str:
     """Format a script into paragraphs using Claude."""
     from anthropic import Anthropic
-    from ..modules.condenser import TAKEAWAYS_MODEL_ANTHROPIC
+    from ..config import get_settings
 
+    settings = get_settings()
     client = Anthropic(api_key=api_key)
 
     prompt = f"""Format this script into natural paragraphs for better readability. Add paragraph breaks (using double newlines) at logical topic transitions and natural breaks. Each paragraph should cover a cohesive idea.
@@ -58,7 +59,7 @@ Script to format:
 
     try:
         message = client.messages.create(
-            model=TAKEAWAYS_MODEL_ANTHROPIC,
+            model=settings.takeaways_model_anthropic,
             max_tokens=8000,
             # temperature=0,
             messages=[{"role": "user", "content": prompt}]

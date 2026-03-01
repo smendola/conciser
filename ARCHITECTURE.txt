@@ -36,7 +36,8 @@ PIPELINE STAGES
    - Resume: skips if transcript.json already exists
 
 3. CONDENSE (condenser.py)
-   - Provider: OpenAI gpt-5.2 (default) or Claude claude-sonnet-4-20250514
+   - Provider: OpenAI (default) or Anthropic
+   - Default models: gpt-5.2 (OpenAI), claude-sonnet-4.6 (Anthropic)
    - Three-level prompt: system (L1) + strategy (L2) + user (L3)
    - Aggressiveness levels 1-10 control how much is cut
    - Returns: condensed_script, key_points_preserved, stats
@@ -99,7 +100,7 @@ KEY FILES
   src/config.py               Pydantic settings (reads .env)
   src/modules/downloader.py   yt-dlp wrapper
   src/modules/transcriber.py  Whisper API wrapper
-  src/modules/condenser.py    OpenAI/Claude condensation
+  src/modules/condenser.py    OpenAI/Anthropic condensation
   src/modules/edge_tts.py     Edge TTS (free, default)
   src/modules/voice_cloner.py ElevenLabs voice cloning (optional)
   src/modules/video_generator.py  D-ID avatar (optional)
@@ -121,6 +122,19 @@ REQUIRED API KEYS (.env)
   ANTHROPIC_API_KEY   Optional (Claude condensation provider)
   ELEVENLABS_API_KEY  Optional (voice cloning TTS)
   DID_API_KEY         Optional (avatar video mode only)
+  AZURE_SPEECH_KEY    Optional (Azure TTS with SSML support)
+  AZURE_SPEECH_REGION Optional (Azure region, e.g., eastus)
+
+LLM PROVIDER AND MODEL CONFIGURATION (.env)
+--------------------------------------------
+
+  CONDENSATION_PROVIDER            openai or anthropic (default: openai)
+  TAKEAWAYS_EXTRACTION_PROVIDER    openai or anthropic (default: openai)
+
+  CONDENSATION_MODEL_OPENAI        Model for OpenAI condensation (default: gpt-5.2)
+  CONDENSATION_MODEL_ANTHROPIC     Model for Anthropic condensation (default: claude-sonnet-4.6)
+  TAKEAWAYS_MODEL_OPENAI           Model for OpenAI takeaways (default: gpt-5-nano)
+  TAKEAWAYS_MODEL_ANTHROPIC        Model for Anthropic takeaways (default: claude-haiku-4-5-20251001)
 
 
 DEPENDENCIES

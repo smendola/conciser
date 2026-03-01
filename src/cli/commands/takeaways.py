@@ -217,9 +217,13 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             groq_api_key=settings.groq_api_key
         )
         condenser = ContentCondenser(
-            provider=settings.condenser_service,
+            provider=settings.takeaways_extraction_provider,
             openai_api_key=settings.openai_api_key,
-            anthropic_api_key=settings.anthropic_api_key
+            anthropic_api_key=settings.anthropic_api_key,
+            condensation_model_openai=settings.condensation_model_openai,
+            condensation_model_anthropic=settings.condensation_model_anthropic,
+            takeaways_model_openai=settings.takeaways_model_openai,
+            takeaways_model_anthropic=settings.takeaways_model_anthropic
         )
 
         # Stage 1: Download video

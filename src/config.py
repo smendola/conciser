@@ -39,9 +39,19 @@ class Settings(BaseSettings):
 
     # Service preferences
     transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
-    condenser_service: str = Field(default="openai", description="openai or claude")
+    condenser_service: str = Field(default="openai", description="openai or anthropic")
     voice_service: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")
+
+    # LLM provider and model selection
+    condensation_provider: str = Field(default="openai", description="Provider for condensation: openai or anthropic")
+    takeaways_extraction_provider: str = Field(default="openai", description="Provider for takeaways extraction: openai or anthropic")
+
+    # Model configuration (model IDs for each provider and task)
+    condensation_model_openai: str = Field(default="gpt-5.2", description="OpenAI model for condensation")
+    condensation_model_anthropic: str = Field(default="claude-sonnet-4.6", description="Anthropic model for condensation")
+    takeaways_model_openai: str = Field(default="gpt-5-nano", description="OpenAI model for takeaways extraction")
+    takeaways_model_anthropic: str = Field(default="claude-haiku-4-5-20251001", description="Anthropic model for takeaways extraction")
 
     # Processing options
     target_reduction_percentage: Optional[int] = Field(default=None, ge=10, le=90)

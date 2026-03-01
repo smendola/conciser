@@ -77,7 +77,11 @@ class CondenserPipeline:
         self.condenser = ContentCondenser(
             provider=settings.condenser_service,
             openai_api_key=settings.openai_api_key,
-            anthropic_api_key=settings.anthropic_api_key
+            anthropic_api_key=settings.anthropic_api_key,
+            condensation_model_openai=settings.condensation_model_openai,
+            condensation_model_anthropic=settings.condensation_model_anthropic,
+            takeaways_model_openai=settings.takeaways_model_openai,
+            takeaways_model_anthropic=settings.takeaways_model_anthropic
         )
         # TTS providers
         self.voice_cloner = VoiceCloner(settings.elevenlabs_api_key) if settings.elevenlabs_api_key else None
