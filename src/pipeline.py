@@ -417,9 +417,7 @@ class CondenserPipeline:
             if youtube_transcript:
                 logger.info("Using YouTube transcript (no Whisper API cost)")
                 # Save transcript
-                import re as _re
-                _model_norm = _re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
-                transcript_json_path = video_folder / f"transcript_{_model_norm}.json"
+                transcript_json_path = video_folder / "transcript_yt_extract.json"
                 self.transcriber.save_transcript(youtube_transcript, transcript_json_path)
                 return youtube_transcript
             else:
@@ -999,6 +997,11 @@ class CondenserPipeline:
         """Find existing transcript JSON file (keyed by transcription model)."""
         import re
         video_folder = video_path.parent
+        youtube_transcript_json = video_folder / "transcript_yt_extract.json"
+        if youtube_transcript_json.exists():
+            logger.info(f"Found existing transcript: {youtube_transcript_json}")
+            return self.transcriber.load_transcript(youtube_transcript_json)
+
         model_norm = re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
         transcript_json = video_folder / f"transcript_{model_norm}.json"
 
