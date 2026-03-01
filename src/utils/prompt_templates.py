@@ -280,25 +280,63 @@ TTS_SSML_REWRITE_INSTRUCTIONS = """
 Now rewrite the previously generated condensed script for TTS.
 Requirements:
 
-Optimize for listening, not reading
+- Optimize for listening, not reading
+- Use short sentences and conversational phrasing
+- Insert SSML tags supported by Microsoft Edge TTS
+- Use <p> and <s> structure
+- Add pauses with <break> where emphasis or pacing helps
+- Use <emphasis> sparingly, only on contrast words
+- Do not overuse prosody changes
+- Do not add new content
+- Output valid SSML only
+- Output must be a single SSML document wrapped in <speak>...</speak>.
+"""
 
-Use short sentences and conversational phrasing
+EXTRACT_TAKEAWAYS_PROMPT = """
+You are analyzing a video transcript to extract the most important key concepts.
 
-Insert SSML tags supported by Microsoft Edge TTS
+Extract exactly {N} key takeaways from this video. For each takeaway:
+- Focus on the core concept or insight
+- Explain it in 1-2 complete, self-contained sentences
+- Make it actionable or memorable
+- Ensure it can be understood without watching the video
 
-Use <p> and <s> structure
+Requirements:
+- Exactly {N} takeaways, no more, no less
+- Each must be substantive and distinct
+- Order by importance (most important first)
+- Use clear, concise language
+- Each point should be 1-2 sentences maximum
 
-Add pauses with <break> where emphasis or pacing helps
+Output as a numbered markdown list:
+1. [First key takeaway]
+2. [Second key takeaway]
+...
+"""
 
-Use <emphasis> sparingly, only on contrast words
+EXTRACT_TAKEAWAYS_AUTO_PROMPT = """
+You are analyzing a video transcript to extract the most important key concepts.
 
-Do not overuse prosody changes
+First, analyze the content to determine the optimal number of key takeaways (between 3-10).
+Consider:
+- Video length and content density
+- Complexity of topics covered
+- Natural information hierarchy
+- Avoiding redundancy while capturing all major concepts
+- Fewer is better
 
-Do not add new content
+Then extract that optimal number of key takeaways. For each:
+- Focus on the core concept or insight
+- Explain in 1 sentence.
+- Make it actionable or memorable
 
-Output valid SSML only.
+Order by importance (most important first).
 
-Output must be a single SSML document wrapped in <speak>...</speak>.
+Output as a numbered markdown list:
+1. [First key takeaway]
+2. [Second key takeaway]
+...
+[Continue until all key concepts are covered, stopping between 3-10 points]
 """
 
 def get_strategy_description(aggressiveness: int) -> str:

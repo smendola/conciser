@@ -11,9 +11,9 @@ from ..app import cli
 @cli.command()
 @click.option(
     '--provider',
-    type=click.Choice(['elevenlabs', 'edge']),
+    type=click.Choice(['elevenlabs', 'edge', 'azure']),
     default='edge',
-    help='TTS provider to list voices for. Default: elevenlabs'
+    help='TTS provider to list voices for. Default: edge'
 )
 @click.option(
     '--lang',
@@ -85,7 +85,11 @@ def voices(provider, lang):
                 for v in locales[locale]:
                     gender_icon = "♂" if v['gender'] == 'Male' else "♀" if v['gender'] == 'Female' else ""
                     # Extract short name from full name (e.g., "en-US-AriaNeural" -> "Aria")
-                    short_name = v['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '')
+                    short_name = (v['name']
+                    .split('-')[-1]
+                                  .replace('Neural', '')
+                                  .replace('Multilingual', '')
+                                  .replace(':DragonHDLatest', ' HD'))
                     print(f"  {gender_icon} {Fore.GREEN}{short_name}{Style.RESET_ALL} {Style.DIM}({v['name']}){Style.RESET_ALL}")
                 print()
 
@@ -101,6 +105,63 @@ def voices(provider, lang):
             print(f"\n{Fore.YELLOW}Usage (full names):{Style.RESET_ALL}")
             print(f"  nbj condense URL --tts-provider=edge --voice=en-US-AriaNeural")
             print(f"  nbj condense URL --tts-provider=edge --voice=en-GB-RyanNeural\n")
+            return
+
+        if provider == 'azure':
+            # List Azure TTS voices
+            if not settings.azure_speech_key or not settings.azure_speech_region:
+                print(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Set these environment variables to use Azure TTS.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}Or use --provider=edge for free voices without API key.{Style.RESET_ALL}")
+                sys.exit(1)
+
+            from ...modules.azure_tts import AzureTTS
+
+            title = f"Available Azure TTS Voices (SSML Supported)"
+            if lang:
+                title += f" - Filtered by: {lang}"
+            print(f"\n{Fore.CYAN}{title}:{Style.RESET_ALL}\n")
+
+            azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+            voices = azure.list_voices(locale_filter=lang if lang else None)
+
+            if not voices:
+                print(f"{Fore.RED}No voices found or API error.{Style.RESET_ALL}")
+                sys.exit(1)
+
+            # Group by locale
+            locales = {}
+            for v in voices:
+                locale = v['locale']
+                if locale not in locales:
+                    locales[locale] = []
+                locales[locale].append(v)
+
+            # Show all locales, sorted alphabetically
+            all_locales = sorted(locales.keys())
+
+            for locale in all_locales:
+                print(f"{Fore.GREEN}{locale}:{Style.RESET_ALL}")
+                for v in locales[locale]:
+                    gender_icon = "♂" if v['gender'] == 'Male' else "♀" if v['gender'] == 'Female' else ""
+                    # Extract short name from full name (e.g., "en-US-AriaNeural" -> "Aria")
+                    short_name = v['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '').replace(':DragonHDLatest', ' HD')
+                    display = v.get('display_name', '')
+                    display_str = f" - {display}" if display else ""
+                    print(f"  {gender_icon} {Fore.GREEN}{short_name}{Style.RESET_ALL} {Style.DIM}({v['name']}){display_str}{Style.RESET_ALL}")
+                print()
+
+            print(f"{Fore.YELLOW}Filter voices:{Style.RESET_ALL}")
+            print(f"  nbj voices --provider=azure --lang=en       # All English variants")
+            print(f"  nbj voices --provider=azure --lang=en-US    # US English only")
+            print(f"  nbj voices --provider=azure --lang=fr-FR    # French (France)")
+            print(f"\n{Fore.YELLOW}Usage (short names):{Style.RESET_ALL}")
+            print(f"  nbj condense URL --tts-provider=azure --voice=Aria")
+            print(f"  nbj condense URL --tts-provider=azure --voice=Ryan")
+            print(f"\n{Fore.YELLOW}Usage (full names):{Style.RESET_ALL}")
+            print(f"  nbj condense URL --tts-provider=azure --voice=en-US-AriaNeural")
+            print(f"  nbj condense URL --tts-provider=azure --voice=en-GB-RyanNeural")
+            print(f"\n{Fore.CYAN}Note: Azure TTS supports SSML at aggressiveness level 4+{Style.RESET_ALL}\n")
             return
 
         # ElevenLabs

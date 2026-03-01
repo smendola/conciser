@@ -71,7 +71,7 @@ nbj check
 | `--quality`, `-q` | `1080p` | Video quality: `720p`, `1080p`, `4k` |
 | `--video-gen-mode` | `slideshow` | `slideshow`, `audio_only`, `static`, `avatar` |
 | `--voice` | auto | Edge voice (e.g., `en-GB-RyanNeural`) or `edge/ryan` |
-| `--tts-provider` | `edge` | `edge` (free) or `elevenlabs` (paid) |
+| `--tts-provider` | `edge` | `edge` (free), `elevenlabs` (paid), or `azure` (paid, SSML) |
 | `--speech-rate` | `+0%` | TTS speed: `+50%` faster, `-25%` slower |
 | `--prepend-intro` | off | Prepend numbered key take-aways to speech |
 | `--resume/--no-resume` | resume | Resume from existing intermediate files |

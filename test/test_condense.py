@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_settings
 from src.modules.downloader import VideoDownloader
-from src.modules.condenser import ContentCondenser
+from src.modules.condenser import ContentCondenser, CONDENSATION_MODEL_OPENAI
 from src.pipeline import CondenserPipeline
 from src.utils.prompt_templates import get_condense_prompt, TARGET_RETENTION
 
@@ -198,7 +198,7 @@ def condense_video_at_level(
         print(f"  {Fore.YELLOW}Condensing at level {aggressiveness}/10...{Style.RESET_ALL}")
         condenser = ContentCondenser(
             api_key=settings.openai_api_key,
-            model="gpt-5.2"
+            model=CONDENSATION_MODEL_OPENAI
         )
 
         duration_minutes = metadata.get('duration', 0) / 60

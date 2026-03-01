@@ -1,0 +1,276 @@
+"""Azure TTS module using Microsoft Azure Cognitive Services Speech API."""
+
+import logging
+from pathlib import Path
+from typing import List, Optional
+import azure.cognitiveservices.speech as speechsdk
+
+logger = logging.getLogger(__name__)
+
+
+class AzureTTS:
+    """Text-to-speech using Azure Cognitive Services Speech API (supports SSML)."""
+
+    def __init__(self, api_key: str, region: str):
+        """
+        Initialize Azure TTS.
+
+        Args:
+            api_key: Azure Speech Services API key
+            region: Azure region (e.g., 'eastus', 'westus', 'westeurope')
+        """
+        self.api_key = api_key
+        self.region = region
+        self.speech_config = speechsdk.SpeechConfig(
+            subscription=api_key,
+            region=region
+        )
+
+    def generate_speech(
+        self,
+        text: str,
+        output_path: Path,
+        voice: str = "en-US-AriaNeural",
+        rate: str = "+0%",
+        is_ssml: bool = False,
+    ) -> Path:
+        """
+        Generate speech from text or SSML using Azure TTS.
+
+        Args:
+            text: Text or SSML to convert to speech
+            output_path: Path to save generated audio
+            voice: Voice name (e.g., en-US-AriaNeural, en-GB-RyanNeural)
+            rate: Speech speed adjustment (e.g., "+20%", "-10%", "+0%")
+            is_ssml: Whether input is SSML format
+
+        Returns:
+            Path to generated audio file
+        """
+        try:
+            logger.info(
+                f"Generating speech with Azure TTS ({len(text)} characters, "
+                f"voice={voice}, rate={rate}, ssml={is_ssml})"
+            )
+
+            # Configure output to file
+            audio_config = speechsdk.audio.AudioOutputConfig(filename=str(output_path))
+
+            # Set voice
+            self.speech_config.speech_synthesis_voice_name = voice
+
+            # Create synthesizer
+            synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=self.speech_config,
+                audio_config=audio_config
+            )
+
+            # Synthesize based on input type
+            if is_ssml:
+                # Ensure SSML has voice set if not already specified
+                ssml_text = self._ensure_voice_in_ssml(text, voice, rate)
+                logger.debug(f"Using SSML synthesis with voice={voice}")
+                result = synthesizer.speak_ssml_async(ssml_text).get()
+            else:
+                # Plain text with rate adjustment
+                if rate and rate != "+0%":
+                    # Convert plain text to SSML to apply rate
+                    ssml_text = self._text_to_ssml(text, voice, rate)
+                    result = synthesizer.speak_ssml_async(ssml_text).get()
+                else:
+                    result = synthesizer.speak_text_async(text).get()
+
+            # Check result
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                logger.info(f"Speech generated and saved to: {output_path}")
+                return output_path
+            elif result.reason == speechsdk.ResultReason.Canceled:
+                cancellation = result.cancellation_details
+                error_msg = f"Azure TTS synthesis canceled: {cancellation.reason}"
+                if cancellation.reason == speechsdk.CancellationReason.Error:
+                    error_msg += f"\nError details: {cancellation.error_details}"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            else:
+                raise RuntimeError(f"Unexpected result reason: {result.reason}")
+
+        except Exception as e:
+            logger.error(f"Azure TTS generation failed: {e}")
+            raise RuntimeError(f"Failed to generate speech with Azure TTS: {e}")
+
+    def _text_to_ssml(self, text: str, voice: str, rate: str = "+0%") -> str:
+        """
+        Convert plain text to SSML with voice and rate settings.
+
+        Args:
+            text: Plain text
+            voice: Voice name
+            rate: Speech rate (e.g., "+20%", "-10%")
+
+        Returns:
+            SSML string
+        """
+        # Convert rate format from "+20%" to "20%" or "-10%" to "-10%"
+        rate_value = rate if rate.startswith('-') else rate.lstrip('+')
+
+        ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+    <voice name="{voice}">
+        <prosody rate="{rate_value}">
+            {text}
+        </prosody>
+    </voice>
+</speak>"""
+        return ssml
+
+    def _ensure_voice_in_ssml(self, ssml: str, voice: str, rate: str = "+0%") -> str:
+        """
+        Ensure SSML has correct voice and rate settings.
+
+        Args:
+            ssml: SSML string
+            voice: Voice name to use
+            rate: Speech rate adjustment
+
+        Returns:
+            Modified SSML with voice settings
+        """
+        # If SSML already has <voice> tag, return as-is
+        if '<voice' in ssml.lower():
+            return ssml
+
+        # Otherwise, wrap content with voice tag
+        import re
+
+        # Extract content between <speak> tags
+        speak_match = re.search(r'<speak[^>]*>(.*)</speak>', ssml, re.DOTALL)
+        if speak_match:
+            content = speak_match.group(1).strip()
+            rate_value = rate if rate.startswith('-') else rate.lstrip('+')
+
+            # Reconstruct with voice wrapper
+            if rate and rate != "+0%":
+                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+    <voice name="{voice}">
+        <prosody rate="{rate_value}">
+            {content}
+        </prosody>
+    </voice>
+</speak>"""
+            else:
+                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+    <voice name="{voice}">
+        {content}
+    </voice>
+</speak>"""
+            return new_ssml
+
+        # If no <speak> tags found, wrap everything
+        return self._text_to_ssml(ssml, voice, rate)
+
+    def list_voices(self, locale_filter: Optional[str] = None) -> List[dict]:
+        """
+        List all available Azure TTS voices.
+
+        Args:
+            locale_filter: Optional locale filter (e.g., "en-US", "en-GB")
+
+        Returns:
+            List of voice dictionaries with name, gender, locale
+        """
+        try:
+            # Create synthesizer to get voices
+            synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config)
+            result = synthesizer.get_voices_async().get()
+
+            if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
+                voices = []
+                for voice in result.voices:
+                    # Apply locale filter if specified
+                    if locale_filter and not voice.locale.startswith(locale_filter):
+                        continue
+
+                    voices.append({
+                        'name': voice.short_name,
+                        'gender': voice.gender.name if hasattr(voice.gender, 'name') else str(voice.gender),
+                        'locale': voice.locale,
+                        'display_name': voice.local_name
+                    })
+                return voices
+            else:
+                logger.error(f"Failed to retrieve voices: {result.reason}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to list Azure TTS voices: {e}")
+            return []
+
+    def find_voice(self, locale: str = "en-US", gender: str = None) -> Optional[str]:
+        """
+        Find a suitable voice by locale and gender.
+
+        Args:
+            locale: Locale like "en-US", "en-GB", "es-ES"
+            gender: "Male" or "Female" (optional)
+
+        Returns:
+            Voice name if found, None otherwise
+        """
+        voices = self.list_voices(locale_filter=locale)
+
+        for voice in voices:
+            if gender is None or voice['gender'].lower() == gender.lower():
+                return voice['name']
+
+        return None
+
+    def resolve_voice_name(self, name: str) -> Optional[str]:
+        """
+        Resolve a short voice name to full voice ID.
+
+        Args:
+            name: Short name like "Aria", "Ryan", or full name like "en-US-AriaNeural"
+
+        Returns:
+            Full voice name if found, None otherwise
+        """
+        # If it looks like a full voice name, return as-is
+        if '-' in name and 'Neural' in name:
+            return name
+
+        # Search for matching voice
+        voices = self.list_voices()
+        name_lower = name.lower()
+
+        # Prioritize en-US voices
+        preferred_locales = ['en-US', 'en-GB', 'en-AU', 'en-CA']
+
+        # First pass: exact match in preferred locales
+        for locale in preferred_locales:
+            for voice in voices:
+                if voice['locale'] == locale:
+                    # Extract short name from full name (e.g., "en-US-AriaNeural" -> "Aria")
+                    voice_short = voice['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '').lower()
+                    if voice_short == name_lower:
+                        return voice['name']
+
+        # Second pass: exact match in any locale
+        for voice in voices:
+            voice_short = voice['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '').lower()
+            if voice_short == name_lower:
+                return voice['name']
+
+        # Third pass: partial match in preferred locales
+        for locale in preferred_locales:
+            for voice in voices:
+                if voice['locale'] == locale:
+                    voice_short = voice['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '').lower()
+                    if name_lower in voice_short or voice_short in name_lower:
+                        return voice['name']
+
+        # Fourth pass: partial match in any locale
+        for voice in voices:
+            voice_short = voice['name'].split('-')[-1].replace('Neural', '').replace('Multilingual', '').lower()
+            if name_lower in voice_short or voice_short in name_lower:
+                return voice['name']
+
+        return None

@@ -10,7 +10,7 @@ from ..app import cli
 @cli.command(name='tts-samples')
 @click.option(
     '--provider',
-    type=click.Choice(['edge', 'elevenlabs']),
+    type=click.Choice(['edge', 'elevenlabs', 'azure']),
     default='edge',
     help='TTS provider to generate samples for. Default: edge'
 )
@@ -117,6 +117,37 @@ def tts_samples(provider, file, output_dir, rate, lang):
             # Language prefix (e.g., "en" matches all "en-*")
             filtered_voices = [v for v in all_voices if v['locale'].startswith(f"{lang}-")]
             print(f"Found {len(filtered_voices)} voices for language: {lang}\n")
+    elif provider == 'azure':
+        # Azure TTS
+        settings = get_settings()
+        if not settings.azure_speech_key or not settings.azure_speech_region:
+            print(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set.{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Set these environment variables to use Azure TTS.{Style.RESET_ALL}")
+            return
+
+        from ...modules.azure_tts import AzureTTS
+        tts = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+
+        # Get all voices
+        print(f"{Fore.CYAN}Fetching available Azure TTS voices...{Style.RESET_ALL}")
+
+        # Parse language filter
+        if ',' in lang:
+            # Comma-separated list of specific locales
+            requested_locales = [l.strip() for l in lang.split(',')]
+            all_voices = []
+            for locale in requested_locales:
+                all_voices.extend(tts.list_voices(locale_filter=locale))
+            filtered_voices = all_voices
+            print(f"Found {len(filtered_voices)} voices for locales: {', '.join(requested_locales)}\n")
+        elif '-' in lang:
+            # Specific locale (e.g., "en-GB")
+            filtered_voices = tts.list_voices(locale_filter=lang)
+            print(f"Found {len(filtered_voices)} voices for locale: {lang}\n")
+        else:
+            # Language prefix (e.g., "en" matches all "en-*")
+            filtered_voices = tts.list_voices(locale_filter=lang)
+            print(f"Found {len(filtered_voices)} voices for language: {lang}\n")
     else:
         # ElevenLabs
         settings = get_settings()
@@ -143,7 +174,7 @@ def tts_samples(provider, file, output_dir, rate, lang):
 
     # Group for organized output
     voices_by_group = {}
-    if provider == 'edge':
+    if provider in ['edge', 'azure']:
         for voice in filtered_voices:
             group_key = voice['locale']
             if group_key not in voices_by_group:
@@ -163,14 +194,14 @@ def tts_samples(provider, file, output_dir, rate, lang):
 
     for idx, (group_name, voices) in enumerate(sorted(voices_by_group.items()), 1):
         print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
-        if provider == 'edge':
+        if provider in ['edge', 'azure']:
             print(f"{Fore.CYAN}Locale: {group_name} ({len(voices)} voices){Style.RESET_ALL}")
         else:
             print(f"{Fore.CYAN}Category: {group_name} ({len(voices)} voices){Style.RESET_ALL}")
         print(f"{Fore.CYAN}{'='*80}{Style.RESET_ALL}")
 
         for voice in sorted(voices, key=lambda v: v['name']):
-            if provider == 'edge':
+            if provider in ['edge', 'azure']:
                 full_voice_id = voice['name']
                 voice_name = extract_voice_name(full_voice_id)
                 gender = voice.get('gender', 'Unknown')
@@ -205,7 +236,7 @@ def tts_samples(provider, file, output_dir, rate, lang):
             print(f"  [{success_count + error_count + 1}/{total_voices}] {voice_name} ({gender})... ", end='', flush=True)
 
             try:
-                if provider == 'edge':
+                if provider in ['edge', 'azure']:
                     tts.generate_speech(
                         text=full_text,
                         output_path=output_file,

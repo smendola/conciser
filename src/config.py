@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     did_api_key: str = Field(default="", description="D-ID API key for video generation")
     heygen_api_key: str = Field(default="", description="HeyGen API key (alternative to D-ID)")
     groq_api_key: str = Field(default="", description="Groq API key for free Whisper transcription (whisper-large-v3)")
+    azure_speech_key: str = Field(default="", description="Azure Speech Services API key for TTS with SSML support")
+    azure_speech_region: str = Field(default="", description="Azure Speech Services region (e.g., eastus, westus, westeurope)")
 
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
     # Service preferences
     transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
     condenser_service: str = Field(default="openai", description="openai or claude")
-    voice_service: str = Field(default="elevenlabs", description="elevenlabs or coqui")
+    voice_service: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")
 
     # Processing options

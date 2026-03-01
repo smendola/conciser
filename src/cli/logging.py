@@ -7,7 +7,7 @@ _PATH_RE = __import__('re').compile(
     r'(?:'
     r'[\w./\\-]+/[\w./\\-]+'
     r'|'
-    r'\w[\w._-]*\.(?:json|mp3|mp4|wav|txt|webm|mkv|log|py|zip|jpg|jpeg|png)'
+    r'\w[\w._-]*\.(?:json|xml|mp3|mp4|wav|txt|webm|mkv|log|py|zip|jpg|jpeg|png)'
     r')'
 )
  

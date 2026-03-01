@@ -16,6 +16,18 @@ from ..utils.llm_schemas import get_condense_output_json_schema
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# LLM MODEL CONSTANTS - Single source of truth for model selection
+# ==============================================================================
+
+# Condensation models (premium models for complex rewriting tasks)
+CONDENSATION_MODEL_OPENAI = 'gpt-5.2'
+CONDENSATION_MODEL_ANTHROPIC = 'claude-sonnet-4.6'
+
+# Takeaways models (cheaper models for simpler extraction tasks)
+TAKEAWAYS_MODEL_OPENAI = 'gpt-5-nano'
+TAKEAWAYS_MODEL_ANTHROPIC = 'claude-haiku-4-5-20251001'
+
 
 def _make_openai_httpx_client_for_debug() -> httpx.Client:
     """Create an httpx client that prints full (redacted) request/response to stderr.
@@ -167,7 +179,7 @@ class ContentCondenser:
             if not key:
                 raise ValueError("Anthropic API key required for Claude provider")
             self.client = Anthropic(api_key=key)
-            self.model = model or "claude-sonnet-4-20250514"
+            self.model = model or CONDENSATION_MODEL_ANTHROPIC
 
         elif self.provider == "openai":
             key = openai_api_key or api_key
@@ -179,7 +191,7 @@ class ContentCondenser:
                 self.client = OpenAI(api_key=key, http_client=_make_openai_httpx_client_for_debug())
             else:
                 self.client = OpenAI(api_key=key)
-            self.model = model or "gpt-5.2"
+            self.model = model or CONDENSATION_MODEL_OPENAI
 
         else:
             raise ValueError(f"Unsupported provider: {provider}. Use 'claude' or 'openai'.")
@@ -605,3 +617,88 @@ class ContentCondenser:
                 raise ValueError("Condensed script is empty")
 
         return True
+
+    def extract_takeaways(
+        self,
+        transcript: str,
+        video_title: str = "",
+        top: int = None
+    ) -> str:
+        """
+        Extract key takeaways from a video transcript.
+
+        Args:
+            transcript: Full video transcript
+            video_title: Optional video title for context
+            top: Number of takeaways to extract (3-10), or None for auto
+
+        Returns:
+            Markdown-formatted takeaways list
+
+        Note:
+            Does NOT use conversation chains (unlike condense()).
+            Chains provide:
+              1. Startup speed (pre-seeded system prompt)
+              2. Token savings (system prompt sent once)
+            Takeaways prompt is small (~150-200 tokens), so overhead is minimal.
+            If this prompt grows significantly, consider adding chain support.
+
+            Uses cheaper/faster models than condensation:
+            - OpenAI: TAKEAWAYS_MODEL_OPENAI (vs CONDENSATION_MODEL_OPENAI)
+            - Anthropic: TAKEAWAYS_MODEL_ANTHROPIC (vs CONDENSATION_MODEL_ANTHROPIC)
+        """
+        from ..utils.prompt_templates import (
+            EXTRACT_TAKEAWAYS_PROMPT,
+            EXTRACT_TAKEAWAYS_AUTO_PROMPT
+        )
+
+        # Select appropriate model for takeaways (cheaper/faster than condensation models)
+        if self.provider == 'openai':
+            model = TAKEAWAYS_MODEL_OPENAI
+        else:  # claude
+            model = TAKEAWAYS_MODEL_ANTHROPIC
+
+        logger.info(f"Extracting takeaways (top={top if top else 'auto'}) using {self.provider} model {model}")
+
+        # Choose prompt based on whether top is specified
+        if top:
+            system_prompt = EXTRACT_TAKEAWAYS_PROMPT.format(N=top)
+        else:
+            system_prompt = EXTRACT_TAKEAWAYS_AUTO_PROMPT
+
+        # Build user message
+        user_message = f"Video transcript:\n\n{transcript}"
+        if video_title:
+            user_message = f"Video title: {video_title}\n\n" + user_message
+
+        try:
+            if self.provider == 'openai':
+                # Use Responses API (GLOBAL RULE: Use only Responses API for OpenAI, not chat.completions (deprecated API))
+                # One-shot extraction, no conversation chaining needed
+                response = self.client.responses.create(
+                    model=model,
+                    instructions=system_prompt,
+                    input=[{"role": "user", "content": user_message}],
+                    max_output_tokens=2048
+                )
+
+                takeaways = response.output_text.strip()
+
+            else:  # claude
+                response = self.client.messages.create(
+                    model=model,
+                    max_tokens=2048,  # Takeaways are shorter than full scripts
+                    system=system_prompt,
+                    messages=[
+                        {"role": "user", "content": user_message}
+                    ]
+                )
+
+                takeaways = response.content[0].text.strip()
+
+            logger.info(f"Successfully extracted takeaways ({len(takeaways)} characters)")
+            return takeaways
+
+        except Exception as e:
+            logger.error(f"Failed to extract takeaways: {e}")
+            raise RuntimeError(f"Failed to extract takeaways: {e}")

@@ -7,7 +7,7 @@ This file is kept for historical reference. For current status, see README.md an
 ### CLI (`nbj condense`)
 - Aggressiveness 1–10, quality 720p/1080p/4k
 - Output modes: slideshow (default), audio_only, static, avatar
-- TTS providers: Edge TTS (free, default) or ElevenLabs (paid)
+- TTS providers: Edge TTS (free, default), ElevenLabs (paid), or Azure (paid, SSML support)
 - Voice selection, speech rate control
 - Prepend-intro flag (numbered key take-aways)
 - Resume support (skips already-completed stages)
@@ -38,5 +38,5 @@ This file is kept for historical reference. For current status, see README.md an
 - Stage 1: Download (yt-dlp)
 - Stage 2: Transcribe (Whisper API)
 - Stage 3: Condense (OpenAI gpt-5.2 default, or Claude)
-- Stage 4: TTS (Edge TTS default, or ElevenLabs)
+- Stage 4: TTS (Edge TTS default, ElevenLabs, or Azure with SSML)
 - Stage 5: Video (slideshow/static/avatar) or audio-only output

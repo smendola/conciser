@@ -27,6 +27,8 @@ setup(
         "anthropic>=0.18.0",
         "elevenlabs>=0.2.0",
         "requests>=2.31.0",
+        "edge-tts>=6.1.0",
+        "azure-cognitiveservices-speech>=1.38.0",
         "ffmpeg-python>=0.2.0",
         "moviepy>=1.0.3",
         "pydub>=0.25.1",

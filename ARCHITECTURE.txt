@@ -1,6 +1,12 @@
 NBJ Condenser - Architecture Overview
 ======================================
 
+CRITICAL RULE: OPENAI API USAGE
+--------------------------------
+NEVER use chat.completions API.
+ALWAYS use Responses API (self.client.responses.create).
+This applies to ALL OpenAI calls in the codebase without exception.
+
 See ARCHITECTURE.md for the full technical reference.
 
 This file is a plain-text summary for quick reference.
@@ -65,7 +71,7 @@ Key options for `nbj condense`:
   --quality, -q         720p, 1080p, 4k (default: 1080p)
   --video-gen-mode      slideshow, audio_only, static, avatar
   --voice               e.g. "edge/ryan" or "en-GB-RyanNeural"
-  --tts-provider        edge (default free) or elevenlabs
+  --tts-provider        edge (default, free), elevenlabs (paid), or azure (paid, SSML)
   --speech-rate         e.g. "+10%", "-25%"
   --prepend-intro       Add numbered key take-aways intro
   --resume/--no-resume  Resume from intermediate files (default: resume)

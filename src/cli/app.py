@@ -25,6 +25,7 @@ from .commands import info as _info  # noqa: E402,F401
 from .commands import init as _init  # noqa: E402,F401
 from .commands import setup as _setup  # noqa: E402,F401
 from .commands import show_script as _show_script  # noqa: E402,F401
+from .commands import takeaways as _takeaways  # noqa: E402,F401
 from .commands import tts as _tts  # noqa: E402,F401
 from .commands import tts_samples as _tts_samples  # noqa: E402,F401
 from .commands import voices as _voices  # noqa: E402,F401

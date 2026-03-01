@@ -14,6 +14,7 @@ from .modules.transcriber import Transcriber
 from .modules.condenser import ContentCondenser
 from .modules.tts import VoiceCloner
 from .modules.edge_tts import EdgeTTS
+from .modules.azure_tts import AzureTTS
 from .modules.video_generator import VideoGenerator
 from .modules.compositor import VideoCompositor
 from .utils.audio_utils import extract_audio, extract_audio_segment, normalize_audio, get_audio_duration
@@ -48,7 +49,8 @@ def _is_valid_ssml(ssml: str) -> bool:
 
 def _tts_input_mode(tts_provider: str, aggressiveness: int) -> str:
     """Return 'ssml' when we intend to feed SSML to TTS, else 'text'."""
-    if tts_provider != "edge" and aggressiveness >= 4:
+    # Only Azure supports SSML at aggressiveness >= 4
+    if tts_provider == "azure" and aggressiveness >= 4:
         return "ssml"
     return "text"
 
@@ -80,6 +82,7 @@ class CondenserPipeline:
         # TTS providers
         self.voice_cloner = VoiceCloner(settings.elevenlabs_api_key) if settings.elevenlabs_api_key else None
         self.edge_tts = EdgeTTS()  # Always available (free)
+        self.azure_tts = AzureTTS(settings.azure_speech_key, settings.azure_speech_region) if (settings.azure_speech_key and settings.azure_speech_region) else None
         # D-ID video generator only needed for avatar mode
         self.video_generator = VideoGenerator(settings.did_api_key) if settings.did_api_key else None
         self.compositor = VideoCompositor(settings.temp_dir)
@@ -95,7 +98,7 @@ class CondenserPipeline:
         resume: bool = True,
         skip_voice_clone: bool = False,
         voice_id: str = None,
-        tts_provider: str = "elevenlabs",
+        tts_provider: str = "edge",
         slideshow_max_frames: int = None,
         tts_rate: str = "+0%",
         prepend_intro: bool = False,
@@ -624,7 +627,7 @@ class CondenserPipeline:
         script: str,
         voice_id: str,
         video_folder: Path,
-        tts_provider: str = "elevenlabs",
+        tts_provider: str = "edge",
         tts_rate: str = "+0%",
         aggressiveness: int = 5,
         tts_mode: str = "text",
@@ -638,6 +641,17 @@ class CondenserPipeline:
         if tts_provider == "edge":
             # Use Edge TTS
             self.edge_tts.generate_speech(
+                script,
+                output_path,
+                voice=voice_id,
+                rate=tts_rate,
+                is_ssml=(tts_mode == "ssml"),
+            )
+        elif tts_provider == "azure":
+            # Use Azure TTS (supports SSML)
+            if not self.azure_tts:
+                raise RuntimeError("Azure TTS not configured. Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION.")
+            self.azure_tts.generate_speech(
                 script,
                 output_path,
                 voice=voice_id,

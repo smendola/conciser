@@ -211,10 +211,12 @@ def _validate_anthropic_key(api_key: str) -> tuple[bool, str]:
     """Validate Anthropic API key."""
     try:
         from anthropic import Anthropic
+        from ...modules.condenser import TAKEAWAYS_MODEL_ANTHROPIC
+
         client = Anthropic(api_key=api_key)
-        # Try a minimal message (very cheap test)
+        # Try a minimal message (very cheap test - use cheaper model)
         client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=TAKEAWAYS_MODEL_ANTHROPIC,
             max_tokens=1,
             messages=[{"role": "user", "content": "test"}]
         )

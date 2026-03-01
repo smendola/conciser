@@ -57,9 +57,9 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--tts-provider',
-    type=click.Choice(['elevenlabs', 'edge']),
-    default='elevenlabs',
-    help='TTS provider: elevenlabs (paid, high quality) or edge (free, good quality). Default: elevenlabs'
+    type=click.Choice(['elevenlabs', 'edge', 'azure']),
+    default='edge',
+    help='TTS provider: elevenlabs (paid, high quality), edge (free, good quality), or azure (paid, SSML support). Default: edge'
 )
 @click.option(
     '--slideshow-frames',
@@ -71,7 +71,7 @@ from ..app import cli  # noqa: E402
     '--speech-rate',
     type=str,
     default='+0%',
-    help='Speech speed for Edge TTS (e.g., "+50%" for faster, "-25%" for slower, "+0%" for normal). Only works with Edge TTS provider.'
+    help='Speech speed adjustment (e.g., "+50%" for faster, "-25%" for slower, "+0%" for normal). Works with Edge and Azure TTS providers.'
 )
 @click.option(
     '--prepend-intro',
@@ -112,10 +112,15 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         nbj condense https://youtube.com/watch?v=... --voice=elevenlabs/George
 
-        # Speech speed control (Edge TTS only)
+        # Speech speed control (Edge and Azure TTS)
         nbj condense https://youtube.com/watch?v=... --voice=edge/ryan --speech-rate="+25%"
 
-        nbj condense https://youtube.com/watch?v=... --voice=edge/aria --speech-rate="-10%"
+        nbj condense https://youtube.com/watch?v=... --voice=azure/aria --speech-rate="-10%"
+
+        # Azure TTS with SSML support (aggressiveness 4+)
+        nbj condense https://youtube.com/watch?v=... --voice=azure/ryan -a 5
+
+        nbj condense https://youtube.com/watch?v=... --voice=azure/aria -a 10
 
         # Legacy format (still supported)
         nbj condense https://youtube.com/watch?v=... --tts-provider=edge --voice=Aria
@@ -179,9 +184,9 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
                 voice_name = voice_name.strip()
 
                 # Validate provider
-                if provider_from_voice not in ['elevenlabs', 'edge']:
+                if provider_from_voice not in ['elevenlabs', 'edge', 'azure']:
                     click.echo(f"{Fore.RED}Error: Invalid provider '{provider_from_voice}' in --voice parameter.{Style.RESET_ALL}")
-                    click.echo(f"{Fore.YELLOW}Valid providers: elevenlabs, edge{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Valid providers: elevenlabs, edge, azure{Style.RESET_ALL}")
                     sys.exit(1)
 
                 # Set provider and voice
@@ -195,11 +200,11 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         # Show speech rate if non-default
         if speech_rate != '+0%':
-            if tts_provider == 'edge':
+            if tts_provider in ['edge', 'azure']:
                 print(f"Speech Rate: {speech_rate}")
             else:
-                click.echo(f"{Fore.YELLOW}Warning: --speech-rate only works with Edge TTS. Ignoring.{Style.RESET_ALL}")
-                speech_rate = '+0%'  # Reset to default for non-Edge providers
+                click.echo(f"{Fore.YELLOW}Warning: --speech-rate only works with Edge and Azure TTS. Ignoring.{Style.RESET_ALL}")
+                speech_rate = '+0%'  # Reset to default for non-Edge/Azure providers
 
         # Handle voice selection based on TTS provider
         if tts_provider == 'edge':
@@ -215,6 +220,21 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
                 print(f"Voice: {voice} -> {voice_id}")
             else:
                 voice_id = "en-US-AriaNeural"  # Default Edge voice
+                print(f"Voice: {voice_id} (default)")
+            skip_voice_clone = True
+        elif tts_provider == 'azure':
+            # Azure TTS: resolve voice name or use default
+            if voice:
+                from ...modules.azure_tts import AzureTTS
+                azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+                voice_id = azure.resolve_voice_name(voice)
+                if not voice_id:
+                    click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                    click.echo(f"{Fore.YELLOW}Run 'nbj voices --provider=azure' to see available voices.{Style.RESET_ALL}")
+                    sys.exit(1)
+                print(f"Voice: {voice} -> {voice_id}")
+            else:
+                voice_id = "en-US-AriaNeural"  # Default Azure voice
                 print(f"Voice: {voice_id} (default)")
             skip_voice_clone = True
         else:
@@ -244,6 +264,10 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
         # ElevenLabs only required if using elevenlabs provider
         if tts_provider == 'elevenlabs' and not settings.elevenlabs_api_key:
             click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
+            sys.exit(1)
+        if tts_provider == 'azure' and (not settings.azure_speech_key or not settings.azure_speech_region):
+            click.echo(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set. Please configure in .env file.{Style.RESET_ALL}")
             click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
             sys.exit(1)
         # D-ID only required for avatar mode
