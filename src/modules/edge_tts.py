@@ -21,9 +21,11 @@ class EdgeTTS:
         text: str,
         voice: str,
         output_path: Path,
-        rate: str = "+0%"
+        rate: str = "+0%",
+        is_ssml: bool = False,
     ) -> Path:
         """Generate speech asynchronously."""
+        _ = is_ssml
         communicate = edge_tts.Communicate(text, voice, rate=rate)
         await communicate.save(str(output_path))
         return output_path
@@ -33,7 +35,8 @@ class EdgeTTS:
         text: str,
         output_path: Path,
         voice: str = "en-US-AriaNeural",
-        rate: str = "+0%"
+        rate: str = "+0%",
+        is_ssml: bool = False,
     ) -> Path:
         """
         Generate speech from text using Edge TTS.
@@ -50,8 +53,17 @@ class EdgeTTS:
         try:
             logger.info(f"Generating speech with Edge TTS ({len(text)} characters, rate={rate})")
 
+            if is_ssml:
+                logger.info("Edge TTS SSML mode is disabled; generating speech from plain text")
+
             # Run async function
-            asyncio.run(self._generate_speech_async(text, voice, output_path, rate))
+            asyncio.run(self._generate_speech_async(text, voice, output_path, rate, is_ssml=is_ssml))
+
+            if not output_path.exists() or output_path.stat().st_size <= 0:
+                raise RuntimeError(
+                    f"Edge TTS produced an empty audio file: {output_path}. "
+                    "This usually indicates the SSML was rejected or the Edge websocket returned no audio."
+                )
 
             logger.info(f"Speech generated and saved to: {output_path}")
             return output_path

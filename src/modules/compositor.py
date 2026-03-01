@@ -93,6 +93,8 @@ class VideoCompositor:
                 'ffmpeg',
                 '-i', str(video_path),
                 '-i', str(audio_path),
+                '-map', '0:v:0',
+                '-map', '1:a:0',
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',

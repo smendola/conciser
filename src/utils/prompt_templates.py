@@ -53,12 +53,28 @@ and distilling core arguments when brevity demands it.
 
 Your task is to condense a video transcript while preserving all key insights and maintaining natural speech flow.
 This is different from summarization; think of it like abridging a book. The reader should feel like they
-are reading the original author's words.
+are reading the original author's words. 
+
+At higher aggressiveness levels you will in fact have to summarize, rather than just edit.
+Even at medium aggressveness levels you will have to restructure sentences.
+When you do, bear in mind that the output is meant to be **spoken** (by TTS) and listened to, not read.
+Thus, even when the original speaker's "voice" must be sacrificed, the output should still sound natural 
+when spoken. To this end, prefer short sentences; favor contrast. Write for listening, not reading.
+
+E.g. 
+ - *Poor*: 
+   This system improves efficiency by reducing latency and optimizing throughput across services.
+ - *Better*:
+   This system does one thing well.
+   It makes everything faster.
+
+The newlines are meaningful to the TTS engine. Use them judiciously to improve the prosody of the output.
 
 **What can always be CUT:**
 - ALWAYS cut entirely any promotional material, sponsorship mentions, and calls to action
+  Content creators creatively try to smoothly segue into promotional material, so be on the lookout for this
 - Tangents, personal anecdotes that don't support the main points
-  (e.g., how this recipe came to be; the history of science from Aristotle to the discovery;
+  (e.g., how this recipe came to be; the history of science from Aristotle to the discovery at hand;
   the speaker's personal journey to discovering the topic)
 - Redundant examples that illustrate the same concept multiple times
 - Supporting details that are interesting but not essential to the core insights
@@ -75,7 +91,7 @@ are reading the original author's words.
   Don't substitute less technical or less formal terminology if the speaker uses such
 
 **Constraints:**
-1. The condensed script should sound natural when spoken aloud
+1. As previously stated, the condensed script should sound natural when spoken aloud
 2. Maintain coherent narrative flow with smooth transitions
 3. Preserve the speaker's voice, personality, and speaking style even when paraphrasing
    (not relevant when **summarizing** at higher aggressiveness levels)
@@ -84,25 +100,14 @@ are reading the original author's words.
 **Important: Hit the target word count**
 Do not try to adapt your condensation *aggressiveness* to the information density of the source content.
 Instead, honor the user's target word counts, and do your best to preserve the most important insights 
-near the target word count constraint.
+near the target word count constraint. This may mean losing more key insights than you would personally
+choose to lose, or leaving in some fluff that could well have been cut.
 
 **Output Instructions:**
 
-Generate a JSON response with the following structure:
-{{
-  "condensed_script": "The full condensed script formatted naturally for speech. IMPORTANT: Format the script with paragraph breaks (using \\n\\n) at natural topic transitions and logical breaks. Each paragraph should cover a cohesive idea or topic. This makes the script easier to read and more natural when spoken.",
-  "key_points_preserved": [
-    "First key point or insight preserved",
-    "Second key point or insight preserved",
-    "Third key point or insight preserved"
-  ],
-  "removed_content_summary": "Brief description of what types of content were removed",
-  "quality_notes": "Any notes about the condensation quality or challenges encountered"
-}}
+Output must be valid JSON and must conform to the JSON Schema provided by the API.
 
-Don't forget to ESCAPE quotation marks in the condensed_script to ensure valid JSON output. TY.
-
-Remember to format the condensed_script with paragraph breaks (\\n\\n) at natural transitions.
+Remember to format the condensed_script with paragraph breaks (\n\n) at natural transitions.
 """
 
 # ==============================================================================
@@ -269,6 +274,31 @@ Condense the following transcript from {original_word_count} words down to appro
 </transcript>
 
 Respond with JSON per the system prompt instructions.
+"""
+
+TTS_SSML_REWRITE_INSTRUCTIONS = """
+Now rewrite the previously generated condensed script for TTS.
+Requirements:
+
+Optimize for listening, not reading
+
+Use short sentences and conversational phrasing
+
+Insert SSML tags supported by Microsoft Edge TTS
+
+Use <p> and <s> structure
+
+Add pauses with <break> where emphasis or pacing helps
+
+Use <emphasis> sparingly, only on contrast words
+
+Do not overuse prosody changes
+
+Do not add new content
+
+Output valid SSML only.
+
+Output must be a single SSML document wrapped in <speak>...</speak>.
 """
 
 def get_strategy_description(aggressiveness: int) -> str:

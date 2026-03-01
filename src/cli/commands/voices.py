@@ -12,7 +12,7 @@ from ..app import cli
 @click.option(
     '--provider',
     type=click.Choice(['elevenlabs', 'edge']),
-    default='elevenlabs',
+    default='edge',
     help='TTS provider to list voices for. Default: elevenlabs'
 )
 @click.option(

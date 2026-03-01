@@ -8,8 +8,10 @@ class ProgressDisplay:
  
     STAGE_COLORS = {
         'DOWNLOAD': Fore.CYAN,
+        'FETCH': Fore.CYAN,
         'TRANSCRIBE': Fore.BLUE,
         'CONDENSE': Fore.MAGENTA,
+        'SSML': Fore.CYAN,
         'VOICE_CLONE': Fore.YELLOW,
         'VOICE_GENERATE': Fore.YELLOW,
         'VIDEO_GENERATE': Fore.GREEN,

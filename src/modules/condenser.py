@@ -1,16 +1,80 @@
 """Content condensation module using LLMs."""
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Literal
 import logging
+
+import httpx
 from anthropic import Anthropic
 from openai import OpenAI
 
-from ..utils.prompt_templates import get_condense_prompt
+from ..utils.prompt_templates import get_condense_prompt, TTS_SSML_REWRITE_INSTRUCTIONS
+from ..utils.llm_schemas import get_condense_output_json_schema
 
 logger = logging.getLogger(__name__)
+
+
+def _make_openai_httpx_client_for_debug() -> httpx.Client:
+    """Create an httpx client that prints full (redacted) request/response to stderr.
+
+    Enabled by env var NBJ_OPENAI_HTTP_DEBUG=1.
+    """
+
+    def _redact_headers(headers: httpx.Headers) -> dict:
+        out = dict(headers)
+        for k in list(out.keys()):
+            if k.lower() == "authorization":
+                out[k] = "Bearer ***REDACTED***"
+        return out
+
+    def _truncate(s: str, limit: int = 8000) -> str:
+        if s is None:
+            return ""
+        if len(s) <= limit:
+            return s
+        return s[:limit] + "\n...[truncated]..."
+
+    def _request_hook(request: httpx.Request):
+        import sys
+        body = ""
+        try:
+            if request.content:
+                body = request.content.decode("utf-8", errors="replace")
+        except Exception:
+            body = "[unprintable request body]"
+        sys.stderr.write("\n--- OPENAI HTTP REQUEST ---\n")
+        sys.stderr.write(f"{request.method} {request.url}\n")
+        sys.stderr.write(json.dumps(_redact_headers(request.headers), indent=2, ensure_ascii=False) + "\n")
+        if body:
+            sys.stderr.write(_truncate(body) + "\n")
+        sys.stderr.write("--- END OPENAI HTTP REQUEST ---\n")
+        sys.stderr.flush()
+
+    def _response_hook(response: httpx.Response):
+        import sys
+        body = ""
+        try:
+            body = response.text
+        except Exception:
+            body = "[unprintable response body]"
+        sys.stderr.write("\n--- OPENAI HTTP RESPONSE ---\n")
+        sys.stderr.write(f"{response.status_code} {response.request.method} {response.request.url}\n")
+        sys.stderr.write(json.dumps(_redact_headers(response.headers), indent=2, ensure_ascii=False) + "\n")
+        if body:
+            sys.stderr.write(_truncate(body) + "\n")
+        sys.stderr.write("--- END OPENAI HTTP RESPONSE ---\n")
+        sys.stderr.flush()
+
+    return httpx.Client(
+        timeout=httpx.Timeout(60.0),
+        event_hooks={
+            "request": [_request_hook],
+            "response": [_response_hook],
+        },
+    )
 
 
 def _print_stream_chunk(text: str, mode: str, char_count: list):
@@ -28,7 +92,7 @@ def _print_stream_chunk(text: str, mode: str, char_count: list):
 
 
 def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, mode: str) -> str:
-    """Call OpenAI Responses API with streaming; return full response text."""
+    """Call OpenAI Responses API with streaming; return (full response text, response_id)."""
     import sys
     from openai.lib.streaming.responses import ResponseTextDeltaEvent
     char_count = [0]
@@ -36,8 +100,8 @@ def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, m
     with client.responses.stream(
         model=model,
         previous_response_id=chain_id,
-        input=user_prompt,
-        text={"format": {"type": "json_object"}},
+        input=[{"role": "user", "content": user_prompt}],
+        text={"format": {"type": "json_schema", **get_condense_output_json_schema()}},
         max_output_tokens=16000,
     ) as stream:
         for event in stream:
@@ -45,24 +109,34 @@ def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, m
                 delta = event.delta
                 chunks.append(delta)
                 _print_stream_chunk(delta, mode, char_count)
+        final_response = stream.get_final_response()
     sys.stdout.write("\n")
     sys.stdout.flush()
-    return "".join(chunks)
+    return "".join(chunks), final_response.id
 
 
-def _stream_chat_completions(client, api_params: dict, mode: str) -> str:
-    """Call OpenAI Chat Completions API with streaming; return full response text."""
+def _stream_responses_api_no_chain(client, model: str, system_prompt: str, user_prompt: str, mode: str) -> tuple[str, str]:
+    """Stream a one-shot Responses API call (no chain); return (full response text, response_id)."""
     import sys
+    from openai.lib.streaming.responses import ResponseTextDeltaEvent
     char_count = [0]
     chunks = []
-    for chunk in client.chat.completions.create(**api_params, stream=True):
-        delta = chunk.choices[0].delta.content
-        if delta:
-            chunks.append(delta)
-            _print_stream_chunk(delta, mode, char_count)
+    with client.responses.stream(
+        model=model,
+        instructions=system_prompt,
+        input=[{"role": "user", "content": user_prompt}],
+        text={"format": {"type": "json_schema", **get_condense_output_json_schema()}},
+        max_output_tokens=16000,
+    ) as stream:
+        for event in stream:
+            if isinstance(event, ResponseTextDeltaEvent):
+                delta = event.delta
+                chunks.append(delta)
+                _print_stream_chunk(delta, mode, char_count)
+        final_response = stream.get_final_response()
     sys.stdout.write("\n")
     sys.stdout.flush()
-    return "".join(chunks)
+    return "".join(chunks), final_response.id
 
 
 class ContentCondenser:
@@ -99,7 +173,12 @@ class ContentCondenser:
             key = openai_api_key or api_key
             if not key:
                 raise ValueError("OpenAI API key required for OpenAI provider")
-            self.client = OpenAI(api_key=key)
+
+            http_debug = os.getenv("NBJ_OPENAI_HTTP_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+            if http_debug:
+                self.client = OpenAI(api_key=key, http_client=_make_openai_httpx_client_for_debug())
+            else:
+                self.client = OpenAI(api_key=key)
             self.model = model or "gpt-5.2"
 
         else:
@@ -133,8 +212,14 @@ class ContentCondenser:
             response = self.client.responses.create(
                 model=self.model,
                 instructions=system_prompt,
-                input="Ready.",
+                input=[{
+                    "role": "user",
+                    "content": "Respond only with `Ready` to confirm, or any other text to signal a problem."
+                }],
             )
+            # print(response)
+            if response.output[0].content[0].text != "Ready":
+                raise ValueError(f"Failed to initialize chain for aggressiveness {level}/10: {response.choices[0].message.content}")
             chains[str(level)] = response.id
             logger.info(f"  aggressiveness {level} → {response.id}")
 
@@ -222,12 +307,13 @@ class ContentCondenser:
                     try:
                         chains = self.init_chains()
                     except Exception as e:
-                        logger.warning(f"init_chains() failed: {e} — falling back to chat completions")
+                        logger.warning(f"init_chains() failed: {e} — falling back to one-shot Responses API")
                 if chains is not None:
                     openai_chain_id = chains.get(str(aggressiveness))
 
             # Retry logic for transient errors
             response_text = None
+            openai_response_id = None
             last_error = None
 
             for attempt in range(max_retries + 1):
@@ -252,7 +338,7 @@ class ContentCondenser:
                         if openai_chain_id:
                             # Responses API: continue from pre-seeded chain (no system prompt needed)
                             if llm_progress:
-                                response_text = _stream_responses_api(
+                                response_text, openai_response_id = _stream_responses_api(
                                     self.client, self.model, openai_chain_id,
                                     user_prompt, llm_progress
                                 )
@@ -260,33 +346,27 @@ class ContentCondenser:
                                 response = self.client.responses.create(
                                     model=self.model,
                                     previous_response_id=openai_chain_id,
-                                    input=user_prompt,
-                                    text={"format": {"type": "json_object"}},
+                                    input=[{"role": "user", "content": user_prompt}],
+                                    text={"format": {"type": "json_schema", **get_condense_output_json_schema()}},
                                     max_output_tokens=16000,
                                 )
                                 response_text = response.output_text
+                                openai_response_id = response.id
                         else:
-                            # Fallback: chat completions with full system prompt
-                            api_params = {
-                                "model": self.model,
-                                "messages": [
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": user_prompt},
-                                ],
-                                # "temperature": 0.3,
-                                "response_format": {"type": "json_object"},
-                            }
-                            if self.model.startswith("gpt-5") or self.model.startswith("o1"):
-                                api_params["max_completion_tokens"] = 16000
-                            else:
-                                api_params["max_tokens"] = 16000
                             if llm_progress:
-                                response_text = _stream_chat_completions(
-                                    self.client, api_params, llm_progress
+                                response_text, openai_response_id = _stream_responses_api_no_chain(
+                                    self.client, self.model, system_prompt, user_prompt, llm_progress
                                 )
                             else:
-                                completion = self.client.chat.completions.create(**api_params)
-                                response_text = completion.choices[0].message.content
+                                response = self.client.responses.create(
+                                    model=self.model,
+                                    instructions=system_prompt,
+                                    input=[{"role": "user", "content": user_prompt}],
+                                    text={"format": {"type": "json_schema", **get_condense_output_json_schema()}},
+                                    max_output_tokens=16000,
+                                )
+                                response_text = response.output_text
+                                openai_response_id = response.id
 
                     break  # Success! Exit retry loop
 
@@ -332,8 +412,28 @@ class ContentCondenser:
 
             result = json.loads(response_text)
 
+            # Normalize occasionally-noncompliant model outputs.
+            # Some models may return the condensed script under a different key even when instructed.
+            if isinstance(result, dict) and 'condensed_script' not in result:
+                for alt_key in (
+                    'script',
+                    'condensed',
+                    'condensed_text',
+                    'condensedText',
+                    'output',
+                    'text',
+                ):
+                    alt_val = result.get(alt_key)
+                    if isinstance(alt_val, str) and alt_val.strip():
+                        result['condensed_script'] = alt_val
+                        break
+
             # Add original_duration_minutes
             result['original_duration_minutes'] = duration_minutes
+
+            # For OpenAI, preserve the response ID so downstream steps can continue the conversation.
+            if self.provider == "openai" and openai_response_id:
+                result['_openai_previous_response_id'] = openai_response_id
 
             # Calculate estimated_condensed_duration_minutes based on word count
             # Assume 150 words per minute speaking rate
@@ -353,6 +453,17 @@ class ContentCondenser:
                 f"{result.get('estimated_condensed_duration_minutes', 0):.1f}min"
             )
 
+            try:
+                self.validate_condensed_script(result)
+            except Exception as ve:
+                keys = list(result.keys()) if isinstance(result, dict) else type(result)
+                raw = response_text
+                if isinstance(raw, str) and len(raw) > 4000:
+                    raw = raw[:4000] + "\n...[truncated]..."
+                raise ValueError(
+                    f"Invalid condenser JSON output: {ve}. Top-level keys: {keys}. Raw JSON text: {raw}"
+                ) from None
+
             return result
 
         except json.JSONDecodeError as e:
@@ -371,6 +482,56 @@ class ContentCondenser:
             else:
                 logger.error(f"Content condensation failed: {e}")
                 raise RuntimeError(f"Failed to condense content: {e}")
+
+    def rewrite_for_tts_ssml(
+        self,
+        condensed_script: str,
+        previous_response_id: str = None,
+        max_retries: int = 3,
+        initial_retry_delay: float = 1.0,
+    ) -> str:
+        """Rewrite a condensed script into Edge-compatible SSML for TTS."""
+        import textwrap
+
+        instructions = textwrap.dedent(TTS_SSML_REWRITE_INSTRUCTIONS).strip()
+        user_input = condensed_script
+
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                if self.provider == "claude":
+                    message = self.client.messages.create(
+                        model=self.model,
+                        max_tokens=16000,
+                        system=instructions,
+                        messages=[{"role": "user", "content": user_input}],
+                    )
+                    return message.content[0].text
+
+                if self.provider == "openai":
+                    if not previous_response_id:
+                        raise ValueError("OpenAI SSML rewrite requires previous_response_id (do not resend script)")
+                    # Continue the same Responses conversation; do not resend the condensed script.
+                    response = self.client.responses.create(
+                        model=self.model,
+                        previous_response_id=previous_response_id,
+                        instructions=instructions,
+                        input=[{"role": "user", "content": "Rewrite now."}],
+                        max_output_tokens=16000,
+                    )
+                    return response.output_text
+
+                raise ValueError(f"Unsupported provider: {self.provider}")
+
+            except Exception as e:
+                last_error = e
+                if attempt >= max_retries:
+                    raise
+                delay = initial_retry_delay * (2 ** attempt)
+                logger.warning(f"SSML rewrite failed (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay:.1f}s...")
+                time.sleep(delay)
+
+        raise RuntimeError(f"SSML rewrite failed after {max_retries + 1} attempts. Last error: {last_error}")
 
     def save_condensed_script(
         self,

@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import json
 import time
+import re
+import xml.etree.ElementTree as ET
 
 from .config import Settings
 from .modules.downloader import VideoDownloader
@@ -28,6 +30,27 @@ def _encode_rate(rate: str) -> str:
     elif r.startswith('-'):
         return f"sm{r[1:]}"
     return f"s{r}"
+
+
+def _is_valid_ssml(ssml: str) -> bool:
+    """Best-effort SSML validation: ensure XML parses and root tag is <speak>."""
+    if not isinstance(ssml, str) or not ssml.strip():
+        return False
+    try:
+        root = ET.fromstring(ssml.strip())
+    except Exception:
+        return False
+    tag = root.tag
+    if isinstance(tag, str) and tag.endswith('speak'):
+        return True
+    return False
+
+
+def _tts_input_mode(tts_provider: str, aggressiveness: int) -> str:
+    """Return 'ssml' when we intend to feed SSML to TTS, else 'text'."""
+    if tts_provider != "edge" and aggressiveness >= 4:
+        return "ssml"
+    return "text"
 
 
 class CondenserPipeline:
@@ -243,6 +266,59 @@ class CondenserPipeline:
                     intro = f"The key take-aways from this video are:\n\n{numbered}\n\n"
                     condensed_script = intro + condensed_script
 
+            # Optional Stage 3.5: Rewrite for TTS SSML (Edge only, aggressiveness >= 4)
+            tts_script = condensed_script
+            tts_mode = _tts_input_mode(tts_provider, aggressiveness)
+            if aggressiveness >= 4:
+                from colorama import Fore, Style
+
+                provider_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.provider).lower().replace('-', '_'))
+                model_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.model).lower().replace('-', '_'))
+                intro_flag = "pi1" if prepend_intro else "pi0"
+                ssml_path = video_folder / f"tts_script_a{aggressiveness}_edge_{provider_norm}_{model_norm}_{intro_flag}_ssml.xml"
+
+                ssml_text = None
+                if resume and ssml_path.exists():
+                    update_progress("SSML", f"Resuming from step SSML - found existing SSML: {ssml_path.name}")
+                    ssml_text = ssml_path.read_text(encoding="utf-8")
+                else:
+                    update_progress("SSML", "Rewriting condensed script into SSML for Edge TTS...")
+                    try:
+                        if self.condenser.provider == "openai":
+                            previous_response_id = condensed_result.get('_openai_previous_response_id')
+                            if not previous_response_id:
+                                logger.warning(
+                                    "SSML regeneration requested but OpenAI conversation pointer is missing "
+                                    "(_openai_previous_response_id). This commonly happens when resuming from a saved "
+                                    "condensed script. Falling back to plain text TTS."
+                                )
+                                ssml_text = None
+                            else:
+                                ssml_text = self.condenser.rewrite_for_tts_ssml(
+                                    "",
+                                    previous_response_id=previous_response_id,
+                                )
+                        else:
+                            ssml_text = self.condenser.rewrite_for_tts_ssml(tts_script)
+
+                        if isinstance(ssml_text, str) and ssml_text.strip():
+                            ssml_raw_path = video_folder / f"tts_script_a{aggressiveness}_edge_{provider_norm}_{model_norm}_{intro_flag}_ssml_raw.xml"
+                            ssml_raw_path.write_text(ssml_text, encoding="utf-8")
+                            logger.info(f"SSML (raw) written to: {ssml_raw_path}")
+                    except Exception as e:
+                        print(f"\n{Fore.RED}SSML rewrite failed: {e}{Style.RESET_ALL}\n")
+                        ssml_text = None
+
+                if ssml_text and _is_valid_ssml(ssml_text) and not (resume and ssml_path.exists()):
+                    ssml_path.write_text(ssml_text, encoding="utf-8")
+
+                # Edge TTS never consumes SSML (kept for other providers to compare later)
+                if tts_provider != "edge" and ssml_text and _is_valid_ssml(ssml_text):
+                    tts_script = ssml_text
+                    tts_mode = "ssml"
+                else:
+                    tts_mode = "text"
+
             # Stage 4: Clone voice (or use premade voice)
             _t = time.time()
             if tts_provider == 'edge':
@@ -265,17 +341,35 @@ class CondenserPipeline:
             _t = time.time()
             if resume:
                 # Check for existing generated speech
-                existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id, aggressiveness, tts_rate)
+                existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id, aggressiveness, tts_rate, tts_mode)
 
                 if existing_speech:
                     update_progress("VOICE_GENERATE", f"Resuming from step VOICE_GENERATE - found existing speech: {existing_speech.name}")
                     generated_audio_path = existing_speech
                 else:
                     update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                    generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness)
+                    try:
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                    except Exception as e:
+                        if tts_provider == "edge" and tts_mode == "ssml":
+                            logger.warning(f"Edge SSML synthesis failed; falling back to plain text TTS. Error: {e}")
+                            tts_mode = "text"
+                            tts_script = condensed_script
+                            generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                        else:
+                            raise
             else:
                 update_progress("VOICE_GENERATE", "Generating speech with voice...")
-                generated_audio_path = self._generate_speech(condensed_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness)
+                try:
+                    generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                except Exception as e:
+                    if tts_provider == "edge" and tts_mode == "ssml":
+                        logger.warning(f"Edge SSML synthesis failed; falling back to plain text TTS. Error: {e}")
+                        tts_mode = "text"
+                        tts_script = condensed_script
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                    else:
+                        raise
 
             logger.info(f"VOICE_GENERATE: {time.time() - _t:.1f} sec")
 
@@ -287,10 +381,9 @@ class CondenserPipeline:
 
                 # Generate output filename for MP3
                 if output_path is None:
-                    import re
                     voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
                     rate_str = _encode_rate(tts_rate)
-                    output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}.mp3"
+                    output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}.mp3"
                     output_path = self.settings.output_dir / output_filename
 
                 # Copy the generated audio as the final output
@@ -341,11 +434,10 @@ class CondenserPipeline:
             # Generate output filename if not provided
             if output_path is None:
                 # Normalize voice_id to snake_case
-                import re
                 voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
                 # Format: {video_id}_{title_snake_60}_a{N}_{tts_provider}_{voice_snake}_{rate}.mp4
                 rate_str = _encode_rate(tts_rate)
-                output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}.mp4"
+                output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}.mp4"
                 output_path = self.settings.output_dir / output_filename
 
             # Stage 7: Compose final video
@@ -527,13 +619,21 @@ class CondenserPipeline:
 
         return voice_id
 
-    def _generate_speech(self, script: str, voice_id: str, video_folder: Path, tts_provider: str = "elevenlabs", tts_rate: str = "+0%", aggressiveness: int = 5) -> Path:
+    def _generate_speech(
+        self,
+        script: str,
+        voice_id: str,
+        video_folder: Path,
+        tts_provider: str = "elevenlabs",
+        tts_rate: str = "+0%",
+        aggressiveness: int = 5,
+        tts_mode: str = "text",
+    ) -> Path:
         """Generate speech from script."""
         # Create unique filename encoding all params that affect the audio bytes
-        import re
         voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
         rate_str = _encode_rate(tts_rate)
-        output_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}.mp3"
+        output_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_{tts_mode}.mp3"
 
         if tts_provider == "edge":
             # Use Edge TTS
@@ -541,7 +641,8 @@ class CondenserPipeline:
                 script,
                 output_path,
                 voice=voice_id,
-                rate=tts_rate
+                rate=tts_rate,
+                is_ssml=(tts_mode == "ssml"),
             )
         else:
             # Use ElevenLabs with chunked generation for long scripts
@@ -553,7 +654,7 @@ class CondenserPipeline:
             )
 
         # Normalize audio
-        normalized_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_normalized.mp3"
+        normalized_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_{tts_mode}_normalized.mp3"
         normalize_audio(output_path, normalized_path)
 
         return normalized_path
@@ -867,6 +968,9 @@ class CondenserPipeline:
             '-f', 'concat',
             '-safe', '0',
             '-i', str(concat_file),
+            '-fps_mode', 'vfr',
+            '-map', '0:v:0',
+            '-an',
             '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
             '-c:v', 'libx264',
             '-pix_fmt', 'yuv420p',
@@ -888,6 +992,8 @@ class CondenserPipeline:
             'ffmpeg', '-y',
             '-i', str(temp_video),
             '-i', str(audio_path),
+            '-map', '0:v:0',
+            '-map', '1:a:0',
             '-c:v', 'libx264',       # re-encode (not copy) to preserve keyframes and movflags
             '-pix_fmt', 'yuv420p',
             '-g', '1',
@@ -1021,12 +1127,11 @@ class CondenserPipeline:
 
         return None
 
-    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str, aggressiveness: int = 5, tts_rate: str = "+0%") -> Optional[Path]:
+    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str, aggressiveness: int = 5, tts_rate: str = "+0%", tts_mode: str = "text") -> Optional[Path]:
         """Find existing generated speech file matching all generation params."""
-        import re
         voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
         rate_str = _encode_rate(tts_rate)
-        speech_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_normalized.mp3"
+        speech_path = video_folder / f"generated_speech_a{aggressiveness}_{tts_provider}_{voice_normalized}_{rate_str}_{tts_mode}_normalized.mp3"
 
         if speech_path.exists():
             logger.info(f"Found existing generated speech: {speech_path}")
