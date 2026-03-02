@@ -117,12 +117,13 @@ async function loadRecentJobs() {
         const date = new Date(job.created_at);
         const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-        // Extract video ID from URL
+        // Use title if available, otherwise extract video ID as fallback
         const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+        const displayTitle = job.title || videoId;
 
         return `
-          <div class="recent-job" data-job-id="${job.job_id}">
-            <div class="recent-job-info">${videoId}</div>
+          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
+            <div class="recent-job-info">${displayTitle}</div>
             <div class="recent-job-date">${dateStr}</div>
           </div>
         `;
@@ -151,12 +152,13 @@ async function loadRecentJobs() {
         const date = new Date(job.created_at);
         const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-        // Extract video ID from URL
+        // Use title if available, otherwise extract video ID as fallback
         const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+        const displayTitle = job.title || videoId;
 
         return `
-          <div class="recent-job" data-job-id="${job.job_id}">
-            <div class="recent-job-info">${videoId}</div>
+          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
+            <div class="recent-job-info">${displayTitle}</div>
             <div class="recent-job-date">${dateStr}</div>
           </div>
         `;
