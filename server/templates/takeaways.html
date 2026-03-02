@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Takeaways - Job {{ job_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='takeaways.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ page_title }}</h1>
+            <div class="job-id">Job ID: {{ job_id }}</div>
+        </div>
+
+        <div class="content">
+            {{ html_content | safe }}
+        </div>
+
+        <div class="footer">
+            <p><strong>NBJ Condenser</strong></p>
+        </div>
+    </div>
+</body>
+</html>
