@@ -50,12 +50,10 @@ echo "🔧 [6/6] Installing system utilities..."
 $SUDO yum install -y -q \
     wget \
     curl \
-    cronie \
-    firewalld
+    cronie
 
-# Enable and start firewalld and crond
+# Enable and start crond
 echo "⚙️  Enabling services..."
-$SUDO systemctl enable --now firewalld
 $SUDO systemctl enable --now crond
 
 # Upgrade pip globally
@@ -79,7 +77,6 @@ echo "Pip:       $(pip3 --version 2>&1 | cut -d' ' -f1-2)"
 echo "Git:       $(git --version 2>&1)"
 echo "ffmpeg:    $(ffmpeg -version 2>&1 | head -1)"
 echo "yt-dlp:    $(yt-dlp --version 2>&1)"
-echo "Firewalld: $(systemctl is-active firewalld)"
 echo "Crond:     $(systemctl is-active crond)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
@@ -88,5 +85,7 @@ echo ""
 echo "Next steps:"
 echo "  1. Run: ./deploy.sh            # Deploy application code"
 echo "  2. Run: ./deploy-env.sh        # Copy .env file"
-echo "  3. Run: ./setup-firewall.sh    # Open port 5000"
-echo "  4. Run: ./setup-cron.sh        # Set up cleanup job"
+echo "  3. Run: ./setup-cron.sh        # Set up cleanup job"
+echo ""
+echo "Note: Firewall management disabled to avoid SSH lockout."
+echo "      Configure Oracle Cloud Security List manually for port access."

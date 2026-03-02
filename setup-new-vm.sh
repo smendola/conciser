@@ -55,17 +55,18 @@ else
     echo ""
 fi
 
-# Step 4: Configure firewall
+# Step 4: Configure firewall (DISABLED - configure Oracle Cloud Security List manually)
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "STEP 4: Configuring firewall"
+echo "STEP 4: Firewall Configuration (SKIPPED)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-ssh "$REMOTE_HOST" 'bash -s' < setup-firewall.sh
+echo "⚠️  VM firewall management disabled to prevent SSH lockout."
+echo "   Configure Oracle Cloud Security List manually instead."
 echo ""
 
 # Step 5: Set up cleanup cron job
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "STEP 5: Setting up cleanup cron job"
+echo "STEP 4: Setting up cleanup cron job"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 ssh "$REMOTE_HOST" 'bash -s' < setup-cron.sh
@@ -79,7 +80,8 @@ echo ""
 echo "🎯 Next Steps:"
 echo ""
 echo "1. ⚠️  Configure Oracle Cloud Security List (REQUIRED)"
-echo "   See instructions above in STEP 4 output"
+echo "   Add Ingress Rule for port 5000 (or 80/443 for production)"
+echo "   Oracle Console: Networking → VCN → Security Lists → Add Ingress Rule"
 echo ""
 echo "2. Test the server:"
 echo "   curl http://129.80.134.46:5000/health"

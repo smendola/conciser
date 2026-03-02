@@ -2,6 +2,10 @@
 # NBJ Condenser - Nginx Reverse Proxy Setup
 # Sets up nginx to proxy port 80 -> Flask on port 5000
 #
+# ⚠️  NOTE: This script modifies firewalld settings.
+#     Firewall changes disabled in terraform-vm.sh to prevent SSH lockout.
+#     You MUST configure Oracle Cloud Security List for ports 80/443.
+#
 # Usage: ssh conciser 'bash -s' < setup-nginx.sh
 
 set -e
