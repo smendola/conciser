@@ -3,9 +3,9 @@
 
 set -e
 
-REMOTE_USER="opc"
+REMOTE_USER="root"
 REMOTE_HOST="conciser"
-REMOTE_DIR="/home/opc/nbj-condenser"
+REMOTE_DIR="/root/nbj-condenser"
 
 echo "📋 Copying .env to $REMOTE_HOST..."
 
