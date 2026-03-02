@@ -16,22 +16,40 @@ else
     SUDO="sudo"
 fi
 
+# Detect public IP (fallback to hostname -I)
+PUBLIC_IP="$($SUDO curl -s https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
+STATIC_SRC="/root/nbj-condenser/server/static"
+STATIC_DEST="/var/www/nbj-condenser-static"
+NGINX_SITE="/etc/nginx/sites-available/nbj-condenser"
+
 echo "🌐 Setting up Nginx reverse proxy..."
+echo "📍 Public IP detected: ${PUBLIC_IP:-unknown}"
 echo ""
 
 # Install nginx
 echo "📦 Installing nginx..."
 $SUDO apt-get update
-$SUDO apt-get install -y nginx
+$SUDO apt-get install -y nginx rsync
 
 # Enable and start nginx
 echo "⚙️  Enabling nginx service..."
 $SUDO systemctl enable nginx
 $SUDO systemctl start nginx
 
+# Sync static assets if they exist
+if [ -d "$STATIC_SRC" ]; then
+    echo "🗂️  Syncing static assets to $STATIC_DEST..."
+    $SUDO mkdir -p "$STATIC_DEST"
+    $SUDO rsync -a --delete "$STATIC_SRC/" "$STATIC_DEST/"
+    $SUDO chown -R www-data:www-data "$STATIC_DEST"
+else
+    echo "⚠️  Warning: Static source directory $STATIC_SRC not found."
+    echo "    CSS/JS may not load until this path exists."
+fi
+
 # Create nginx config for NBJ Condenser
 echo "📝 Creating nginx configuration..."
-$SUDO tee /etc/nginx/sites-available/nbj-condenser <<'EOF'
+$SUDO tee "$NGINX_SITE" <<EOF
 # NBJ Condenser - Nginx Reverse Proxy Configuration
 
 server {
@@ -43,10 +61,10 @@ server {
     # Proxy to Flask app
     location / {
         proxy_pass http://127.0.0.1:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         
         # Timeouts for long-running requests
         proxy_connect_timeout 300;
@@ -55,9 +73,11 @@ server {
         send_timeout 300;
     }
     
-    # Serve static files directly (if needed)
+    # Serve static files directly
     location /static/ {
-        alias /root/nbj-condenser/server/static/;
+        alias $STATIC_DEST/;
+        access_log off;
+        expires 30d;
     }
 }
 EOF
@@ -65,7 +85,7 @@ EOF
 # Enable the site
 echo "🔗 Enabling site..."
 $SUDO rm -f /etc/nginx/sites-enabled/default
-$SUDO ln -sf /etc/nginx/sites-available/nbj-condenser /etc/nginx/sites-enabled/
+$SUDO ln -sf "$NGINX_SITE" /etc/nginx/sites-enabled/
 
 # Test nginx configuration
 echo "🔍 Testing nginx configuration..."
@@ -79,7 +99,7 @@ echo ""
 echo "✅ Nginx setup complete!"
 echo ""
 echo "📍 Server is now accessible at:"
-echo "   http://178.156.245.186"
+echo "   http://${PUBLIC_IP:-<server-ip>}"
 echo ""
 echo "🔧 Nginx is proxying port 80 → Flask on port 5000"
 echo ""
