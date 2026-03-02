@@ -2,9 +2,8 @@
 # NBJ Condenser - Nginx Reverse Proxy Setup
 # Sets up nginx to proxy port 80 -> Flask on port 5000
 #
-# ⚠️  NOTE: This script modifies firewalld settings.
-#     Firewall changes disabled in terraform-vm.sh to prevent SSH lockout.
-#     You MUST configure Oracle Cloud Security List for ports 80/443.
+# ⚠️  NOTE: No OS-level firewall management on Ubuntu.
+#     Configure Hetzner Cloud Firewall for ports 80/443 if needed.
 #
 # Usage: ssh conciser 'bash -s' < setup-nginx.sh
 
@@ -22,7 +21,8 @@ echo ""
 
 # Install nginx
 echo "📦 Installing nginx..."
-$SUDO yum install -y nginx
+$SUDO apt-get update
+$SUDO apt-get install -y nginx
 
 # Enable and start nginx
 echo "⚙️  Enabling nginx service..."
@@ -31,7 +31,7 @@ $SUDO systemctl start nginx
 
 # Create nginx config for NBJ Condenser
 echo "📝 Creating nginx configuration..."
-$SUDO tee /etc/nginx/conf.d/nbj-condenser.conf <<'EOF'
+$SUDO tee /etc/nginx/sites-available/nbj-condenser <<'EOF'
 # NBJ Condenser - Nginx Reverse Proxy Configuration
 
 server {
@@ -57,10 +57,15 @@ server {
     
     # Serve static files directly (if needed)
     location /static/ {
-        alias /home/opc/nbj-condenser/server/static/;
+        alias /root/nbj-condenser/server/static/;
     }
 }
 EOF
+
+# Enable the site
+echo "🔗 Enabling site..."
+$SUDO rm -f /etc/nginx/sites-enabled/default
+$SUDO ln -sf /etc/nginx/sites-available/nbj-condenser /etc/nginx/sites-enabled/
 
 # Test nginx configuration
 echo "🔍 Testing nginx configuration..."
@@ -70,33 +75,29 @@ $SUDO nginx -t
 echo "🔄 Reloading nginx..."
 $SUDO systemctl reload nginx
 
-# Open port 80 in firewall
-echo "🔥 Opening port 80 in firewall..."
-$SUDO firewall-cmd --permanent --add-service=http
-$SUDO firewall-cmd --reload
-
 echo ""
 echo "✅ Nginx setup complete!"
 echo ""
 echo "📍 Server is now accessible at:"
-echo "   http://129.80.134.46"
+echo "   http://178.156.245.186"
 echo ""
 echo "🔧 Nginx is proxying port 80 → Flask on port 5000"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "⚠️  Oracle Cloud Security List Update Required"
+echo "⚠️  Hetzner Cloud Firewall (Optional)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Update your existing Ingress Rule:"
+echo "Hetzner Cloud servers are open by default (no cloud firewall)."
+echo "Ports 80 and 443 should work immediately."
 echo ""
-echo "1. Go to Oracle Cloud Console"
-echo "2. Navigate to: Networking → Virtual Cloud Networks"
-echo "3. Click your VCN → Security Lists → Default Security List"
-echo "4. Find the rule for port 5000 and delete it (or keep for testing)"
-echo "5. Add new Ingress Rule:"
-echo "   • Source CIDR: 0.0.0.0/0"
-echo "   • IP Protocol: TCP"
-echo "   • Destination Port Range: 80"
+echo "To add a Hetzner Cloud Firewall (optional):"
+echo "1. Go to Hetzner Cloud Console"
+echo "2. Navigate to: Firewalls → Create Firewall"
+echo "3. Add Inbound Rules:"
+echo "   • TCP port 22 (SSH)"
+echo "   • TCP port 80 (HTTP)"
+echo "   • TCP port 443 (HTTPS)"
+echo "4. Apply firewall to your server"
 echo ""
-echo "For HTTPS (port 443), run: ./setup-ssl.sh (coming soon)"
+echo "For HTTPS (port 443), run: ./setup-ssl.sh"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

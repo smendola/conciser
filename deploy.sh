@@ -4,9 +4,9 @@
 set -e
 
 # Configuration
-REMOTE_USER="opc"
+REMOTE_USER="root"
 REMOTE_HOST="conciser"
-REMOTE_DIR="/home/opc/nbj-condenser"
+REMOTE_DIR="/root/nbj-condenser"
 LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "🚀 Deploying NBJ Condenser to $REMOTE_HOST..."
@@ -27,7 +27,7 @@ git push origin main || git push origin master
 # 2. Deploy to VM
 echo "📦 Deploying to VM..."
 ssh $REMOTE_USER@$REMOTE_HOST << 'ENDSSH'
-cd /home/opc
+cd /root
 
 # Clone or pull repo
 if [ -d "nbj-condenser" ]; then
@@ -72,5 +72,5 @@ ENDSSH
 
 echo ""
 echo "✅ Deployment complete!"
-echo "📍 Server running at: http://129.80.134.46:5000"
+echo "📍 Server running at: http://178.156.245.186:5000"
 echo "📝 View logs: ssh conciser 'tail -f nbj-condenser/server.log'"
