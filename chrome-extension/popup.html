@@ -218,6 +218,67 @@
       border-color: #1a73e8;
     }
 
+    .recent-jobs {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .recent-jobs h3 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+    }
+
+    .recent-job {
+      padding: 6px 8px;
+      margin-bottom: 4px;
+      background: white;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .recent-job:hover {
+      background: #e8f0fe;
+      transform: translateX(2px);
+    }
+
+    .recent-job:last-child {
+      margin-bottom: 0;
+    }
+
+    .recent-job-info {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .recent-job-date {
+      font-size: 10px;
+      color: #999;
+      margin-left: 8px;
+      flex-shrink: 0;
+    }
+
+    .build-info {
+      margin-top: 12px;
+      padding-top: 8px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 9px;
+      color: #999;
+      text-align: center;
+    }
+
   </style>
 </head>
 <body>
@@ -279,6 +340,11 @@
     <button id="condenseBtn" disabled>Condense Video</button>
 
     <div id="statusContainer"></div>
+
+    <div class="recent-jobs" id="recentCondenseJobs" style="display:none;">
+      <h3>Recent Jobs</h3>
+      <div id="recentCondenseJobsList"></div>
+    </div>
   </div>
 
   <!-- Takeaways Tab -->
@@ -331,8 +397,16 @@
     <button id="takeawaysBtn" disabled>Extract Takeaways</button>
 
     <div id="takeawaysStatusContainer"></div>
+
+    <div class="recent-jobs" id="recentTakeawaysJobs" style="display:none;">
+      <h3>Recent Jobs</h3>
+      <div id="recentTakeawaysJobsList"></div>
+    </div>
   </div>
 
+  <div class="build-info" id="buildInfo">Build: Loading...</div>
+
+  <script src="build-info.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

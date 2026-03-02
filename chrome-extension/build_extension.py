@@ -8,6 +8,7 @@ Output: dist/nbj-chrome-extension.zip
 import zipfile
 from pathlib import Path
 import shutil
+from datetime import datetime
 
 def build_extension():
     """Package the chrome extension into a zip file."""
@@ -30,11 +31,18 @@ def build_extension():
         output_zip.unlink()
         print(f"Removed old build: {output_zip}")
 
+    # Generate build info file
+    build_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    build_info_file = extension_dir / 'build-info.js'
+    build_info_file.write_text(f'const BUILD_TIMESTAMP = "{build_timestamp}";\n')
+    print(f"Generated build-info.js: {build_timestamp}")
+
     # Files/folders to include
     include_patterns = [
         'manifest.json',
         'popup.html',
         'popup.js',
+        'build-info.js',
         'background.js',
         'README.md',
         'icons/*.png'

@@ -285,11 +285,11 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             )
 
             # Save markdown
-            header = f"# Key Takeaways: {video_title}\n\n"
+            header = f"# {video_title}\n\n"
             if top:
                 header += f"*Top {top} key concepts*\n\n"
             else:
-                header += f"*Auto-selected key concepts*\n\n"
+                header += f"*Key concepts*\n\n"
 
             full_text = header + takeaways_text
 

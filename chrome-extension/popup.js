@@ -88,6 +88,97 @@ async function initializePopup() {
     showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`);
     startTakeawaysPolling();
   }
+
+  // Load recent jobs
+  await loadRecentJobs();
+}
+
+// Fetch and display recent jobs
+async function loadRecentJobs() {
+  try {
+    const response = await fetch(`${serverUrl}/api/jobs`);
+    const data = await response.json();
+
+    // Filter completed jobs that have files
+    const condenseJobs = data.jobs.filter(job =>
+      job.status === 'completed' && job.file_exists && job.job_type === 'condense'
+    ).slice(0, 5);  // Show max 5 recent
+
+    const takeawaysJobs = data.jobs.filter(job =>
+      job.status === 'completed' && job.file_exists && job.job_type === 'takeaways'
+    ).slice(0, 5);
+
+    // Display condense jobs
+    const condenseContainer = document.getElementById('recentCondenseJobs');
+    const condenseList = document.getElementById('recentCondenseJobsList');
+
+    if (condenseJobs.length > 0) {
+      condenseList.innerHTML = condenseJobs.map(job => {
+        const date = new Date(job.created_at);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        // Extract video ID from URL
+        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+
+        return `
+          <div class="recent-job" data-job-id="${job.job_id}">
+            <div class="recent-job-info">${videoId}</div>
+            <div class="recent-job-date">${dateStr}</div>
+          </div>
+        `;
+      }).join('');
+
+      condenseContainer.style.display = 'block';
+
+      // Add click handlers
+      condenseList.querySelectorAll('.recent-job').forEach(el => {
+        el.addEventListener('click', () => {
+          const jobId = el.getAttribute('data-job-id');
+          const downloadUrl = `${serverUrl}/api/download/${jobId}`;
+          chrome.tabs.create({ url: downloadUrl });
+        });
+      });
+    } else {
+      condenseContainer.style.display = 'none';
+    }
+
+    // Display takeaways jobs
+    const takeawaysContainer = document.getElementById('recentTakeawaysJobs');
+    const takeawaysList = document.getElementById('recentTakeawaysJobsList');
+
+    if (takeawaysJobs.length > 0) {
+      takeawaysList.innerHTML = takeawaysJobs.map(job => {
+        const date = new Date(job.created_at);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+        // Extract video ID from URL
+        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+
+        return `
+          <div class="recent-job" data-job-id="${job.job_id}">
+            <div class="recent-job-info">${videoId}</div>
+            <div class="recent-job-date">${dateStr}</div>
+          </div>
+        `;
+      }).join('');
+
+      takeawaysContainer.style.display = 'block';
+
+      // Add click handlers
+      takeawaysList.querySelectorAll('.recent-job').forEach(el => {
+        el.addEventListener('click', () => {
+          const jobId = el.getAttribute('data-job-id');
+          const downloadUrl = `${serverUrl}/api/download/${jobId}`;
+          chrome.tabs.create({ url: downloadUrl });
+        });
+      });
+    } else {
+      takeawaysContainer.style.display = 'none';
+    }
+
+  } catch (error) {
+    console.error('Failed to load recent jobs:', error);
+  }
 }
 
 // Fetch strategies from API (cached 1 hour)
@@ -131,14 +222,45 @@ function setupTabs() {
     });
   });
 
-  // Format radio buttons - show/hide voice select
+  // Format radio buttons - show/hide voice select AND reset completed state
   const formatRadios = document.querySelectorAll('input[name="format"]');
   formatRadios.forEach(radio => {
     radio.addEventListener('change', () => {
       const voiceGroup = document.getElementById('takeawaysVoiceGroup');
       voiceGroup.style.display = radio.value === 'audio' ? 'block' : 'none';
+      resetTakeawaysIfCompleted();
     });
   });
+
+  // Top radio buttons - reset completed state on change
+  const topRadios = document.querySelectorAll('input[name="top"]');
+  topRadios.forEach(radio => {
+    radio.addEventListener('change', resetTakeawaysIfCompleted);
+  });
+
+  // Voice select - reset completed state on change
+  const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
+  if (takeawaysVoiceSelect) {
+    takeawaysVoiceSelect.addEventListener('change', resetTakeawaysIfCompleted);
+  }
+}
+
+// Reset takeaways UI if settings changed after completion
+async function resetTakeawaysIfCompleted() {
+  const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+  if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+    // Clear the completed job for this URL
+    delete storage.completedTakeawaysJobs[currentUrl];
+    await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+
+    // Reset UI to extract mode
+    document.getElementById('takeawaysStatusContainer').innerHTML = '';
+    const takeawaysBtn = document.getElementById('takeawaysBtn');
+    takeawaysBtn.style.display = '';
+    takeawaysBtn.disabled = false;
+    takeawaysBtn.textContent = 'Extract Takeaways';
+    currentTakeawaysJobId = null;
+  }
 }
 
 // Fetch voices from API (cached 1 hour)
@@ -302,6 +424,13 @@ document.getElementById('videoModeSelect').addEventListener('change', () => {
 document.getElementById('prependIntroCheck').addEventListener('change', () => {
   handleSettingChange();
 });
+
+// Display build timestamp
+if (typeof BUILD_TIMESTAMP !== 'undefined') {
+  document.getElementById('buildInfo').textContent = `Build: ${BUILD_TIMESTAMP}`;
+} else {
+  document.getElementById('buildInfo').textContent = 'Build: Unknown';
+}
 
 // Run initialization
 initializePopup();
@@ -476,7 +605,7 @@ function resetButton() {
 document.getElementById('takeawaysBtn').addEventListener('click', async () => {
   const takeawaysBtn = document.getElementById('takeawaysBtn');
   takeawaysBtn.disabled = true;
-  takeawaysBtn.textContent = 'Submitting...';
+  takeawaysBtn.textContent = 'Processing...';
 
   try {
     // Get takeaways settings

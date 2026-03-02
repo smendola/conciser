@@ -25,16 +25,53 @@ from src.utils.prompt_templates import get_strategy_description
 app = Flask(__name__)
 CORS(app)  # Allow requests from Chrome extension
 
-# In-memory job storage (simple, no persistence)
+# In-memory job storage (restored from disk on startup)
 jobs = {}
 current_job_lock = threading.Lock()
 currently_processing = None
 
 
+def restore_jobs_from_disk():
+    """Restore completed jobs from output/jobs/ directory on server startup."""
+    settings = get_settings()
+    jobs_dir = settings.output_dir / 'jobs'
+
+    if not jobs_dir.exists():
+        print("No jobs directory found, starting fresh")
+        return
+
+    restored_count = 0
+    for file_path in jobs_dir.glob('*'):
+        if file_path.is_file():
+            job_id = file_path.stem
+            ext = file_path.suffix.lower()
+
+            # Determine job type from extension
+            if ext == '.md':
+                job_type = 'takeaways'
+            elif ext in ['.mp4', '.mp3']:
+                job_type = 'condense'
+            else:
+                continue  # Skip unknown file types
+
+            # Create a completed job entry
+            job = Job(job_id, youtube_url='[restored]', job_type=job_type)
+            job.status = 'completed'
+            job.output_file = str(file_path)
+            job.created_at = datetime.fromtimestamp(file_path.stat().st_mtime)
+            job.completed_at = job.created_at
+
+            jobs[job_id] = job
+            restored_count += 1
+
+    print(f"Restored {restored_count} completed jobs from disk")
+
+
 class Job:
-    def __init__(self, job_id, youtube_url):
+    def __init__(self, job_id, youtube_url, job_type='condense'):
         self.id = job_id
         self.url = youtube_url
+        self.job_type = job_type  # 'condense' or 'takeaways'
         self.status = "queued"  # queued, processing, completed, error
         self.progress = ""
         self.output_file = None
@@ -122,6 +159,10 @@ def process_video(job_id):
     finally:
         with current_job_lock:
             currently_processing = None
+
+
+# Restore jobs on startup (after Job class is defined)
+restore_jobs_from_disk()
 
 
 @app.route('/start')
@@ -605,7 +646,7 @@ def start_page():
         </div>
 
         <div class="footer">
-            <p><strong>NBJ Condenser Remote Server</strong> • Powered by Claude AI</p>
+            <p><strong>NBJ Condenser Remote Server</strong></p>
             <p style="margin-top: 10px; font-size: 0.9em;">
                 Need help? Check the server logs or contact your administrator
             </p>
@@ -740,7 +781,7 @@ def condense():
 
         # Create job and store parameters
         job_id = str(uuid.uuid4())[:8]
-        job = Job(job_id, youtube_url)
+        job = Job(job_id, youtube_url, job_type='condense')
         job.aggressiveness = aggressiveness
         job.voice = voice
         job.speech_rate = speech_rate
@@ -799,11 +840,10 @@ def takeaways():
 
         # Create job
         job_id = str(uuid.uuid4())[:8]
-        job = Job(job_id, youtube_url)
+        job = Job(job_id, youtube_url, job_type='takeaways')
         job.top = top
         job.format_type = format_type
         job.voice = voice
-        job.job_type = 'takeaways'  # Mark as takeaways job
         jobs[job_id] = job
         currently_processing = job_id
 
@@ -940,10 +980,192 @@ def download(job_id):
         # If somehow stored as relative, make it absolute from project root
         file_path = Path(__file__).parent.parent / file_path
 
-    if file_path.suffix.lower() == '.mp3':
+    # For markdown files, render as HTML
+    if file_path.suffix.lower() == '.md':
+        import markdown
+        import re
+
+        # Read markdown content
+        md_content = file_path.read_text(encoding='utf-8')
+
+        # Extract first H1 heading for page title (e.g., "# Key Takeaways: Video Title")
+        # Then remove it from the content to avoid duplication
+        page_title = "🎯 Key Takeaways"
+        title_match = re.match(r'^#\s+(.+?)$', md_content, re.MULTILINE)
+        if title_match:
+            page_title = "🎯 " + title_match.group(1)
+            # Remove the first H1 from content
+            md_content = re.sub(r'^#\s+.+?$', '', md_content, count=1, flags=re.MULTILINE).lstrip()
+
+        # Convert to HTML
+        html_content = markdown.markdown(md_content, extensions=['extra', 'nl2br'])
+
+        # Wrap in styled HTML template
+        html_page = f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Takeaways - Job {job_id}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }}
+
+        .container {{
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }}
+
+        .header {{
+            background: linear-gradient(135deg, #1a73e8 0%, #1557b0 100%);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }}
+
+        .header h1 {{
+            font-size: 1.7em;
+            margin-bottom: 5px;
+            line-height: 1.3em;
+        }}
+
+        .header .job-id {{
+            font-size: 0.9em;
+            opacity: 0.8;
+        }}
+
+        .content {{
+            padding: 40px;
+        }}
+
+        .content h1 {{
+            color: #1a73e8;
+            font-size: 1.6em;
+            line-height: 1.3em;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }}
+
+        .content h2 {{
+            color: #1a73e8;
+            font-size: 1.5em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }}
+
+        .content h3 {{
+            color: #333;
+            font-size: 1.2em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }}
+
+        .content p {{
+            margin-bottom: 15px;
+            color: #555;
+        }}
+
+        .content ul, .content ol {{
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }}
+
+        .content li {{
+            margin-bottom: 8px;
+            color: #555;
+        }}
+
+        .content strong {{
+            color: #1a73e8;
+            font-weight: 600;
+        }}
+
+        .content em {{
+            font-style: italic;
+            color: #666;
+        }}
+
+        .content code {{
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #e83e8c;
+        }}
+
+        .content pre {{
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #1a73e8;
+            overflow-x: auto;
+            margin-bottom: 15px;
+        }}
+
+        .content pre code {{
+            background: transparent;
+            padding: 0;
+            color: #333;
+        }}
+
+        .content blockquote {{
+            border-left: 4px solid #1a73e8;
+            padding-left: 20px;
+            margin: 20px 0;
+            color: #666;
+            font-style: italic;
+        }}
+
+        .footer {{
+            background: #f8f9fa;
+            padding: 20px 40px;
+            text-align: center;
+            color: #666;
+            border-top: 1px solid #e0e0e0;
+            font-size: 0.9em;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{page_title}</h1>
+            <div class="job-id">Job ID: {job_id}</div>
+        </div>
+
+        <div class="content">
+            {html_content}
+        </div>
+
+        <div class="footer">
+            <p><strong>NBJ Condenser</strong></p>
+        </div>
+    </div>
+</body>
+</html>
+'''
+        return html_page, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+    # For audio/video files, send directly
+    elif file_path.suffix.lower() == '.mp3':
         mimetype = 'audio/mpeg'
-    elif file_path.suffix.lower() == '.md':
-        mimetype = 'text/markdown'
     else:
         mimetype = 'video/mp4'
 
@@ -957,16 +1179,27 @@ def download(job_id):
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
     """List all jobs (for debugging)."""
+    jobs_list = []
+    for job in jobs.values():
+        # Check if output file exists
+        file_exists = False
+        if job.output_file:
+            file_path = Path(job.output_file)
+            if not file_path.is_absolute():
+                file_path = Path(__file__).parent.parent / file_path
+            file_exists = file_path.exists()
+
+        jobs_list.append({
+            'job_id': job.id,
+            'url': job.url,
+            'status': job.status,
+            'job_type': job.job_type,
+            'file_exists': file_exists,
+            'created_at': job.created_at.isoformat()
+        })
+
     return jsonify({
-        'jobs': [
-            {
-                'job_id': job.id,
-                'url': job.url,
-                'status': job.status,
-                'created_at': job.created_at.isoformat()
-            }
-            for job in jobs.values()
-        ],
+        'jobs': jobs_list,
         'currently_processing': currently_processing
     })
 

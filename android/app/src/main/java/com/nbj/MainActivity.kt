@@ -72,6 +72,9 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Display build timestamp
+        binding.tvBuildInfo.text = "Build: ${BuildConfig.BUILD_TIMESTAMP}"
+
         setupSettingsControls()
         loadSettingsToUI()
         fetchVoicesAndStrategies()
