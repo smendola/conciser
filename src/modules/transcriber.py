@@ -26,14 +26,28 @@ class Transcriber:
             provider: "groq" (free, whisper-large-v3) or "openai" (paid, whisper-1)
             groq_api_key: Groq API key (required when provider="groq")
         """
-        if provider == "groq" and groq_api_key:
-            self.client = OpenAI(api_key=groq_api_key, base_url=self.GROQ_BASE_URL)
+        # Delay Whisper client setup until transcription is actually needed.
+        # This avoids provider-selection logs in flows that never call Whisper
+        # (e.g., when a cached transcript or YouTube transcript is used).
+        self.api_key = api_key
+        self.provider = provider
+        self.groq_api_key = groq_api_key
+        self.client = None
+        self.model = self.OPENAI_MODEL
+
+    def _ensure_client(self) -> None:
+        """Initialize Whisper client on first transcription call."""
+        if self.client is not None:
+            return
+
+        if self.provider == "groq" and self.groq_api_key:
+            self.client = OpenAI(api_key=self.groq_api_key, base_url=self.GROQ_BASE_URL)
             self.model = self.GROQ_MODEL
             logger.info("Transcriber using Groq (free whisper-large-v3)")
         else:
-            if provider == "groq":
+            if self.provider == "groq":
                 logger.warning("Groq provider requested but no GROQ_API_KEY set — falling back to OpenAI Whisper")
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(api_key=self.api_key)
             self.model = self.OPENAI_MODEL
             logger.info("Transcriber using OpenAI (whisper-1)")
 
@@ -66,6 +80,19 @@ class Transcriber:
             ytt_api = YouTubeTranscriptApi()
             transcript_list = ytt_api.fetch(video_id)
 
+            # Preserve raw API payload for debugging/export when available
+            if hasattr(transcript_list, 'to_raw_data'):
+                raw_payload = transcript_list.to_raw_data()
+            else:
+                raw_payload = [
+                    {
+                        'text': entry.text,
+                        'start': entry.start,
+                        'duration': entry.duration,
+                    }
+                    for entry in transcript_list
+                ]
+
             # Convert to our format
             # Segments are FetchedTranscriptSnippet objects with .text, .start, .duration attributes
             segments = []
@@ -90,7 +117,8 @@ class Transcriber:
                 'text': ' '.join(all_text),
                 'segments': segments,
                 'language': 'unknown',  # YouTube API doesn't always provide language
-                'duration': total_duration
+                'duration': total_duration,
+                'raw': raw_payload,
             }
 
             logger.info(f"Successfully fetched YouTube transcript: {len(segments)} segments, {total_duration:.1f}s")
@@ -125,6 +153,7 @@ class Transcriber:
                 - duration: Audio duration
         """
         try:
+            self._ensure_client()
             logger.info(f"Starting transcription of: {audio_path}")
 
             # Check file size and split if necessary
