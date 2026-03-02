@@ -584,8 +584,7 @@ if __name__ == '__main__':
     print("NBJ Condenser Server")
     print("=" * 60)
     print("\nServer starting on http://127.0.0.1:5000")
-    print("Expose with: ngrok start nbj")
-    print("\nPublic URL: https://conciser-aurora.ngrok.dev")
+    print("\nPublic URL: http://conciser.603apps.net")
     print("\nEndpoints:")
     print("  GET    /start - Extension download & installation guide")
     print("  POST   /api/condense  - Submit YouTube URL for condensation")
@@ -596,7 +595,7 @@ if __name__ == '__main__':
     print("  GET    /api/voices?locale=en - Get Edge TTS voices")
     print("  GET    /api/jobs - List all jobs")
     print("  GET    /health - Health check")
-    print("\n👉 Share this link: https://conciser-aurora.ngrok.dev/start")
+    print("\n👉 Share this link: http://conciser.603apps.net/start")
     print("\n" + "=" * 60 + "\n")
 
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)

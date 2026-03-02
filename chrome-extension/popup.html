@@ -160,6 +160,17 @@
       background: white;
     }
 
+    input[type="url"],
+    input[type="text"] {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 12px;
+      background: white;
+      box-sizing: border-box;
+    }
+
     input[type="range"] {
       width: 100%;
       margin: 6px 0;
@@ -299,6 +310,11 @@
   <!-- Condense Tab -->
   <div class="tab-content active" id="condense-tab">
     <div class="settings" id="settings">
+    <div class="setting-group">
+      <label class="setting-label" for="serverUrlInput">Server URL</label>
+      <input type="url" id="serverUrlInput" placeholder="http://conciser.603apps.net">
+    </div>
+
     <div class="setting-group">
       <label class="setting-label" for="videoModeSelect">Output Mode</label>
       <select id="videoModeSelect">

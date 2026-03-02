@@ -2,7 +2,9 @@
 
 ## Overview
 
-Native Android app (Kotlin) that integrates with the NBJ Condenser server. Accepts YouTube video share intents and submits them for condensation, showing real-time progress and the final result.
+Native Android app (Kotlin) that integrates with the NBJ Condenser server.
+Accepts YouTube video share intents and submits them for condensation, showing
+real-time progress and the final result.
 
 ## Package
 
@@ -11,22 +13,29 @@ Native Android app (Kotlin) that integrates with the NBJ Condenser server. Accep
 ## Features
 
 ### Core
+
 - **YouTube Share Target**: Registered as a share handler for YouTube video URLs
-- **API Integration**: Communicates with the NBJ Condenser Flask server via Retrofit
+- **API Integration**: Communicates with the NBJ Condenser Flask server via
+  Retrofit
 - **Real-Time Progress**: Polls server every 3 seconds during processing
-- **Auto-Play**: Opens condensed video or audio when complete (via Android intent chooser)
+- **Auto-Play**: Opens condensed video or audio when complete (via Android
+  intent chooser)
 
 ### Settings (main screen)
-- **Voice**: Edge TTS voice picker (populated from server `/api/voices?locale=en`)
+
+- **Voice**: Edge TTS voice picker (populated from server
+  `/api/voices?locale=en`)
 - **Aggressiveness**: Slider 1–10
 - **Speech Speed**: Slider (-50% to +100%)
 - **Output Mode**: Spinner — `Slideshow` (MP4) or `Audio Only` (MP3)
 - **Prepend key take-aways intro**: Switch
 
 ### Settings screen (overflow menu)
-- **Server URL**: Configurable base URL (default: `https://conciser-aurora.ngrok.dev/`)
+
+- **Server URL**: Configurable base URL (default: `http://conciser.603apps.net`)
 
 ### Recent Jobs
+
 - Stores up to 10 recent jobs in SharedPreferences as JSON
 - Shows video title (fetched via YouTube oEmbed API) instead of raw video ID
 - Tap a job to re-open its download URL
@@ -34,6 +43,7 @@ Native Android app (Kotlin) that integrates with the NBJ Condenser server. Accep
 ## Architecture
 
 ### AppState Machine
+
 ```
 NO_URL → READY → SUBMITTING → PROCESSING → COMPLETED
                                          → ERROR
@@ -48,13 +58,13 @@ NO_URL → READY → SUBMITTING → PROCESSING → COMPLETED
 
 ### Key Files
 
-| File | Purpose |
-|------|---------|
-| `MainActivity.kt` | Main UI, AppState machine, intent handling, polling |
-| `SettingsActivity.kt` | Server URL configuration |
-| `ConciSerApi.kt` | Retrofit API client + data classes |
-| `activity_main.xml` | Single-screen NestedScrollView layout |
-| `strings.xml` | String resources |
+| File                  | Purpose                                             |
+| --------------------- | --------------------------------------------------- |
+| `MainActivity.kt`     | Main UI, AppState machine, intent handling, polling |
+| `SettingsActivity.kt` | Server URL configuration                            |
+| `ConciSerApi.kt`      | Retrofit API client + data classes                  |
+| `activity_main.xml`   | Single-screen NestedScrollView layout               |
+| `strings.xml`         | String resources                                    |
 
 ### API Data Classes (ConciSerApi.kt)
 
@@ -80,6 +90,7 @@ data class StatusResponse(
 ## UI Layout
 
 Single-screen `NestedScrollView` with:
+
 - Video info header (title, bold; video URL)
 - Voice spinner (dialog mode, populated from server)
 - Aggressiveness seekbar (blue)
@@ -102,22 +113,24 @@ Or open `android/` in Android Studio and click Run.
 
 ## Configuration
 
-**Default server**: `https://conciser-aurora.ngrok.dev/`
+**Default server**: `http://conciser.603apps.net`
 
 To change: open app → menu (⋮) → Settings → enter new server URL → Save.
 
-All settings (voice, aggressiveness, speed, output mode, prepend intro, server URL) are persisted in SharedPreferences.
+All settings (voice, aggressiveness, speed, output mode, prepend intro, server
+URL) are persisted in SharedPreferences.
 
 ## API Communication
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/voices?locale=en` | GET | Populate voice spinner |
-| `/api/condense` | POST | Submit video URL |
-| `/api/status/<id>` | GET | Poll for progress |
-| `/api/download/<id>` | GET | Stream output file |
+| Endpoint                | Method | Purpose                |
+| ----------------------- | ------ | ---------------------- |
+| `/api/voices?locale=en` | GET    | Populate voice spinner |
+| `/api/condense`         | POST   | Submit video URL       |
+| `/api/status/<id>`      | GET    | Poll for progress      |
+| `/api/download/<id>`    | GET    | Stream output file     |
 
-Video title fetched via YouTube oEmbed: `https://www.youtube.com/oembed?url=<url>&format=json`
+Video title fetched via YouTube oEmbed:
+`https://www.youtube.com/oembed?url=<url>&format=json`
 
 ## Dependencies
 
@@ -137,7 +150,8 @@ implementation 'com.google.android.material:material:1.11.0'
 - **Minimum SDK**: Android 7.0 (API 24)
 - **Target SDK**: Android 14 (API 34)
 - **Permissions**: INTERNET, ACCESS_NETWORK_STATE
-- **For playback**: Any video/audio player app (VLC, MX Player, system player, etc.)
+- **For playback**: Any video/audio player app (VLC, MX Player, system player,
+  etc.)
 
 ## User Flow
 
@@ -155,6 +169,8 @@ implementation 'com.google.android.material:material:1.11.0'
 
 **"No video player found"** — Install VLC or MX Player from Play Store.
 
-**"Connection error"** — Check server is running and server URL in Settings is correct.
+**"Connection error"** — Check server is running and server URL in Settings is
+correct.
 
-**"Processing failed"** — Video may be private, age-restricted, or the server encountered an error. Check server logs.
+**"Processing failed"** — Video may be private, age-restricted, or the server
+encountered an error. Check server logs.

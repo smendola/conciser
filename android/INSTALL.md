@@ -3,6 +3,7 @@
 ## Quick Start
 
 ### Prerequisites
+
 - Android Studio Hedgehog (2023.1.1) or later
 - Android SDK 24+ (Android 7.0+)
 - Java JDK 8 or higher
@@ -33,6 +34,7 @@ cd android
 The APK will be at: `app/build/outputs/apk/debug/app-debug.apk`
 
 Install via ADB:
+
 ```bash
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -44,7 +46,7 @@ Or copy the APK to your phone and install it directly.
 1. **Open the NBJ Condenser app** on your device
 2. **Tap the menu (⋮)** in the top-right → **Settings**
 3. **Enter your server URL**:
-   - Default: `https://conciser-aurora.ngrok.dev/`
+   - Default: `http://conciser.603apps.net`
    - Or your own server: `http://192.168.1.100:5000/` (local network)
 4. **Tap Save**
 
@@ -73,6 +75,7 @@ Or copy the APK to your phone and install it directly.
 **Error**: "Unsupported Gradle version"
 
 **Solution**:
+
 ```bash
 cd android
 ./gradlew wrapper --gradle-version 8.2
@@ -83,16 +86,19 @@ cd android
 **Error**: "SDK location not found"
 
 **Solution**: Create `local.properties`:
+
 ```bash
 echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 ```
 
 On Mac/Linux, typically:
+
 ```bash
 echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 ```
 
 On Windows:
+
 ```bash
 echo "sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk" > local.properties
 ```
@@ -100,6 +106,7 @@ echo "sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk" > local.propert
 ### App Doesn't Appear in Share Menu
 
 **Solution**:
+
 1. Uninstall the app completely
 2. Reinstall via Android Studio
 3. Clear YouTube app cache: Settings → Apps → YouTube → Clear Cache
@@ -107,9 +114,10 @@ echo "sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk" > local.propert
 ### "Connection Error"
 
 **Solution**:
-1. Check server is running: `curl https://conciser-aurora.ngrok.dev/health`
+
+1. Check server is running: `curl http://conciser.603apps.net/health`
 2. Verify server URL in app settings
-3. Ensure phone can reach the server (same network or public ngrok URL)
+3. Ensure phone can reach the server (same network or public URL)
 
 ## Building for Production
 
@@ -122,6 +130,7 @@ keytool -genkey -v -keystore nbj-release-key.jks -keyalg RSA -keysize 2048 -vali
 ### Configure Signing in build.gradle
 
 Add to `app/build.gradle`:
+
 ```gradle
 android {
     signingConfigs {
@@ -167,6 +176,7 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 ## Development Setup
 
 ### Recommended Android Studio Plugins
+
 - Kotlin
 - Material Design Icons
 - ADB Idea
@@ -175,6 +185,7 @@ Output: `app/build/outputs/apk/release/app-release.apk`
 ### Enable ViewBinding
 
 Already configured in `app/build.gradle`:
+
 ```gradle
 buildFeatures {
     viewBinding true
@@ -188,6 +199,7 @@ buildFeatures {
 ```
 
 Check for updates:
+
 ```bash
 ./gradlew dependencyUpdates
 ```
@@ -195,11 +207,13 @@ Check for updates:
 ## System Requirements
 
 ### Minimum Device Requirements
+
 - Android 7.0 (API 24) or higher
 - 50 MB free storage
 - Internet connection
 
 ### Recommended
+
 - Android 10 (API 29) or higher
 - 100 MB free storage
 - WiFi connection (for faster video downloads)
@@ -207,17 +221,21 @@ Check for updates:
 ## Common Issues
 
 ### "No video player found"
+
 Install a video player: VLC, MX Player, or Google Photos
 
 ### "Server is busy"
+
 Server is processing another video. Wait and retry.
 
 ### Videos don't play
+
 Ensure you have a compatible video player installed.
 
 ## Next Steps
 
 After installation:
+
 1. Share a YouTube video to test the app
 2. Customize server URL in Settings if needed
 3. Check server logs if issues occur: `../server/nbj.log`

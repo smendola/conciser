@@ -5,7 +5,8 @@ let currentJobId = null;
 let currentTakeawaysJobId = null;
 let pollInterval = null;
 let takeawaysPollInterval = null;
-const serverUrl = 'https://conciser-aurora.ngrok.dev';
+const DEFAULT_SERVER_URL = 'http://conciser.603apps.net';
+let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -320,12 +321,16 @@ async function fetchVoices() {
 async function loadSettings() {
   const storage = await chrome.storage.local.get(['settings']);
   const settings = storage.settings || {
+    serverUrl: DEFAULT_SERVER_URL,
     aggressiveness: 5,
     voice: null,
     speechSpeed: 1.10,
     videoMode: 'slideshow',
     prependIntro: false
   };
+
+  serverUrl = normalizeServerUrl(settings.serverUrl);
+  document.getElementById('serverUrlInput').value = serverUrl;
 
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
@@ -337,7 +342,13 @@ async function loadSettings() {
 
 // Save settings to storage
 async function saveSettings() {
+  const inputValue = document.getElementById('serverUrlInput').value;
+  const normalizedServerUrl = normalizeServerUrl(inputValue);
+  document.getElementById('serverUrlInput').value = normalizedServerUrl;
+  serverUrl = normalizedServerUrl;
+
   const settings = {
+    serverUrl: normalizedServerUrl,
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
     voice: document.getElementById('voiceSelect').value,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
@@ -346,6 +357,12 @@ async function saveSettings() {
   };
 
   await chrome.storage.local.set({ settings });
+}
+
+function normalizeServerUrl(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) return DEFAULT_SERVER_URL;
+  return trimmed.replace(/\/+$/, '');
 }
 
 // Update strategy description based on slider value
@@ -427,6 +444,10 @@ document.getElementById('prependIntroCheck').addEventListener('change', () => {
   handleSettingChange();
 });
 
+document.getElementById('serverUrlInput').addEventListener('change', () => {
+  handleSettingChange();
+});
+
 // Display build timestamp
 if (typeof BUILD_TIMESTAMP !== 'undefined') {
   document.getElementById('buildInfo').textContent = `Build: ${BUILD_TIMESTAMP}`;
@@ -502,7 +523,7 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
       condenseBtn.textContent = 'Condense Video';
     }
   } catch (error) {
-    showStatus('error', `Connection error: ${error.message}\nCheck that server and ngrok are running`);
+    showStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
     condenseBtn.disabled = false;
     condenseBtn.textContent = 'Condense Video';
   }
@@ -667,7 +688,7 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
       takeawaysBtn.textContent = 'Extract Takeaways';
     }
   } catch (error) {
-    showTakeawaysStatus('error', `Connection error: ${error.message}\nCheck that server and ngrok are running`);
+    showTakeawaysStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
     takeawaysBtn.disabled = false;
     takeawaysBtn.textContent = 'Extract Takeaways';
   }

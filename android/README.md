@@ -7,7 +7,8 @@ Android app for condensing YouTube videos using the NBJ Condenser server.
 - **Share Target**: Share YouTube videos directly from the YouTube app
 - **Real-Time Progress**: See condensing progress with live status updates
 - **Auto-Play**: Automatically opens the condensed video when ready
-- **External Player Support**: Choose your favorite video player (VLC, MX Player, etc.)
+- **External Player Support**: Choose your favorite video player (VLC, MX
+  Player, etc.)
 - **Configurable Server**: Set your own NBJ Condenser server URL
 - **Material Design 3**: Modern, clean UI following Android design guidelines
 
@@ -47,6 +48,7 @@ cd android
 The APK will be in: `app/build/outputs/apk/debug/app-debug.apk`
 
 Install on your device:
+
 ```bash
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -62,15 +64,17 @@ cd android
 
 ### Server URL
 
-By default, the app connects to: `https://conciser-aurora.ngrok.dev/`
+By default, the app connects to: `http://conciser.603apps.net`
 
 To change the server URL:
+
 1. Open the NBJ Condenser app
 2. Tap the **⋮ menu** → **Settings**
 3. Enter your server URL
 4. Tap **Save**
 
 You can also edit `ConciSerApi.kt` to change the default:
+
 ```kotlin
 private const val BASE_URL = "https://your-server-url.com/"
 ```
@@ -110,17 +114,20 @@ com.nbj/
 ### Key Components
 
 **MainActivity**
+
 - Receives YouTube share intents
 - Submits videos to NBJ Condenser server API
 - Polls for job status every 3 seconds
 - Launches video player when complete
 
 **ConciSerApi**
+
 - Retrofit service for server communication
 - Endpoints: `/api/condense`, `/api/status/{id}`, `/api/download/{id}`
 - Handles network requests with OkHttp
 
 **SettingsActivity**
+
 - Configure server URL
 - Stored in SharedPreferences
 
@@ -129,6 +136,7 @@ com.nbj/
 The app communicates with the NBJ Condenser server via REST API:
 
 ### Submit Video
+
 ```
 POST /api/condense
 Body: {"url": "https://youtube.com/watch?v=..."}
@@ -136,12 +144,14 @@ Response: {"job_id": "abc123", "status": "queued"}
 ```
 
 ### Check Status
+
 ```
 GET /api/status/abc123
 Response: {"status": "processing", "progress": "Transcribing..."}
 ```
 
 ### Download Video
+
 ```
 GET /api/download/abc123
 Response: MP4 video file
@@ -150,27 +160,35 @@ Response: MP4 video file
 ## Troubleshooting
 
 ### "No video player found"
+
 **Solution**: Install a video player app like:
+
 - VLC for Android
 - MX Player
 - Google Photos
 - Default Android video player
 
 ### "Connection error"
+
 **Solution**:
+
 - Check that the NBJ Condenser server is running
 - Verify the server URL in Settings
-- Ensure your device can reach the server (same network or ngrok)
+- Ensure your device can reach the server (same network or public URL)
 - Check internet connection
 
 ### "Processing failed"
+
 **Solution**:
+
 - Video may be age-restricted or unavailable
 - Server may be busy (single-threaded)
 - Check server logs for details
 
 ### App crashes when opening
+
 **Solution**:
+
 - Clear app data: Settings → Apps → NBJ Condenser → Clear Data
 - Reinstall the app
 - Check Android version (requires Android 7.0+)
@@ -178,6 +196,7 @@ Response: MP4 video file
 ## Development
 
 ### Tech Stack
+
 - **Kotlin** - Modern Android development language
 - **Material Design 3** - UI components
 - **Retrofit** - REST API client
@@ -188,23 +207,27 @@ Response: MP4 video file
 ### Building
 
 Debug build:
+
 ```bash
 ./gradlew assembleDebug
 ```
 
 Release build (requires signing):
+
 ```bash
 ./gradlew assembleRelease
 ```
 
 Run tests:
+
 ```bash
 ./gradlew test
 ```
 
 ### Code Style
 
-Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
+Follow
+[Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
 
 ### Adding Features
 
@@ -221,6 +244,7 @@ The app requests the following permissions:
 - `ACCESS_NETWORK_STATE` - Check network connectivity
 
 No other permissions are needed. The app does not:
+
 - Access your files
 - Use your camera
 - Track your location
@@ -244,6 +268,7 @@ MIT License - see main project LICENSE file
 ## Support
 
 For issues, check:
+
 - Server logs: `../server/nbj.log`
 - Android logcat: `adb logcat | grep NBJ`
 - GitHub issues: https://github.com/yourusername/nbj-condenser/issues

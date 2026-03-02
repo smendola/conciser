@@ -1,6 +1,7 @@
 # NBJ Condenser - Deployment Guide
 
-This guide explains how to deploy NBJ Condenser to an Oracle Cloud VM (or any similar Linux server).
+This guide explains how to deploy NBJ Condenser to an Oracle Cloud VM (or any
+similar Linux server).
 
 ## Prerequisites
 
@@ -20,6 +21,7 @@ ssh conciser 'bash -s' < setup-vm.sh
 ```
 
 This installs:
+
 - Python 3 + pip
 - Git
 - ffmpeg
@@ -37,7 +39,8 @@ ssh conciser 'bash -s' < setup-firewall.sh
 
 **Important:** You must also add an Ingress Rule in Oracle Cloud Console:
 
-1. Go to: **Networking** → **Virtual Cloud Networks** → your VCN → **Security Lists**
+1. Go to: **Networking** → **Virtual Cloud Networks** → your VCN → **Security
+   Lists**
 2. Click on the default security list
 3. Click **Add Ingress Rules**
 4. Configure:
@@ -55,6 +58,7 @@ Deploy the code from GitHub:
 ```
 
 This will:
+
 - Commit local changes
 - Push to GitHub
 - Pull on the VM
@@ -81,6 +85,7 @@ ssh conciser 'bash -s' < setup-cron.sh
 ```
 
 This adds a cron job that runs daily at 3 AM to delete:
+
 - `temp/` files older than 7 days
 - `output/` files older than 7 days
 - `server/output/` files older than 7 days
@@ -97,6 +102,7 @@ After making code changes, just run:
 ```
 
 It handles everything:
+
 - Commits your changes
 - Pushes to GitHub
 - Pulls on VM
@@ -150,8 +156,9 @@ Once deployed and firewall configured:
 - **Extension Install:** http://129.80.134.46:5000/start
 - **API Endpoint:** http://129.80.134.46:5000/api/condense
 
-If using ngrok:
-- https://conciser-aurora.ngrok.dev
+Public URL:
+
+- http://conciser.603apps.net
 
 ## Troubleshooting
 
@@ -218,14 +225,14 @@ ssh conciser 'bash -s' < setup-vm.sh
 
 ## Scripts Summary
 
-| Script | Purpose | Run From |
-|--------|---------|----------|
-| `setup-vm.sh` | Initial VM setup (dependencies) | Local |
-| `setup-firewall.sh` | Configure firewall for port 5000 | Local |
-| `deploy.sh` | Deploy code updates | Local |
-| `deploy-env.sh` | Copy .env to VM | Local |
-| `setup-cron.sh` | Set up cleanup cron job | Local |
-| `scripts/cleanup.sh` | Clean old files (runs via cron) | VM (automatic) |
+| Script               | Purpose                          | Run From       |
+| -------------------- | -------------------------------- | -------------- |
+| `setup-vm.sh`        | Initial VM setup (dependencies)  | Local          |
+| `setup-firewall.sh`  | Configure firewall for port 5000 | Local          |
+| `deploy.sh`          | Deploy code updates              | Local          |
+| `deploy-env.sh`      | Copy .env to VM                  | Local          |
+| `setup-cron.sh`      | Set up cleanup cron job          | Local          |
+| `scripts/cleanup.sh` | Clean old files (runs via cron)  | VM (automatic) |
 
 ## Production Considerations
 

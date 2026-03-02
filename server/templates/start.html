@@ -252,7 +252,7 @@
                 <h3>"Connection error"</h3>
                 <div class="step-detail">
                     The server may be offline or unreachable<br>
-                    Contact your administrator to ensure the server and ngrok are running
+                    Contact your administrator to ensure the server is running
                 </div>
 
                 <h3>"Server is busy"</h3>
@@ -326,10 +326,11 @@
         function copyExtensionsURL() {
             const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
             const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
+            const feedback = document.getElementById('copy-feedback');
+            const btn = document.getElementById('copy-url-btn');
 
-            navigator.clipboard.writeText(extensionsURL).then(() => {
-                const feedback = document.getElementById('copy-feedback');
-                const btn = document.getElementById('copy-url-btn');
+            function showCopiedState() {
+                if (!feedback || !btn) return;
 
                 feedback.style.display = 'block';
                 btn.classList.add('copied');
@@ -340,9 +341,39 @@
                     btn.classList.remove('copied');
                     btn.innerHTML = '📋 Click to Copy: <code id="extensions-url" style="background: transparent; color: white;">' + extensionsURL + '</code>';
                 }, 3000);
-            }).catch(() => {
-                alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
-            });
+            }
+
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                navigator.clipboard.writeText(extensionsURL)
+                    .then(showCopiedState)
+                    .catch(fallbackCopy);
+                return;
+            }
+
+            fallbackCopy();
+
+            function fallbackCopy() {
+                const textArea = document.createElement('textarea');
+                textArea.value = extensionsURL;
+                textArea.setAttribute('readonly', '');
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-9999px';
+                document.body.appendChild(textArea);
+                textArea.select();
+
+                try {
+                    const copied = document.execCommand('copy');
+                    if (copied) {
+                        showCopiedState();
+                    } else {
+                        alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
+                    }
+                } catch (err) {
+                    alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
+                } finally {
+                    document.body.removeChild(textArea);
+                }
+            }
         }
     </script>
 </body>

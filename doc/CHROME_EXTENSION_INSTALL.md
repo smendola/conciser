@@ -4,7 +4,8 @@
 
 The extension package is at `dist/nbj-chrome-extension.zip`.
 
-The server also serves it at `https://your-server/extension.zip` with a full install guide at `https://your-server/start`.
+The server also serves it at `https://your-server/extension.zip` with a full
+install guide at `https://your-server/start`.
 
 ### Option 1: Drag-and-drop (easiest)
 
@@ -22,14 +23,16 @@ The server also serves it at `https://your-server/extension.zip` with a full ins
 
 ### Option 3: Install from server
 
-Navigate to `https://your-ngrok-url/start` — the server provides a download button and step-by-step install instructions.
+Navigate to `http://conciser.603apps.net/start` — the server provides a download
+button and step-by-step install instructions.
 
 ---
 
 ## Features
 
 - **Smart icon**: Icon is colored on YouTube video pages, gray elsewhere
-- **Settings panel**: Configure server URL, voice, aggressiveness (1–10), speech speed, output mode, prepend-intro
+- **Settings panel**: Configure server URL, voice, aggressiveness (1–10), speech
+  speed, output mode, prepend-intro
 - **Video title**: Shown bold below the video ID (fetched via YouTube oEmbed)
 - **Persistent state**: Close and reopen — the popup remembers your active job
 - **Real-time progress**: Polls server every 3 seconds
@@ -50,29 +53,30 @@ Navigate to `https://your-ngrok-url/start` — the server provides a download bu
 
 ## Settings
 
-| Setting | Description |
-|---------|-------------|
-| Server URL | NBJ Condenser server URL (e.g., ngrok URL) |
-| Voice | Edge TTS voice (populated from server) |
-| Aggressiveness | 1–10 condensation level |
-| Speech Speed | TTS rate (e.g., +10%) |
-| Output Mode | Slideshow (MP4) or Audio Only (MP3) |
-| Prepend key take-aways intro | Adds numbered summary intro to speech |
+| Setting                      | Description                                                       |
+| ---------------------------- | ----------------------------------------------------------------- |
+| Server URL                   | NBJ Condenser server URL (default: `http://conciser.603apps.net`) |
+| Voice                        | Edge TTS voice (populated from server)                            |
+| Aggressiveness               | 1–10 condensation level                                           |
+| Speech Speed                 | TTS rate (e.g., +10%)                                             |
+| Output Mode                  | Slideshow (MP4) or Audio Only (MP3)                               |
+| Prepend key take-aways intro | Adds numbered summary intro to speech                             |
 
-Settings are saved to `chrome.storage.local` and persist across browser sessions.
+Settings are saved to `chrome.storage.local` and persist across browser
+sessions.
 
 ---
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `manifest.json` | Extension config, permissions, icons |
-| `popup.html` | Popup UI |
-| `popup.js` | Extension logic (settings, API calls, polling, title fetch) |
-| `background.js` | Icon state management (active/inactive) |
-| `icons/icon{16,48,128}.png` | Colored icons (active state) |
-| `icons/icon{16,48,128}-disabled.png` | Grayscale icons (inactive state) |
+| File                                 | Purpose                                                     |
+| ------------------------------------ | ----------------------------------------------------------- |
+| `manifest.json`                      | Extension config, permissions, icons                        |
+| `popup.html`                         | Popup UI                                                    |
+| `popup.js`                           | Extension logic (settings, API calls, polling, title fetch) |
+| `background.js`                      | Icon state management (active/inactive)                     |
+| `icons/icon{16,48,128}.png`          | Colored icons (active state)                                |
+| `icons/icon{16,48,128}-disabled.png` | Grayscale icons (inactive state)                            |
 
 ---
 

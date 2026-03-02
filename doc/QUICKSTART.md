@@ -9,8 +9,11 @@ Get started with NBJ Condenser in minutes.
 3. **OpenAI API key** (required — for Whisper transcription and condensation)
 
 Optional API keys:
-- `ANTHROPIC_API_KEY` — use Claude as the condensation provider instead of OpenAI
-- `ELEVENLABS_API_KEY` — paid voice cloning (Edge TTS is free and used by default)
+
+- `ANTHROPIC_API_KEY` — use Claude as the condensation provider instead of
+  OpenAI
+- `ELEVENLABS_API_KEY` — paid voice cloning (Edge TTS is free and used by
+  default)
 - `DID_API_KEY` — D-ID avatar video mode only
 
 ## Installation
@@ -18,17 +21,18 @@ Optional API keys:
 ### 1. Install ffmpeg
 
 **Ubuntu/Debian:**
+
 ```bash
 sudo apt update && sudo apt install ffmpeg
 ```
 
 **macOS:**
+
 ```bash
 brew install ffmpeg
 ```
 
-**Windows:**
-Download from https://ffmpeg.org/download.html and add to PATH.
+**Windows:** Download from https://ffmpeg.org/download.html and add to PATH.
 
 ### 2. Install NBJ Condenser
 
@@ -48,6 +52,7 @@ cp .env.example .env
 ```
 
 Or run the interactive wizard:
+
 ```bash
 nbj init
 ```
@@ -69,6 +74,7 @@ nbj condense "https://youtube.com/watch?v=VIDEO_ID"
 ```
 
 Pipeline stages:
+
 1. **Download** — yt-dlp fetches the video (~30s)
 2. **Transcribe** — Whisper API transcribes audio (~1–2 min)
 3. **Condense** — OpenAI/Claude rewrites the script (~15–30s)
@@ -83,8 +89,8 @@ Total: **3–5 minutes** for a typical 10-minute video.
 nbj condense "https://youtube.com/watch?v=VIDEO_ID" --video-gen-mode audio_only
 ```
 
-No video generation step — just the condensed speech as an MP3.
-Total: **1–3 minutes**.
+No video generation step — just the condensed speech as an MP3. Total: **1–3
+minutes**.
 
 ---
 
@@ -133,7 +139,8 @@ Prepends a numbered list of key take-aways to the TTS output.
 
 ### Resume interrupted jobs
 
-Resume is **on by default**. If a run was interrupted, just re-run the same command and it will skip already-completed stages.
+Resume is **on by default**. If a run was interrupted, just re-run the same
+command and it will skip already-completed stages.
 
 ```bash
 nbj condense "URL"              # resumes automatically
@@ -145,6 +152,7 @@ nbj condense "URL" --no-resume  # force restart from scratch
 ## Output
 
 Files are saved to `output/` with auto-generated names:
+
 ```
 output/<video_id>_<title>_edge_<voice>.mp4
 output/<video_id>_<title>_edge_<voice>.mp3
@@ -160,12 +168,9 @@ To use the Chrome extension or Android app, run the Flask server:
 python server/app.py
 ```
 
-Expose it with ngrok:
-```bash
-ngrok start nbj
-```
+Default public URL: `http://conciser.603apps.net`
 
-Then share the install link: `https://your-ngrok-url/start`
+Then share the install link: `http://conciser.603apps.net/start`
 
 ---
 
@@ -180,10 +185,14 @@ Then share the install link: `https://your-ngrok-url/start`
 
 ## Troubleshooting
 
-**"API key not set"** → Run `nbj check` to see which keys are missing, then edit `.env`.
+**"API key not set"** → Run `nbj check` to see which keys are missing, then edit
+`.env`.
 
-**"ffmpeg not found"** → Install ffmpeg (see above) and ensure it's on your PATH.
+**"ffmpeg not found"** → Install ffmpeg (see above) and ensure it's on your
+PATH.
 
-**Output sounds cut off** → Try `--no-resume` to regenerate the condensed script fresh.
+**Output sounds cut off** → Try `--no-resume` to regenerate the condensed script
+fresh.
 
-**TTS sounds wrong** → Try a different voice: `nbj voices` to browse, then `--voice <name>`.
+**TTS sounds wrong** → Try a different voice: `nbj voices` to browse, then
+`--voice <name>`.

@@ -99,7 +99,7 @@ data class RecentJob(
 )
 
 object ConciserApi {
-    const val DEFAULT_URL = "https://conciser-aurora.ngrok.dev/"
+    const val DEFAULT_URL = "http://conciser.603apps.net"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
