@@ -9,6 +9,10 @@ set -e
 echo "🏗️  NBJ Condenser - Infrastructure Setup"
 echo "=========================================="
 echo ""
+echo "⚠️  NOTE: System package updates (yum update) are SKIPPED."
+echo "   Oracle Linux VMs are pre-patched. Running yum update kills SSH"
+echo "   without a reboot. Update manually when you're ready to reboot."
+echo ""
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then 
@@ -17,16 +21,12 @@ else
     SUDO="sudo"
 fi
 
-# Update system
-echo "📦 [1/6] Updating system packages..."
-$SUDO yum update -y
-
 # Install EPEL repository (needed for some packages)
-echo "📦 [2/6] Installing EPEL repository..."
+echo "📦 [1/5] Installing EPEL repository..."
 $SUDO yum install -y epel-release
 
 # Install Python 3 and development tools
-echo "🐍 [3/6] Installing Python 3 and development tools..."
+echo "🐍 [2/5] Installing Python 3 and development tools..."
 $SUDO yum install -y \
     python3 \
     python3-pip \
@@ -36,17 +36,17 @@ $SUDO yum install -y \
     make
 
 # Install Git
-echo "📝 [4/6] Installing Git..."
+echo "📝 [3/5] Installing Git..."
 $SUDO yum install -y git
 
 # Install ffmpeg and related tools
-echo "🎬 [5/6] Installing ffmpeg and media tools..."
+echo "🎬 [4/5] Installing ffmpeg and media tools..."
 $SUDO yum install -y \
     ffmpeg \
     ffmpeg-devel
 
 # Install other system utilities
-echo "🔧 [6/6] Installing system utilities..."
+echo "🔧 [5/5] Installing system utilities..."
 $SUDO yum install -y \
     wget \
     curl \
@@ -87,5 +87,10 @@ echo "  1. Run: ./deploy.sh            # Deploy application code"
 echo "  2. Run: ./deploy-env.sh        # Copy .env file"
 echo "  3. Run: ./setup-cron.sh        # Set up cleanup job"
 echo ""
-echo "Note: Firewall management disabled to avoid SSH lockout."
-echo "      Configure Oracle Cloud Security List manually for port access."
+echo "⚠️  IMPORTANT NOTES:"
+echo "  • Firewall management disabled to avoid SSH lockout"
+echo "  • System updates (yum update) SKIPPED to avoid SSH lockout"
+echo "  • Configure Oracle Cloud Security List manually for port access"
+echo ""
+echo "To update system packages later (requires reboot):"
+echo "  ssh conciser 'sudo yum update -y && sudo reboot'"
