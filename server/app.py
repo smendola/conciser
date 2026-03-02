@@ -1,8 +1,7 @@
 """
-NBJ Condenser Remote Server
+NBJ Condenser Server
 
 Simple HTTP server that accepts YouTube URLs and processes them with nbj.
-Designed to run behind ngrok for remote access.
 """
 
 import os
@@ -174,7 +173,7 @@ def start_page():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NBJ Condenser Remote - Get Started</title>
+    <title>NBJ Condenser - Get Started</title>
     <style>
         * {
             margin: 0;
@@ -388,12 +387,20 @@ def start_page():
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎬 NBJ Condenser Remote</h1>
+            <h1>🎬 NBJ Condenser </h1>
             <p>AI-Powered YouTube Video Condensation</p>
             <p style="font-size: 0.9em; margin-top: 10px;">Get the <span id="browser-name">browser</span> extension</p>
         </div>
 
         <div class="content">
+            <div class="section">
+                <h2>What is this?</h2>
+                <p>
+                    <strong>NBJ Condenser</strong> is a browser extension that allows you to condense 
+                    YouTube videos. <span style="font-weight: 500;">NBJ</span> stands for Nate.B.<em>James</em>. If you know, you know. 😊
+                </p>
+            </div>
+
             <div class="download-section">
                 <h2 style="margin: 0 0 10px 0; color: #1a73e8;">📦 Step 1: Download Extension</h2>
                 <p>Click the button below to download the NBJ Condenser extension</p>
@@ -490,10 +497,10 @@ def start_page():
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
-                        Pin "NBJ Condenser Remote"
+                        Pin "NBJ Condenser"
                     </div>
                     <div class="step-detail">
-                        Find "NBJ Condenser Remote" in the dropdown<br>
+                        Find "NBJ Condenser" in the dropdown<br>
                         Click the <strong>pin icon (📌)</strong> next to it<br>
                         The "C" icon will now appear in your toolbar for easy access
                     </div>
@@ -557,7 +564,7 @@ def start_page():
                     <div class="step-detail">
                         The popup will show real-time progress updates every 3 seconds<br>
                         You'll see stages like "Downloading", "Transcribing", "Condensing", "Generating video"<br>
-                        <strong>Processing typically takes 5-15 minutes</strong> depending on video length<br>
+                        <strong>Processing typically takes 1-5 minutes</strong> depending on video length<br>
                         <strong>💡 Pro tip:</strong> You can close the popup and come back later - the extension remembers your job and will resume tracking when you reopen it!
                     </div>
                 </div>
@@ -598,8 +605,9 @@ def start_page():
                             <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness: 5/10)</li>
                             <li><strong>Generates new audio</strong> with natural text-to-speech voice</li>
                             <li><strong>Creates a slideshow</strong> using key frames from the original video</li>
-                            <li><strong>Produces a final video</strong> that's typically 30-60% shorter</li>
+                            <li><strong>Produces a final video</strong> that can be between 75% and just 10% the length of the original video</li>
                         </ul>
+                        <p>It can also produce a super-compact <strong>"key takeaways"</strong> page or audio file</p>
                     </div>
                 </div>
 
@@ -646,7 +654,7 @@ def start_page():
         </div>
 
         <div class="footer">
-            <p><strong>NBJ Condenser Remote Server</strong></p>
+            <p><strong>NBJ Condenser Server</strong></p>
             <p style="margin-top: 10px; font-size: 0.9em;">
                 Need help? Check the server logs or contact your administrator
             </p>
@@ -661,7 +669,7 @@ def start_page():
             // Replace entire page content with message
             document.querySelector('.container').innerHTML = `
                 <div class="header">
-                    <h1>🎬 NBJ Condenser Remote</h1>
+                    <h1>🎬 NBJ Condenser</h1>
                 </div>
                 <div class="content" style="text-align: center; padding: 60px 40px;">
                     <h2 style="font-size: 2em; color: #d32f2f; margin-bottom: 20px;">
@@ -1262,7 +1270,7 @@ def get_voices():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("NBJ Condenser Remote Server")
+    print("NBJ Condenser Server")
     print("=" * 60)
     print("\nServer starting on http://127.0.0.1:5000")
     print("Expose with: ngrok start nbj")

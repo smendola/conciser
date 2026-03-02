@@ -76,24 +76,30 @@ class VideoDownloader:
         url: str,
         quality: str = "1080p",
         output_filename: str = None,
-        folder_label: str = None
+        folder_label: str = None,
+        metadata_only: bool = False
     ) -> Dict[str, Any]:
         """
-        Download video from URL into organized folder structure.
+        Download video from URL into organized folder structure, or just fetch metadata.
 
         Args:
             url: YouTube or other video URL
             quality: Desired quality (720p, 1080p, 4k, best)
             output_filename: Optional custom filename (overrides normalized naming)
+            folder_label: Optional label for folder name (from videos.txt)
+            metadata_only: If True, only fetch metadata and create folder, skip video download
 
         Returns:
             Dictionary with:
-                - video_path: Path to downloaded video
+                - video_path: Path to downloaded video (None if metadata_only=True)
                 - metadata: Video metadata (title, duration, etc.)
                 - video_folder: Path to video-specific folder
         """
         try:
-            logger.info(f"Starting download from: {url}")
+            if metadata_only:
+                logger.info(f"Fetching metadata from: {url}")
+            else:
+                logger.info(f"Starting download from: {url}")
 
             # First, extract video info to get ID and title
             ydl_opts_info = {
@@ -119,6 +125,22 @@ class VideoDownloader:
             video_folder = self.output_dir / f"{video_id}_{normalized_title}"
             video_folder.mkdir(parents=True, exist_ok=True)
             logger.info(f"Using video folder: {video_folder}")
+
+            # If metadata_only, return early without downloading
+            if metadata_only:
+                metadata = {
+                    'video_id': video_id,
+                    'title': title,
+                    'normalized_title': normalized_title,
+                    'duration': info.get('duration', 0),
+                    'uploader': info.get('uploader', 'Unknown'),
+                }
+                return {
+                    'video_path': None,
+                    'metadata': metadata,
+                    'video_folder': video_folder
+                }
+
 
             # Use generic filename or custom one (folder name already contains video title)
             if output_filename is None:

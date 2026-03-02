@@ -292,7 +292,7 @@ Requirements:
 - Output must be a single SSML document wrapped in <speak>...</speak>.
 """
 
-EXTRACT_TAKEAWAYS_PROMPT = """
+EXTRACT_TAKEAWAYS_PROMPT_BASE = """
 You are analyzing a video transcript to extract the most important key concepts.
 
 Extract exactly {N} key takeaways from this video. For each takeaway:
@@ -307,14 +307,9 @@ Requirements:
 - Order by importance (most important first)
 - Use clear, concise language
 - Each point should be 1-2 sentences maximum
-
-Output as a numbered markdown list:
-1. [First key takeaway]
-2. [Second key takeaway]
-...
 """
 
-EXTRACT_TAKEAWAYS_AUTO_PROMPT = """
+EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE = """
 You are analyzing a video transcript to extract the most important key concepts.
 
 First, analyze the content to determine the optimal number of key takeaways (between 3-10).
@@ -331,12 +326,28 @@ Then extract that optimal number of key takeaways. For each:
 - Make it actionable or memorable
 
 Order by importance (most important first).
+"""
 
+TAKEAWAYS_FORMAT_MARKDOWN = """
 Output as a numbered markdown list:
-1. [First key takeaway]
-2. [Second key takeaway]
+1. **[Key concept]** — [Explanation in 1-2 sentences]
+2. **[Key concept]** — [Explanation in 1-2 sentences]
 ...
-[Continue until all key concepts are covered, stopping between 3-10 points]
+[Continue until all key concepts are covered]
+
+Do not introduce the list with any heading or title.
+"""
+
+TAKEAWAYS_FORMAT_PLAIN_TEXT = """
+Output as a simple numbered list (no markdown formatting):
+1. [Key concept] - [Explanation in 1-2 sentences]
+2. [Key concept] - [Explanation in 1-2 sentences]
+...
+[Continue until all key concepts are covered]
+
+Do not introduce the list with any heading or title; just the list items. 
+Do not use any markdown formatting.
+Dashes and em-dashes are permitted. The text will be fed to TTS, so these can be helpful for pacing.
 """
 
 def get_strategy_description(aggressiveness: int) -> str:

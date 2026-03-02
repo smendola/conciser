@@ -85,7 +85,13 @@ from ..app import cli  # noqa: E402
     default=None,
     help='Show LLM streaming output: dots (one dot per chunk) or text (raw streamed text).'
 )
-def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress):
+@click.option(
+    '--xdg-open', '-O',
+    is_flag=True,
+    default=False,
+    help='Open the output file with xdg-open after completion'
+)
+def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress, xdg_open):
     """
     Condense a video from URL.
 
@@ -319,6 +325,17 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         print(f"\n{Fore.YELLOW}Note: This video was AI-generated and may contain artifacts.{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Please review for quality before sharing.{Style.RESET_ALL}\n")
+
+        # Open output file if requested
+        if xdg_open:
+            import subprocess
+            output_file = result['output_video']
+
+            try:
+                subprocess.run(['xdg-open', str(output_file)], check=False)
+                print(f"{Fore.CYAN}Opened {Path(output_file).name} with xdg-open{Style.RESET_ALL}\n")
+            except Exception as e:
+                print(f"{Fore.YELLOW}Warning: Failed to open file with xdg-open: {e}{Style.RESET_ALL}\n")
 
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Operation cancelled by user.{Style.RESET_ALL}")

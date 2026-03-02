@@ -636,7 +636,8 @@ class ContentCondenser:
         self,
         transcript: str,
         video_title: str = "",
-        top: int = None
+        top: int = None,
+        format: str = "text"
     ) -> str:
         """
         Extract key takeaways from a video transcript.
@@ -645,9 +646,10 @@ class ContentCondenser:
             transcript: Full video transcript
             video_title: Optional video title for context
             top: Number of takeaways to extract (3-10), or None for auto
+            format: Output format - "text" for markdown, "audio" for plain text (no markdown symbols)
 
         Returns:
-            Markdown-formatted takeaways list
+            Formatted takeaways list (markdown or plain text based on format)
 
         Note:
             Does NOT use conversation chains (unlike condense()).
@@ -662,8 +664,10 @@ class ContentCondenser:
             - Anthropic: TAKEAWAYS_MODEL_ANTHROPIC (vs CONDENSATION_MODEL_ANTHROPIC)
         """
         from ..utils.prompt_templates import (
-            EXTRACT_TAKEAWAYS_PROMPT,
-            EXTRACT_TAKEAWAYS_AUTO_PROMPT
+            EXTRACT_TAKEAWAYS_PROMPT_BASE,
+            EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE,
+            TAKEAWAYS_FORMAT_MARKDOWN,
+            TAKEAWAYS_FORMAT_PLAIN_TEXT
         )
 
         # Select appropriate model for takeaways (cheaper/faster than condensation models)
@@ -672,13 +676,21 @@ class ContentCondenser:
         else:  # anthropic
             model = self.takeaways_model_anthropic
 
-        logger.info(f"Extracting takeaways (top={top if top else 'auto'}) using {self.provider} model {model}")
+        logger.info(f"Extracting takeaways (top={top if top else 'auto'}, format={format}) using {self.provider} model {model}")
 
-        # Choose prompt based on whether top is specified
+        # Choose base prompt based on whether top is specified
         if top:
-            system_prompt = EXTRACT_TAKEAWAYS_PROMPT.format(N=top)
+            base_prompt = EXTRACT_TAKEAWAYS_PROMPT_BASE.format(N=top)
         else:
-            system_prompt = EXTRACT_TAKEAWAYS_AUTO_PROMPT
+            base_prompt = EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE
+
+        # Append appropriate formatting instructions based on output format
+        if format == "audio":
+            format_prompt = TAKEAWAYS_FORMAT_PLAIN_TEXT
+        else:
+            format_prompt = TAKEAWAYS_FORMAT_MARKDOWN
+
+        system_prompt = base_prompt + "\n" + format_prompt
 
         # Build user message
         user_message = f"Video transcript:\n\n{transcript}"

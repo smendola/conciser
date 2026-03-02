@@ -68,7 +68,13 @@ from ..app import cli  # noqa: E402
     default=True,
     help='Resume from cached intermediate files (default: resume)'
 )
-def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume):
+@click.option(
+    '--xdg-open', '-O',
+    is_flag=True,
+    default=False,
+    help='Open the output file with xdg-open after completion'
+)
+def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume, xdg_open):
     """
     Extract key takeaways from a video.
 
@@ -226,10 +232,10 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             takeaways_model_anthropic=settings.takeaways_model_anthropic
         )
 
-        # Stage 1: Download video
-        print(f"{Fore.CYAN}[1/4] Downloading video...{Style.RESET_ALL}")
-        video_info = downloader.download(url)
-        video_path = video_info['video_path']
+        # Stage 1: Fetch metadata (no video download needed for takeaways)
+        print(f"{Fore.CYAN}[1/4] Fetching video metadata...{Style.RESET_ALL}")
+        video_info = downloader.download(url, metadata_only=True)
+        video_folder = video_info['video_folder']
         metadata = video_info.get('metadata', {})
         video_title = metadata.get('title', '')
         video_id = metadata.get('video_id', url)
@@ -237,11 +243,9 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         if name_override:
             video_title = name_override
 
-        print(f"  Title: {video_title}")
-        print(f"  Downloaded: {video_path}\n")
+        print(f"  Title: {video_title}\n")
 
         # Stage 2: Transcribe
-        video_folder = video_path.parent
         transcript_path = video_folder / f"transcript_{video_id}.txt"
 
         if resume and transcript_path.exists():
@@ -250,15 +254,21 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         else:
             print(f"{Fore.CYAN}[2/4] Fetching transcript...{Style.RESET_ALL}")
 
-            # Try YouTube transcript first
+            # Try YouTube transcript first (no video download needed)
             youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
 
             if youtube_transcript:
                 logger.info("Using YouTube transcript (no Whisper API cost)")
                 transcript = youtube_transcript['text']
             else:
+                # Need to download video for Whisper transcription
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
-                print(f"{Fore.YELLOW}  YouTube transcript unavailable, using Whisper...{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}  YouTube transcript unavailable, downloading video for Whisper...{Style.RESET_ALL}")
+
+                video_info = downloader.download(url, metadata_only=False)
+                video_path = video_info['video_path']
+                print(f"  Downloaded: {video_path}")
+
                 transcript_result = transcriber.transcribe(video_path)
                 transcript = transcript_result['text']
 
@@ -281,7 +291,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             takeaways_text = condenser.extract_takeaways(
                 transcript=transcript,
                 video_title=video_title,
-                top=top
+                top=top,
+                format=format
             )
 
             # Save markdown
@@ -351,11 +362,25 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         print(f"{Fore.GREEN}✓ Takeaways extraction complete!{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{'='*60}{Style.RESET_ALL}\n")
 
-        print(f"Output files:")
-        print(f"  Text: {takeaways_path}")
         if format == 'audio':
-            print(f"  Audio: {audio_path}")
+            print(f"Output: {Fore.CYAN}{audio_path}{Style.RESET_ALL}")
+        else:
+            print(f"Output: {Fore.CYAN}{takeaways_path}{Style.RESET_ALL}")
         print()
+
+        # Open output file if requested
+        if xdg_open:
+            import subprocess
+            if format == 'audio':
+                file_to_open = audio_path
+            else:
+                file_to_open = takeaways_path
+
+            try:
+                subprocess.run(['xdg-open', str(file_to_open)], check=False)
+                print(f"{Fore.CYAN}Opened {file_to_open.name} with xdg-open{Style.RESET_ALL}\n")
+            except Exception as e:
+                print(f"{Fore.YELLOW}Warning: Failed to open file with xdg-open: {e}{Style.RESET_ALL}\n")
 
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Interrupted by user{Style.RESET_ALL}")

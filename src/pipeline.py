@@ -144,8 +144,10 @@ class CondenserPipeline:
             # Extract video ID from URL for resume matching
             video_id = self._extract_video_id(video_url)
 
-            # Stage 1: Download video
+            # Stage 1: Fetch metadata (and video if needed)
             _t = time.time()
+            video_path = None  # May remain None if audio_only mode and YouTube transcript available
+
             if resume:
                 # Check for existing video files FOR THIS SPECIFIC VIDEO ID
                 existing_video = self._find_existing_video(video_id)
@@ -157,15 +159,27 @@ class CondenserPipeline:
                     metadata = existing_metadata
                     video_folder = video_path.parent  # Video folder is parent of video file
                 else:
-                    update_progress("FETCH", f"Fetching video {video_id}...")
-                    download_result = self._download_video(video_url, quality, name_override)
-                    video_path = download_result['video_path']
+                    # For audio_only mode, try metadata-only first to avoid unnecessary download
+                    if video_gen_mode == "audio_only":
+                        update_progress("FETCH", f"Fetching metadata for {video_id}...")
+                        download_result = self._download_video(video_url, quality, name_override, metadata_only=True)
+                    else:
+                        update_progress("FETCH", f"Fetching video {video_id}...")
+                        download_result = self._download_video(video_url, quality, name_override, metadata_only=False)
+
+                    video_path = download_result['video_path']  # None if metadata_only=True
                     metadata = download_result['metadata']
                     video_folder = download_result['video_folder']
             else:
-                update_progress("FETCH", f"Fetching video {video_id}...")
-                download_result = self._download_video(video_url, quality, name_override)
-                video_path = download_result['video_path']
+                # For audio_only mode, try metadata-only first to avoid unnecessary download
+                if video_gen_mode == "audio_only":
+                    update_progress("FETCH", f"Fetching metadata for {video_id}...")
+                    download_result = self._download_video(video_url, quality, name_override, metadata_only=True)
+                else:
+                    update_progress("FETCH", f"Fetching video {video_id}...")
+                    download_result = self._download_video(video_url, quality, name_override, metadata_only=False)
+
+                video_path = download_result['video_path']  # None if metadata_only=True
                 metadata = download_result['metadata']
                 video_folder = download_result['video_folder']
 
@@ -220,13 +234,13 @@ class CondenserPipeline:
                     duration_minutes = metadata['duration'] / 60.0
                 else:
                     update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
-                    transcript_result = self._transcribe_video(video_path, video_folder, video_id)
+                    transcript_result = self._transcribe_video(video_path, video_folder, video_id, video_url, quality)
                     transcript = transcript_result['text']
                     segments = transcript_result['segments']
                     duration_minutes = metadata['duration'] / 60.0
             else:
                 update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
-                transcript_result = self._transcribe_video(video_path, video_folder, video_id)
+                transcript_result = self._transcribe_video(video_path, video_folder, video_id, video_url, quality)
                 transcript = transcript_result['text']
                 segments = transcript_result['segments']
                 duration_minutes = metadata['duration'] / 60.0
@@ -491,16 +505,24 @@ class CondenserPipeline:
                 except Exception as cleanup_err:
                     logger.warning(f"Failed to delete cloned voice {used_voice_id}: {cleanup_err}")
 
-    def _download_video(self, url: str, quality: str, name_override: str = None) -> Dict[str, Any]:
-        """Download video from URL."""
-        return self.downloader.download(url, quality=quality, folder_label=name_override)
+    def _download_video(self, url: str, quality: str, name_override: str = None, metadata_only: bool = False) -> Dict[str, Any]:
+        """Download video from URL, or just fetch metadata if metadata_only=True."""
+        return self.downloader.download(url, quality=quality, folder_label=name_override, metadata_only=metadata_only)
 
-    def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None) -> Dict[str, Any]:
+    def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
         """
         Extract audio and transcribe.
 
         Tries to fetch YouTube transcript first if video_id is provided.
         Falls back to Whisper transcription if YouTube transcript is unavailable.
+        If video_path is None and YouTube transcript fails, downloads the video.
+
+        Args:
+            video_path: Path to video file (may be None if metadata_only was used)
+            video_folder: Folder for storing transcripts
+            video_id: YouTube video ID for fetching transcript
+            video_url: Video URL for downloading if needed
+            quality: Video quality for download if needed
         """
         from colorama import Fore, Style
 
@@ -523,10 +545,28 @@ class CondenserPipeline:
                 print(f"{Fore.RED}YouTube transcript not available, falling back to Whisper transcription...{Style.RESET_ALL}")
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
 
+                # Need to download video if we don't have it yet
+                if video_path is None:
+                    if video_url is None:
+                        raise ValueError("Cannot download video: video_url not provided")
+                    print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
+                    download_result = self.downloader.download(video_url, quality=quality, metadata_only=False)
+                    video_path = download_result['video_path']
+                    print(f"  Downloaded: {video_path}")
+
         # Fallback: Extract audio and use Whisper
         if FORCE_WHISPER:
             print(f"{Fore.YELLOW}FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly...{Style.RESET_ALL}")
             logger.warning("FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly")
+
+            # Need to download video if we don't have it yet
+            if video_path is None:
+                if video_url is None:
+                    raise ValueError("Cannot download video: video_url not provided")
+                print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
+                download_result = self.downloader.download(video_url, quality=quality, metadata_only=False)
+                video_path = download_result['video_path']
+                print(f"  Downloaded: {video_path}")
 
         audio_path = video_folder / "extracted_audio.wav"
 
