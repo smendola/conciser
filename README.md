@@ -122,6 +122,7 @@ android/      Native Android app (Kotlin)
 test/         Batch testing and quality evaluation tools
 tts_samples/  Pre-generated voice preview audio files
 ```
+All docs are in `doc/` dir
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full technical details.
 See [QUICKSTART.md](QUICKSTART.md) for step-by-step setup.
