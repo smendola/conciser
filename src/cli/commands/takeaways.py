@@ -267,7 +267,11 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         print(f"  Transcript: {len(transcript)} characters\n")
 
         # Stage 3: Extract takeaways
-        takeaways_path = video_folder / f"takeaways_{video_id}_top{top if top else 'auto'}.md"
+        # Use custom output path if provided, otherwise use default in video folder
+        if output:
+            takeaways_path = Path(output).with_suffix('.md')
+        else:
+            takeaways_path = video_folder / f"takeaways_{video_id}_top{top if top else 'auto'}.md"
 
         if resume and takeaways_path.exists():
             print(f"{Fore.CYAN}[3/4] Loading cached takeaways...{Style.RESET_ALL}")
@@ -288,6 +292,9 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                 header += f"*Auto-selected key concepts*\n\n"
 
             full_text = header + takeaways_text
+
+            # Ensure parent directory exists
+            takeaways_path.parent.mkdir(parents=True, exist_ok=True)
             takeaways_path.write_text(full_text, encoding='utf-8')
 
         print(f"  Takeaways saved: {takeaways_path}\n")
@@ -300,7 +307,14 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             audio_script = f"Here are the key takeaways from {video_title}.\n\n{takeaways_text}"
 
             # Generate audio
-            audio_path = video_folder / f"takeaways_{video_id}_top{top if top else 'auto'}_{tts_provider}.mp3"
+            # Use custom output path if provided, otherwise use default in video folder
+            if output:
+                audio_path = Path(output).with_suffix('.mp3')
+            else:
+                audio_path = video_folder / f"takeaways_{video_id}_top{top if top else 'auto'}_{tts_provider}.mp3"
+
+            # Ensure parent directory exists for audio file
+            audio_path.parent.mkdir(parents=True, exist_ok=True)
 
             if tts_provider == 'edge':
                 edge_tts = EdgeTTS()

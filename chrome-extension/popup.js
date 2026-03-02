@@ -2,11 +2,14 @@
 
 let currentUrl = null;
 let currentJobId = null;
+let currentTakeawaysJobId = null;
 let pollInterval = null;
+let takeawaysPollInterval = null;
 const serverUrl = 'https://conciser-aurora.ngrok.dev';
 let strategies = [];
 let voices = [];
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+let currentTab = 'condense';
 
 // Initialize popup
 async function initializePopup() {
@@ -17,6 +20,7 @@ async function initializePopup() {
 
   const videoInfo = document.getElementById('videoInfo');
   const condenseBtn = document.getElementById('condenseBtn');
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
 
   // Check if YouTube video page
   const youtubeRegex = /^https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
@@ -27,6 +31,7 @@ async function initializePopup() {
     videoInfo.textContent = `Video: ${videoId}`;
     videoInfo.title = currentUrl;
     condenseBtn.disabled = false;
+    takeawaysBtn.disabled = false;
 
     // Fetch title async — update when ready without blocking init
     fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(currentUrl)}&format=json`)
@@ -40,6 +45,7 @@ async function initializePopup() {
   } else {
     videoInfo.textContent = '⚠️ Not a YouTube video page';
     condenseBtn.disabled = true;
+    takeawaysBtn.disabled = true;
   }
 
   // Load settings and populate controls
@@ -47,8 +53,11 @@ async function initializePopup() {
   await fetchStrategies();
   await fetchVoices();
 
+  // Setup tabs
+  setupTabs();
+
   // Check for existing job in storage
-  const storage = await chrome.storage.local.get(['activeJob', 'completedJobs']);
+  const storage = await chrome.storage.local.get(['activeJob', 'completedJobs', 'activeTakeawaysJob', 'completedTakeawaysJobs']);
 
   // First check if this video has a completed job
   const completedJobs = storage.completedJobs || {};
@@ -58,13 +67,26 @@ async function initializePopup() {
     return;
   }
 
-  // Then check if there's an active job in progress
-  if (storage.activeJob) {
+  // Then check if there's an active job in progress FOR THIS VIDEO
+  if (storage.activeJob && storage.activeJob.url === currentUrl) {
     currentJobId = storage.activeJob.jobId;
     condenseBtn.disabled = true;
     condenseBtn.textContent = 'Processing...';
     showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`);
     startPolling();
+  }
+
+  // Check for takeaways jobs FOR THIS VIDEO
+  const completedTakeawaysJobs = storage.completedTakeawaysJobs || {};
+  if (completedTakeawaysJobs[currentUrl]) {
+    currentTakeawaysJobId = completedTakeawaysJobs[currentUrl];
+    showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
+  } else if (storage.activeTakeawaysJob && storage.activeTakeawaysJob.url === currentUrl) {
+    currentTakeawaysJobId = storage.activeTakeawaysJob.jobId;
+    takeawaysBtn.disabled = true;
+    takeawaysBtn.textContent = 'Processing...';
+    showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`);
+    startTakeawaysPolling();
   }
 }
 
@@ -88,6 +110,37 @@ async function fetchStrategies() {
   }
 }
 
+// Setup tab switching
+function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      const targetTab = button.getAttribute('data-tab');
+
+      // Update active tab button
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      button.classList.add('active');
+
+      // Update active tab content
+      tabContents.forEach(content => content.classList.remove('active'));
+      document.getElementById(`${targetTab}-tab`).classList.add('active');
+
+      currentTab = targetTab;
+    });
+  });
+
+  // Format radio buttons - show/hide voice select
+  const formatRadios = document.querySelectorAll('input[name="format"]');
+  formatRadios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      const voiceGroup = document.getElementById('takeawaysVoiceGroup');
+      voiceGroup.style.display = radio.value === 'audio' ? 'block' : 'none';
+    });
+  });
+}
+
 // Fetch voices from API (cached 1 hour)
 async function fetchVoices() {
   try {
@@ -104,30 +157,38 @@ async function fetchVoices() {
       await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
     }
 
-    const voiceSelect = document.getElementById('voiceSelect');
-    voiceSelect.innerHTML = '';
+    // Populate both voice selects
+    const voiceSelects = [
+      document.getElementById('voiceSelect'),
+      document.getElementById('takeawaysVoiceSelect')
+    ];
 
-    if (voices.length === 0) {
-      voiceSelect.innerHTML = '<option value="">No voices available</option>';
-      return;
-    }
+    voiceSelects.forEach(voiceSelect => {
+      voiceSelect.innerHTML = '';
 
-    voices.forEach(voice => {
-      const option = document.createElement('option');
-      option.value = voice.name;
-      option.textContent = `${voice.locale} - ${voice.friendly_name}`;
-      voiceSelect.appendChild(option);
+      if (voices.length === 0) {
+        voiceSelect.innerHTML = '<option value="">No voices available</option>';
+        return;
+      }
+
+      voices.forEach(voice => {
+        const option = document.createElement('option');
+        option.value = voice.name;
+        option.textContent = `${voice.locale} - ${voice.friendly_name}`;
+        voiceSelect.appendChild(option);
+      });
+
+      // Restore saved voice
+      if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
+        voiceSelect.value = storage.settings.voice;
+      } else if (voices.length > 0) {
+        voiceSelect.value = voices[0].name;
+      }
     });
-
-    // Restore saved voice
-    if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
-      voiceSelect.value = storage.settings.voice;
-    } else if (voices.length > 0) {
-      voiceSelect.value = voices[0].name;
-    }
   } catch (error) {
     console.error('Failed to fetch voices:', error);
     document.getElementById('voiceSelect').innerHTML = '<option value="">Error loading voices</option>';
+    document.getElementById('takeawaysVoiceSelect').innerHTML = '<option value="">Error loading voices</option>';
   }
 }
 
@@ -409,4 +470,161 @@ function resetButton() {
   condenseBtn.disabled = false;
   condenseBtn.textContent = 'Condense Video';
   condenseBtn.style.display = '';  // Make sure it's visible
+}
+
+// Takeaways button click
+document.getElementById('takeawaysBtn').addEventListener('click', async () => {
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  takeawaysBtn.disabled = true;
+  takeawaysBtn.textContent = 'Submitting...';
+
+  try {
+    // Get takeaways settings
+    const topRadio = document.querySelector('input[name="top"]:checked');
+    const formatRadio = document.querySelector('input[name="format"]:checked');
+    const top = topRadio.value === 'auto' ? null : parseInt(topRadio.value);
+    const format = formatRadio.value;
+    const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
+
+    const payload = {
+      url: currentUrl,
+      format: format
+    };
+
+    if (top !== null) {
+      payload.top = top;
+    }
+
+    if (voice) {
+      payload.voice = voice;
+    }
+
+    const response = await fetch(`${serverUrl}/api/takeaways`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      currentTakeawaysJobId = data.job_id;
+
+      // Clear any previous completed takeaways for this URL
+      const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+      if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+        delete storage.completedTakeawaysJobs[currentUrl];
+        await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+      }
+
+      // Save job to storage for persistence
+      await chrome.storage.local.set({
+        activeTakeawaysJob: {
+          jobId: currentTakeawaysJobId,
+          url: currentUrl,
+          startedAt: new Date().toISOString()
+        }
+      });
+
+      showTakeawaysStatus('processing', `Processing started\nJob ID: ${currentTakeawaysJobId}`);
+      startTakeawaysPolling();
+    } else {
+      showTakeawaysStatus('error', data.error || 'Failed to extract takeaways');
+      takeawaysBtn.disabled = false;
+      takeawaysBtn.textContent = 'Extract Takeaways';
+    }
+  } catch (error) {
+    showTakeawaysStatus('error', `Connection error: ${error.message}\nCheck that server and ngrok are running`);
+    takeawaysBtn.disabled = false;
+    takeawaysBtn.textContent = 'Extract Takeaways';
+  }
+});
+
+function showTakeawaysStatus(type, message, progress = '') {
+  const container = document.getElementById('takeawaysStatusContainer');
+
+  let html = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}</div>`;
+
+  if (progress) {
+    html += `<div class="progress">${progress}</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function startTakeawaysPolling() {
+  // Poll every 2 seconds (faster than condense since takeaways is quicker)
+  takeawaysPollInterval = setInterval(checkTakeawaysStatus, 2000);
+  checkTakeawaysStatus(); // Check immediately
+}
+
+async function checkTakeawaysStatus() {
+  try {
+    const response = await fetch(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
+    const data = await response.json();
+
+    if (data.status === 'completed') {
+      clearInterval(takeawaysPollInterval);
+      await saveTakeawaysCompletedJob();
+      showTakeawaysCompleted(data);
+    } else if (data.status === 'error') {
+      clearInterval(takeawaysPollInterval);
+      await clearTakeawaysJobStorage();
+      showTakeawaysStatus('error', `Processing failed\n${data.error}`);
+      resetTakeawaysButton();
+    } else if (data.status === 'processing') {
+      showTakeawaysStatus('processing', `Extracting takeaways...\nJob ID: ${currentTakeawaysJobId}`, data.progress);
+    } else {
+      showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
+    }
+  } catch (error) {
+    // Don't stop polling on network errors
+    console.error('Polling error:', error);
+  }
+}
+
+async function saveTakeawaysCompletedJob() {
+  // Save this job as completed for this video URL
+  const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+  const completedTakeawaysJobs = storage.completedTakeawaysJobs || {};
+  completedTakeawaysJobs[currentUrl] = currentTakeawaysJobId;
+
+  await chrome.storage.local.set({ completedTakeawaysJobs });
+  await chrome.storage.local.remove(['activeTakeawaysJob']);
+}
+
+async function clearTakeawaysJobStorage() {
+  await chrome.storage.local.remove(['activeTakeawaysJob']);
+}
+
+function showTakeawaysCompleted(data) {
+  const container = document.getElementById('takeawaysStatusContainer');
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+
+  // Hide the takeaways button since job is complete
+  takeawaysBtn.style.display = 'none';
+
+  container.innerHTML = `
+    <div class="status completed">
+      ✅ Takeaways ready!<br>
+      Job ID: ${currentTakeawaysJobId}
+    </div>
+    <button class="download-btn" id="downloadTakeawaysBtn">
+      View Takeaways
+    </button>
+  `;
+
+  document.getElementById('downloadTakeawaysBtn').addEventListener('click', async () => {
+    const downloadUrl = `${serverUrl}/api/download/${currentTakeawaysJobId}`;
+    chrome.tabs.create({ url: downloadUrl });
+  });
+}
+
+function resetTakeawaysButton() {
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  takeawaysBtn.disabled = false;
+  takeawaysBtn.textContent = 'Extract Takeaways';
+  takeawaysBtn.style.display = '';
 }

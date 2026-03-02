@@ -282,7 +282,7 @@ Requirements:
 
 - Optimize for listening, not reading
 - Use short sentences and conversational phrasing
-- Insert SSML tags supported by Microsoft Edge TTS
+- Insert SSML tags supported by Azure Speech TTS
 - Use <p> and <s> structure
 - Add pauses with <break> where emphasis or pacing helps
 - Use <emphasis> sparingly, only on contrast words

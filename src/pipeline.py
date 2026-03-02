@@ -273,23 +273,24 @@ class CondenserPipeline:
                     intro = f"The key take-aways from this video are:\n\n{numbered}\n\n"
                     condensed_script = intro + condensed_script
 
-            # Optional Stage 3.5: Rewrite for TTS SSML (Edge only, aggressiveness >= 4)
+            # Optional Stage 3.5: Rewrite for TTS SSML (Azure only, aggressiveness >= 4)
             tts_script = condensed_script
             tts_mode = _tts_input_mode(tts_provider, aggressiveness)
-            if aggressiveness >= 4:
+            if tts_provider == "azure" and aggressiveness >= 4:
                 from colorama import Fore, Style
 
                 provider_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.provider).lower().replace('-', '_'))
                 model_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.model).lower().replace('-', '_'))
                 intro_flag = "pi1" if prepend_intro else "pi0"
-                ssml_path = video_folder / f"tts_script_a{aggressiveness}_edge_{provider_norm}_{model_norm}_{intro_flag}_ssml.xml"
+                ssml_path = video_folder / f"tts_script_a{aggressiveness}_azure_{provider_norm}_{model_norm}_{intro_flag}_ssml.xml"
 
                 ssml_text = None
                 if resume and ssml_path.exists():
                     update_progress("SSML", f"Resuming from step SSML - found existing SSML: {ssml_path.name}")
+                    logger.info(f"SSML (resume) loaded from: {ssml_path}")
                     ssml_text = ssml_path.read_text(encoding="utf-8")
                 else:
-                    update_progress("SSML", "Rewriting condensed script into SSML for Edge TTS...")
+                    update_progress("SSML", "Rewriting condensed script into SSML for Azure TTS...")
                     try:
                         if self.condenser.provider == "openai":
                             previous_response_id = condensed_result.get('_openai_previous_response_id')
@@ -307,20 +308,19 @@ class CondenserPipeline:
                                 )
                         else:
                             ssml_text = self.condenser.rewrite_for_tts_ssml(tts_script)
-
-                        if isinstance(ssml_text, str) and ssml_text.strip():
-                            ssml_raw_path = video_folder / f"tts_script_a{aggressiveness}_edge_{provider_norm}_{model_norm}_{intro_flag}_ssml_raw.xml"
-                            ssml_raw_path.write_text(ssml_text, encoding="utf-8")
-                            logger.info(f"SSML (raw) written to: {ssml_raw_path}")
                     except Exception as e:
                         print(f"\n{Fore.RED}SSML rewrite failed: {e}{Style.RESET_ALL}\n")
                         ssml_text = None
 
                 if ssml_text and _is_valid_ssml(ssml_text) and not (resume and ssml_path.exists()):
                     ssml_path.write_text(ssml_text, encoding="utf-8")
+                    logger.info(f"SSML written to: {ssml_path}")
+                elif ssml_text and not _is_valid_ssml(ssml_text):
+                    logger.warning("SSML rewrite produced invalid SSML; skipping SSML file write and falling back to plain text TTS")
+                elif not ssml_text:
+                    logger.warning("SSML rewrite returned empty output; skipping SSML file write and falling back to plain text TTS")
 
-                # Edge TTS never consumes SSML (kept for other providers to compare later)
-                if tts_provider != "edge" and ssml_text and _is_valid_ssml(ssml_text):
+                if ssml_text and _is_valid_ssml(ssml_text):
                     tts_script = ssml_text
                     tts_mode = "ssml"
                 else:
@@ -358,8 +358,8 @@ class CondenserPipeline:
                     try:
                         generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
                     except Exception as e:
-                        if tts_provider == "edge" and tts_mode == "ssml":
-                            logger.warning(f"Edge SSML synthesis failed; falling back to plain text TTS. Error: {e}")
+                        if tts_provider == "azure" and tts_mode == "ssml":
+                            logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                             tts_mode = "text"
                             tts_script = condensed_script
                             generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
@@ -370,8 +370,8 @@ class CondenserPipeline:
                 try:
                     generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
                 except Exception as e:
-                    if tts_provider == "edge" and tts_mode == "ssml":
-                        logger.warning(f"Edge SSML synthesis failed; falling back to plain text TTS. Error: {e}")
+                    if tts_provider == "azure" and tts_mode == "ssml":
+                        logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                         tts_mode = "text"
                         tts_script = condensed_script
                         generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)

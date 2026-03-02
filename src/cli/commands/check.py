@@ -125,6 +125,22 @@ def check(verbose):
     else:
         print(f"  D-ID: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
 
+    azure_required = (getattr(settings, 'voice_service', '') == 'azure')
+    if settings.azure_speech_key and settings.azure_speech_region:
+        tasks.append(('Azure Speech', (settings.azure_speech_key, settings.azure_speech_region), _validate_azure_speech))
+    else:
+        if azure_required:
+            print(
+                f"  Azure Speech: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set "
+                "(required when voice_service=azure; set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION)"
+            )
+            required_services_missing = True
+        else:
+            print(
+                f"  Azure Speech: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set "
+                "(optional - only needed when using Azure TTS)"
+            )
+
     # Run validations in parallel
     results = {}
     if tasks:
@@ -146,7 +162,7 @@ def check(verbose):
     all_valid = True
     if required_services_missing:
         all_valid = False
-    for service_name in ['OpenAI', 'Groq', 'Anthropic', 'ElevenLabs', 'D-ID']:
+    for service_name in ['OpenAI', 'Groq', 'Anthropic', 'ElevenLabs', 'Azure Speech', 'D-ID']:
         if service_name in results:
             status, error = results[service_name]
             if status:
@@ -158,6 +174,8 @@ def check(verbose):
                 if service_name == 'D-ID':
                     pass
                 elif service_name == 'Groq' and settings.transcription_service != 'groq':
+                    pass
+                elif service_name == 'Azure Speech' and not azure_required:
                     pass
                 else:
                     all_valid = False
@@ -264,5 +282,32 @@ def _validate_did_key(api_key: str) -> tuple[bool, str]:
             return False, "Invalid API key or authentication failed"
         else:
             return False, f"HTTP {response.status_code}: {response.text}"
+    except Exception as e:
+        return False, str(e)
+
+
+def _validate_azure_speech(key_and_region) -> tuple[bool, str]:
+    """Validate Azure Speech key + region by listing voices."""
+    try:
+        import requests
+
+        api_key, region = key_and_region
+        if not api_key or not region:
+            return False, "Missing AZURE_SPEECH_KEY or AZURE_SPEECH_REGION"
+
+        url = f"https://{region}.tts.speech.microsoft.com/cognitiveservices/voices/list"
+        resp = requests.get(
+            url,
+            headers={
+                "Ocp-Apim-Subscription-Key": api_key,
+                "User-Agent": "nbj-check",
+            },
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            return True, None
+        if resp.status_code in (401, 403):
+            return False, "Invalid key/region or unauthorized"
+        return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
     except Exception as e:
         return False, str(e)

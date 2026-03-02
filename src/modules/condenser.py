@@ -516,7 +516,7 @@ class ContentCondenser:
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
     ) -> str:
-        """Rewrite a condensed script into Edge-compatible SSML for TTS."""
+        """Rewrite a condensed script into Azure-compatible SSML for TTS."""
         import textwrap
 
         instructions = textwrap.dedent(TTS_SSML_REWRITE_INSTRUCTIONS).strip()

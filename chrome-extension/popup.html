@@ -25,6 +25,45 @@
       word-break: break-all;
     }
 
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #e0e0e0;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 8px 12px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #666;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .tab.active {
+      color: #1a73e8;
+      border-bottom-color: #1a73e8;
+      background: transparent;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
     button {
       width: 100%;
       padding: 10px;
@@ -141,6 +180,44 @@
       margin-top: 4px;
     }
 
+    .radio-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .radio-option {
+      flex: 1;
+      min-width: 60px;
+    }
+
+    .radio-option input[type="radio"] {
+      display: none;
+    }
+
+    .radio-option label {
+      display: block;
+      padding: 6px 12px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .radio-option label:hover {
+      border-color: #1a73e8;
+      background: #f0f7ff;
+    }
+
+    .radio-option input[type="radio"]:checked + label {
+      background: #1a73e8;
+      color: white;
+      border-color: #1a73e8;
+    }
+
   </style>
 </head>
 <body>
@@ -150,7 +227,14 @@
     Waiting for YouTube page...
   </div>
 
-  <div class="settings" id="settings">
+  <div class="tabs">
+    <button class="tab active" data-tab="condense">Condense</button>
+    <button class="tab" data-tab="takeaways">Takeaways</button>
+  </div>
+
+  <!-- Condense Tab -->
+  <div class="tab-content active" id="condense-tab">
+    <div class="settings" id="settings">
     <div class="setting-group">
       <label class="setting-label" for="videoModeSelect">Output Mode</label>
       <select id="videoModeSelect">
@@ -192,9 +276,62 @@
     </div>
   </div>
 
-  <button id="condenseBtn" disabled>Condense Video</button>
+    <button id="condenseBtn" disabled>Condense Video</button>
 
-  <div id="statusContainer"></div>
+    <div id="statusContainer"></div>
+  </div>
+
+  <!-- Takeaways Tab -->
+  <div class="tab-content" id="takeaways-tab">
+    <div class="settings">
+      <div class="setting-group">
+        <label class="setting-label">Number of Takeaways</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="top3" name="top" value="3">
+            <label for="top3">Top 3</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="top5" name="top" value="5">
+            <label for="top5">Top 5</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="top10" name="top" value="10">
+            <label for="top10">Top 10</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="topAuto" name="top" value="auto" checked>
+            <label for="topAuto">Auto</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Output Format</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="formatText" name="format" value="text" checked>
+            <label for="formatText">Text</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="formatAudio" name="format" value="audio">
+            <label for="formatAudio">Audio</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="setting-group" id="takeawaysVoiceGroup" style="display:none;">
+        <label class="setting-label" for="takeawaysVoiceSelect">Voice</label>
+        <select id="takeawaysVoiceSelect">
+          <option value="">Loading voices...</option>
+        </select>
+      </div>
+    </div>
+
+    <button id="takeawaysBtn" disabled>Extract Takeaways</button>
+
+    <div id="takeawaysStatusContainer"></div>
+  </div>
 
   <script src="popup.js"></script>
 </body>

@@ -84,9 +84,18 @@ def process_video(job_id):
         # Run with job parameters (use stored values or defaults)
         video_mode = getattr(job, 'video_mode', 'slideshow')
 
+        # Output to: output/jobs/{job_id}.{ext}
+        jobs_dir = settings.output_dir / 'jobs'
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine output file extension
+        output_ext = 'mp3' if video_mode == 'audio_only' else 'mp4'
+        output_path = jobs_dir / f"{job_id}.{output_ext}"
+
         result = pipeline.run(
             video_url=job.url,
             aggressiveness=getattr(job, 'aggressiveness', 5),
+            output_path=output_path,
             quality="1080p",
             video_gen_mode=video_mode,
             tts_provider="edge",
@@ -98,7 +107,7 @@ def process_video(job_id):
             prepend_intro=getattr(job, 'prepend_intro', False)
         )
 
-        job.output_file = str(result['output_video'])
+        job.output_file = str(output_path)
         job.status = "completed"
         job.completed_at = datetime.now()
         print(f"[{job_id}] Completed: {job.output_file}")
@@ -752,6 +761,137 @@ def condense():
     })
 
 
+@app.route('/api/takeaways', methods=['POST'])
+def takeaways():
+    """Extract takeaways from a YouTube video."""
+    global currently_processing
+
+    data = request.json
+    youtube_url = data.get('url')
+
+    if not youtube_url:
+        return jsonify({'error': 'Missing url parameter'}), 400
+
+    # Get optional parameters
+    top = data.get('top')  # None for auto, or int (3, 5, 10, etc.)
+    format_type = data.get('format', 'text')  # text or audio
+    voice = data.get('voice', 'en-GB-RyanNeural') if format_type == 'audio' else None
+
+    # Log all received parameters
+    print(f"\n{'='*60}")
+    print(f"NEW TAKEAWAYS REQUEST")
+    print(f"{'='*60}")
+    print(f"URL: {youtube_url}")
+    print(f"Top: {top if top else 'auto'}")
+    print(f"Format: {format_type}")
+    if voice:
+        print(f"Voice: {voice}")
+    print(f"{'='*60}\n")
+
+    # Check if already processing (takeaways can run concurrently with condense in the CLI,
+    # but for simplicity in the server, we'll use the same lock)
+    with current_job_lock:
+        if currently_processing:
+            return jsonify({
+                'error': 'Server is busy processing another job',
+                'current_job': currently_processing
+            }), 429
+
+        # Create job
+        job_id = str(uuid.uuid4())[:8]
+        job = Job(job_id, youtube_url)
+        job.top = top
+        job.format_type = format_type
+        job.voice = voice
+        job.job_type = 'takeaways'  # Mark as takeaways job
+        jobs[job_id] = job
+        currently_processing = job_id
+
+    # Start processing in background
+    thread = threading.Thread(target=process_takeaways, args=(job_id,))
+    thread.daemon = True
+    thread.start()
+
+    return jsonify({
+        'job_id': job_id,
+        'status': 'queued',
+        'message': 'Takeaways extraction started'
+    })
+
+
+def process_takeaways(job_id):
+    """Process takeaways extraction in background thread."""
+    global currently_processing
+
+    try:
+        job = jobs[job_id]
+        job.status = "processing"
+
+        # Use takeaways CLI command via subprocess
+        import subprocess
+        from pathlib import Path
+
+        settings = get_settings()
+        temp_dir = settings.temp_dir
+
+        # Build command (use nbj command directly instead of python -m)
+        # Output to: output/jobs/{job_id}.{ext}
+        settings = get_settings()
+        jobs_dir = settings.output_dir / 'jobs'
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine output file extension
+        output_ext = 'mp3' if job.format_type == 'audio' else 'md'
+        output_path = jobs_dir / f"{job_id}.{output_ext}"
+
+        cmd = [
+            'nbj',
+            'takeaways', job.url,
+            '--format', job.format_type,
+            '--output', str(output_path.with_suffix(''))  # nbj adds extension
+        ]
+
+        if job.top:
+            cmd.extend(['--top', str(job.top)])
+
+        if job.voice:
+            cmd.extend(['--voice', job.voice])
+
+        # Run command
+        print(f"[{job_id}] Running: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+
+        # Print output for debugging
+        if result.stdout:
+            print(f"[{job_id}] STDOUT:\n{result.stdout}")
+        if result.stderr:
+            print(f"[{job_id}] STDERR:\n{result.stderr}")
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Takeaways extraction failed: {result.stderr}")
+
+        # Output file should be at the path we specified: output/jobs/{job_id}.{ext}
+        if not output_path.exists():
+            raise RuntimeError(f"Takeaways file not found at expected location: {output_path}")
+
+        job.output_file = str(output_path)
+
+        job.status = "completed"
+        job.completed_at = datetime.now()
+        print(f"[{job_id}] Completed: {job.output_file}")
+
+    except Exception as e:
+        job = jobs[job_id]
+        job.status = "error"
+        job.error = str(e)
+        job.completed_at = datetime.now()
+        print(f"[{job_id}] Error: {e}")
+
+    finally:
+        with current_job_lock:
+            currently_processing = None
+
+
 @app.route('/api/status/<job_id>', methods=['GET'])
 def status(job_id):
     """Get status of a processing job."""
@@ -781,27 +921,34 @@ def status(job_id):
 
 @app.route('/api/download/<job_id>', methods=['GET'])
 def download(job_id):
-    """Download the processed video."""
+    """Download the processed output file."""
     job = jobs.get(job_id)
 
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
     if job.status != 'completed':
-        return jsonify({'error': 'Video not ready yet'}), 400
+        return jsonify({'error': 'File not ready yet'}), 400
 
     if not job.output_file or not Path(job.output_file).exists():
         return jsonify({'error': 'Output file not found'}), 404
 
     # Detect file type and set appropriate MIME type
+    # Convert to absolute path to ensure Flask resolves it correctly
     file_path = Path(job.output_file)
+    if not file_path.is_absolute():
+        # If somehow stored as relative, make it absolute from project root
+        file_path = Path(__file__).parent.parent / file_path
+
     if file_path.suffix.lower() == '.mp3':
         mimetype = 'audio/mpeg'
+    elif file_path.suffix.lower() == '.md':
+        mimetype = 'text/markdown'
     else:
         mimetype = 'video/mp4'
 
     return send_file(
-        job.output_file,
+        str(file_path.absolute()),
         mimetype=mimetype,
         as_attachment=False
     )
@@ -889,9 +1036,10 @@ if __name__ == '__main__':
     print("\nPublic URL: https://conciser-aurora.ngrok.dev")
     print("\nEndpoints:")
     print("  GET    /start - Extension download & installation guide")
-    print("  POST   /api/condense  - Submit YouTube URL")
+    print("  POST   /api/condense  - Submit YouTube URL for condensation")
+    print("  POST   /api/takeaways - Extract key takeaways from video")
     print("  GET    /api/status/:id - Check job status")
-    print("  GET    /api/download/:id - Download video")
+    print("  GET    /api/download/:id - Download output file")
     print("  GET    /api/strategies - Get aggressiveness strategies")
     print("  GET    /api/voices?locale=en - Get Edge TTS voices")
     print("  GET    /api/jobs - List all jobs")
