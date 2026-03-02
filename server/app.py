@@ -248,7 +248,8 @@ def condense():
 
         # Create job and store parameters
         job_id = str(uuid.uuid4())[:8]
-        job = Job(job_id, youtube_url, job_type='condense')
+        title = fetch_video_title(youtube_url)
+        job = Job(job_id, youtube_url, job_type='condense', title=title)
         job.aggressiveness = aggressiveness
         job.voice = voice
         job.speech_rate = speech_rate
@@ -307,7 +308,8 @@ def takeaways():
 
         # Create job
         job_id = str(uuid.uuid4())[:8]
-        job = Job(job_id, youtube_url, job_type='takeaways')
+        title = fetch_video_title(youtube_url)
+        job = Job(job_id, youtube_url, job_type='takeaways', title=title)
         job.top = top
         job.format_type = format_type
         job.voice = voice

@@ -26,6 +26,19 @@ data class CondenseResponse(
     val message: String
 )
 
+data class TakeawaysRequest(
+    val url: String,
+    val top: Int? = null,  // null = auto
+    val format: String = "text",  // "text" or "audio"
+    val voice: String? = null  // only used if format="audio"
+)
+
+data class TakeawaysResponse(
+    val job_id: String,
+    val status: String,
+    val message: String
+)
+
 data class StatusResponse(
     val job_id: String,
     val status: String,
@@ -56,9 +69,12 @@ data class StrategiesResponse(
     val strategies: List<StrategyItem>
 )
 
-interface ConciSerApiService {
+interface ConciserApiService {
     @POST("api/condense")
     suspend fun condenseVideo(@Body request: CondenseRequest): CondenseResponse
+
+    @POST("api/takeaways")
+    suspend fun extractTakeaways(@Body request: TakeawaysRequest): TakeawaysResponse
 
     @GET("api/status/{jobId}")
     suspend fun getStatus(@Path("jobId") jobId: String): StatusResponse
@@ -77,10 +93,12 @@ data class RecentJob(
     val title: String,
     val videoMode: String,
     val serverUrl: String,
-    val addedAt: Long = System.currentTimeMillis()
+    val addedAt: Long = System.currentTimeMillis(),
+    val jobType: String = "condense",  // "condense" or "takeaways"
+    val outputFormat: String = "video"  // "video", "audio", "text"
 )
 
-object ConciSerApi {
+object ConciserApi {
     const val DEFAULT_URL = "https://conciser-aurora.ngrok.dev/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -94,14 +112,14 @@ object ConciSerApi {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    fun createService(baseUrl: String): ConciSerApiService {
+    fun createService(baseUrl: String): ConciserApiService {
         val url = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         return Retrofit.Builder()
             .baseUrl(url)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(ConciSerApiService::class.java)
+            .create(ConciserApiService::class.java)
     }
 
     suspend fun fetchVideoTitle(videoUrl: String): String? = withContext(Dispatchers.IO) {

@@ -133,3 +133,39 @@ body {
     border-top: 1px solid #e0e0e0;
     font-size: 0.9em;
 }
+
+@media (max-width: 768px) {
+    body {
+        padding: 0;
+        background: #fff;
+    }
+
+    .container {
+        max-width: 100%;
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        min-height: 100vh;
+    }
+
+    .header {
+        padding: 20px 18px;
+    }
+
+    .header h1 {
+        font-size: 1.55em;
+    }
+
+    .content {
+        padding: 18px 20px;
+    }
+
+    .content ul,
+    .content ol {
+        margin-left: 20px;
+    }
+
+    .footer {
+        padding: 14px 18px;
+    }
+}

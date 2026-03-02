@@ -52,8 +52,36 @@
             android:textColor="@color/text_primary"
             tools:text="Video: dQw4w9WgXcQ" />
 
-        <!-- Settings panel: mirrors Chrome's <div class="settings"> — always visible -->
+        <!-- Mode selector: Condense vs Takeaways (mirrors Chrome extension tabs) -->
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggleMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <Button
+                android:id="@+id/btnModeCondense"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Condense"
+                style="?attr/materialButtonOutlinedStyle" />
+
+            <Button
+                android:id="@+id/btnModeTakeaways"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Takeaways"
+                style="?attr/materialButtonOutlinedStyle" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <!-- Condense settings panel -->
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardCondenseSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp"
@@ -196,6 +224,82 @@
 
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Takeaways settings panel -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardTakeawaysSettings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="#F8F9FA"
+            app:cardElevation="0dp"
+            app:cardCornerRadius="8dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="#DDDDDD">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="12dp">
+
+                <!-- Number of Takeaways -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Number of Takeaways"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary" />
+
+                <Spinner
+                    android:id="@+id/spinnerTakeawaysTop"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="12dp"
+                    android:spinnerMode="dialog" />
+
+                <!-- Output Format -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Output Format"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary" />
+
+                <Spinner
+                    android:id="@+id/spinnerTakeawaysFormat"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="12dp"
+                    android:spinnerMode="dialog" />
+
+                <!-- Voice (shown only when format=audio) -->
+                <TextView
+                    android:id="@+id/tvTakeawaysVoiceLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Voice"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary"
+                    android:visibility="gone" />
+
+                <Spinner
+                    android:id="@+id/spinnerTakeawaysVoice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:spinnerMode="dialog"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- Condense button: mirrors Chrome's <button id="condenseBtn">
              GONE in COMPLETED state, disabled in NO_URL/SUBMITTING/PROCESSING -->
         <Button
@@ -204,6 +308,16 @@
             android:layout_height="wrap_content"
             android:text="@string/condense_video"
             android:enabled="false"
+            style="@style/Widget.Material3.Button" />
+
+        <!-- Takeaways button -->
+        <Button
+            android:id="@+id/btnTakeaways"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Extract Takeaways"
+            android:enabled="false"
+            android:visibility="gone"
             style="@style/Widget.Material3.Button" />
 
         <!-- Status container: mirrors Chrome's <div id="statusContainer">

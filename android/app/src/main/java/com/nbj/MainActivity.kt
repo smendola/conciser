@@ -49,6 +49,8 @@ class MainActivity : AppCompatActivity() {
     private var currentVideoTitle: String? = null
     private var currentJobId: String? = null
     private var currentVideoMode: String = "slideshow"
+    private var currentJobType: String = "condense"  // "condense" or "takeaways"
+    private var currentOutputFormat: String = "video"  // "video", "audio", "text"
     private var isPolling = false
 
     private var voices: List<VoiceItem> = emptyList()
@@ -56,6 +58,13 @@ class MainActivity : AppCompatActivity() {
 
     private val videoModeValues = listOf("slideshow", "audio_only")
     private val videoModeLabels = listOf("Slideshow", "Audio Only (MP3)")
+
+    // Takeaways mode
+    private var appMode: String = "condense" // "condense" or "takeaways"
+    private val takeawaysTopValues = listOf("3", "5", "10", "auto")
+    private val takeawaysTopLabels = listOf("Top 3", "Top 5", "Top 10", "Auto")
+    private val takeawaysFormatValues = listOf("text", "audio")
+    private val takeawaysFormatLabels = listOf("Text", "Audio")
 
     // Background colors for layoutStatus — mirror Chrome popup CSS classes
     private val STATUS_BG_SUBMITTING = 0xFFE8F0FE.toInt() // blue-grey (default status)
@@ -102,15 +111,59 @@ class MainActivity : AppCompatActivity() {
     // -------------------------------------------------------------------------
 
     private fun setupUI() {
+        // Mode toggle
+        binding.btnModeCondense.setOnClickListener {
+            switchMode("condense")
+        }
+        binding.btnModeTakeaways.setOnClickListener {
+            switchMode("takeaways")
+        }
+
+        // Condense button
         binding.btnCondense.setOnClickListener {
             currentVideoUrl?.let { url -> submitCondense(url) }
         }
+
+        // Takeaways button
+        binding.btnTakeaways.setOnClickListener {
+            currentVideoUrl?.let { url -> submitTakeaways(url) }
+        }
+
         binding.btnCancel.setOnClickListener {
             isPolling = false
             updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
         }
         binding.btnWatch.setOnClickListener {
-            currentJobId?.let { jobId -> playVideo(jobId) }
+            currentJobId?.let { jobId -> openCurrentResult(jobId) }
+        }
+
+        // Default to condense mode
+        binding.toggleMode.check(binding.btnModeCondense.id)
+        switchMode("condense")
+    }
+
+    private fun switchMode(mode: String) {
+        appMode = mode
+        if (mode == "condense") {
+            binding.cardCondenseSettings.visibility = View.VISIBLE
+            binding.cardTakeawaysSettings.visibility = View.GONE
+            binding.btnCondense.visibility = View.VISIBLE
+            binding.btnTakeaways.visibility = View.GONE
+            // Set condense button state
+            binding.btnCondense.isEnabled = currentVideoUrl != null
+        } else {
+            binding.cardCondenseSettings.visibility = View.GONE
+            binding.cardTakeawaysSettings.visibility = View.VISIBLE
+            binding.btnCondense.visibility = View.GONE
+            binding.btnTakeaways.visibility = View.VISIBLE
+            // Set takeaways button state
+            binding.btnTakeaways.isEnabled = currentVideoUrl != null
+        }
+        // Reset state when switching modes
+        if (currentState != AppState.NO_URL && currentState != AppState.READY) {
+            isPolling = false
+            currentJobId = null
+            updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
         }
     }
 
@@ -139,24 +192,39 @@ class MainActivity : AppCompatActivity() {
         when (state) {
             AppState.NO_URL -> {
                 binding.tvVideoInfo.text = getString(R.string.waiting_for_video)
-                binding.btnCondense.visibility = View.VISIBLE
-                binding.btnCondense.isEnabled = false
+                if (appMode == "condense") {
+                    binding.btnCondense.visibility = View.VISIBLE
+                    binding.btnCondense.isEnabled = false
+                } else {
+                    binding.btnTakeaways.visibility = View.VISIBLE
+                    binding.btnTakeaways.isEnabled = false
+                }
                 binding.layoutStatus.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
                 binding.btnWatch.visibility = View.GONE
             }
 
             AppState.READY -> {
-                binding.btnCondense.visibility = View.VISIBLE
-                binding.btnCondense.isEnabled = true
+                if (appMode == "condense") {
+                    binding.btnCondense.visibility = View.VISIBLE
+                    binding.btnCondense.isEnabled = true
+                } else {
+                    binding.btnTakeaways.visibility = View.VISIBLE
+                    binding.btnTakeaways.isEnabled = true
+                }
                 binding.layoutStatus.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
                 binding.btnWatch.visibility = View.GONE
             }
 
             AppState.SUBMITTING -> {
-                binding.btnCondense.visibility = View.VISIBLE
-                binding.btnCondense.isEnabled = false
+                if (appMode == "condense") {
+                    binding.btnCondense.visibility = View.VISIBLE
+                    binding.btnCondense.isEnabled = false
+                } else {
+                    binding.btnTakeaways.visibility = View.VISIBLE
+                    binding.btnTakeaways.isEnabled = false
+                }
                 binding.layoutStatus.visibility = View.VISIBLE
                 binding.layoutStatus.setBackgroundColor(STATUS_BG_SUBMITTING)
                 binding.tvStatus.text = statusText ?: "Submitting..."
@@ -166,8 +234,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             AppState.PROCESSING -> {
-                binding.btnCondense.visibility = View.VISIBLE
-                binding.btnCondense.isEnabled = false
+                if (appMode == "condense") {
+                    binding.btnCondense.visibility = View.VISIBLE
+                    binding.btnCondense.isEnabled = false
+                } else {
+                    binding.btnTakeaways.visibility = View.VISIBLE
+                    binding.btnTakeaways.isEnabled = false
+                }
                 binding.layoutStatus.visibility = View.VISIBLE
                 binding.layoutStatus.setBackgroundColor(STATUS_BG_PROCESSING)
                 binding.tvStatus.text = statusText ?: "Processing video..."
@@ -182,20 +255,31 @@ class MainActivity : AppCompatActivity() {
             }
 
             AppState.COMPLETED -> {
-                // btnCondense is GONE on completion — same as Chrome popup (display:none)
+                // Button is GONE on completion — same as Chrome popup (display:none)
                 binding.btnCondense.visibility = View.GONE
+                binding.btnTakeaways.visibility = View.GONE
                 binding.layoutStatus.visibility = View.VISIBLE
                 binding.layoutStatus.setBackgroundColor(STATUS_BG_COMPLETED)
-                binding.tvStatus.text = statusText ?: "✅ Video ready!\nJob ID: $currentJobId"
+                binding.tvStatus.text = statusText ?: "✅ Ready!\nJob ID: $currentJobId"
                 binding.tvProgress.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
+                binding.btnWatch.text = when (currentOutputFormat) {
+                    "text" -> "Read Takeaways"
+                    "audio" -> "Play Audio"
+                    else -> getString(R.string.watch_video)
+                }
                 binding.btnWatch.visibility = View.VISIBLE
             }
 
             AppState.ERROR -> {
-                // Re-enable condense so user can retry — mirrors Chrome's resetButton()
-                binding.btnCondense.visibility = View.VISIBLE
-                binding.btnCondense.isEnabled = currentVideoUrl != null
+                // Re-enable button so user can retry — mirrors Chrome's resetButton()
+                if (appMode == "condense") {
+                    binding.btnCondense.visibility = View.VISIBLE
+                    binding.btnCondense.isEnabled = currentVideoUrl != null
+                } else {
+                    binding.btnTakeaways.visibility = View.VISIBLE
+                    binding.btnTakeaways.isEnabled = currentVideoUrl != null
+                }
                 binding.layoutStatus.visibility = View.VISIBLE
                 binding.layoutStatus.setBackgroundColor(STATUS_BG_ERROR)
                 binding.tvStatus.text = statusText ?: "An error occurred"
@@ -231,7 +315,7 @@ class MainActivity : AppCompatActivity() {
             updateUI(AppState.READY)
             // Fetch title asynchronously and update below the ID
             lifecycleScope.launch {
-                val title = ConciSerApi.fetchVideoTitle(url)
+                val title = ConciserApi.fetchVideoTitle(url)
                 if (title != null && currentVideoUrl == url) {
                     currentVideoTitle = title
                     val full = if (videoId != null) "Video: $videoId\n$title" else title
@@ -255,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         updateUI(AppState.SUBMITTING, "Submitting...")
 
         val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
-        val serverUrl = prefs.getString("server_url", ConciSerApi.DEFAULT_URL) ?: ConciSerApi.DEFAULT_URL
+        val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
         val aggressiveness = prefs.getInt("aggressiveness", 5)
         val voice = prefs.getString("voice", "") ?: ""
         val speechSpeed = prefs.getFloat("speech_speed", 1.10f)
@@ -263,6 +347,8 @@ class MainActivity : AppCompatActivity() {
         val prependIntro = prefs.getBoolean("prepend_intro", false)
 
         currentVideoMode = videoMode
+        currentJobType = "condense"
+        currentOutputFormat = if (videoMode == "audio_only") "audio" else "video"
 
         val request = CondenseRequest(
             url = url,
@@ -275,7 +361,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = ConciSerApi.createService(serverUrl)
+                val api = ConciserApi.createService(serverUrl)
                 val response = api.condenseVideo(request)
                 currentJobId = response.job_id
 
@@ -291,11 +377,57 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun submitTakeaways(url: String) {
+        updateUI(AppState.SUBMITTING, "Submitting...")
+
+        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
+
+        // Get takeaways settings
+        val topValue = takeawaysTopValues.getOrNull(binding.spinnerTakeawaysTop.selectedItemPosition) ?: "auto"
+        val top = if (topValue == "auto") null else topValue.toIntOrNull()
+
+        val format = takeawaysFormatValues.getOrNull(binding.spinnerTakeawaysFormat.selectedItemPosition) ?: "text"
+
+        val voice = if (format == "audio" && voices.isNotEmpty()) {
+            voices.getOrNull(binding.spinnerTakeawaysVoice.selectedItemPosition)?.name
+        } else {
+            null
+        }
+
+        currentJobType = "takeaways"
+        currentOutputFormat = format  // "text" or "audio"
+
+        val request = TakeawaysRequest(
+            url = url,
+            top = top,
+            format = format,
+            voice = voice
+        )
+
+        lifecycleScope.launch {
+            try {
+                val api = ConciserApi.createService(serverUrl)
+                val response = api.extractTakeaways(request)
+                currentJobId = response.job_id
+
+                updateUI(
+                    AppState.PROCESSING,
+                    statusText = "Extracting takeaways...\nJob ID: ${response.job_id}"
+                )
+                startPolling(response.job_id, serverUrl)
+
+            } catch (e: Exception) {
+                updateUI(AppState.ERROR, statusText = "Failed to submit: ${e.message}")
+            }
+        }
+    }
+
     private fun startPolling(jobId: String, serverUrl: String) {
         isPolling = true
 
         lifecycleScope.launch {
-            val api = ConciSerApi.createService(serverUrl)
+            val api = ConciserApi.createService(serverUrl)
             while (isPolling) {
                 try {
                     val status = api.getStatus(jobId)
@@ -305,8 +437,10 @@ class MainActivity : AppCompatActivity() {
                             isPolling = false
                             updateUI(AppState.COMPLETED)
                             addCurrentJobToRecents()
-                            // Auto-launch player immediately — key Android difference vs extension
-                            playVideo(jobId)
+                            // Auto-open media outputs, but do not auto-open text takeaways.
+                            if (currentOutputFormat != "text") {
+                                openCurrentResult(jobId)
+                            }
                         }
                         "error" -> {
                             isPolling = false
@@ -343,9 +477,13 @@ class MainActivity : AppCompatActivity() {
     // Playback
     // -------------------------------------------------------------------------
 
-    private fun playVideo(jobId: String) {
-        val videoUrl = ConciSerApi.getFullDownloadUrl(getServerUrl(), jobId)
-        val mimeType = if (currentVideoMode == "audio_only") "audio/mpeg" else "video/mp4"
+    private fun openCurrentResult(jobId: String) {
+        val videoUrl = ConciserApi.getFullDownloadUrl(getServerUrl(), jobId)
+        val mimeType = when (currentOutputFormat) {
+            "text" -> "text/html"
+            "audio" -> "audio/mpeg"
+            else -> "video/mp4"
+        }
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(videoUrl), mimeType)
@@ -355,7 +493,12 @@ class MainActivity : AppCompatActivity() {
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "No media player found. Please install a media player app.", Toast.LENGTH_LONG).show()
+            val msg = if (currentOutputFormat == "text") {
+                "No browser found."
+            } else {
+                "No media player found. Please install a media player app."
+            }
+            Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -405,6 +548,30 @@ class MainActivity : AppCompatActivity() {
         })
 
         binding.switchPrependIntro.setOnCheckedChangeListener { _, _ -> autoSaveSettings() }
+
+        // Takeaways settings
+        val topAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysTopLabels)
+        topAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerTakeawaysTop.adapter = topAdapter
+
+        val formatAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysFormatLabels)
+        formatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerTakeawaysFormat.adapter = formatAdapter
+        binding.spinnerTakeawaysFormat.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Show/hide voice selector based on format
+                val isAudio = takeawaysFormatValues[position] == "audio"
+                binding.tvTakeawaysVoiceLabel.visibility = if (isAudio) View.VISIBLE else View.GONE
+                binding.spinnerTakeawaysVoice.visibility = if (isAudio) View.VISIBLE else View.GONE
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Takeaways voice shares same list as condense voice
+        binding.spinnerTakeawaysVoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {}
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
 
     private fun loadSettingsToUI() {
@@ -436,7 +603,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvStrategyDesc.text = "Loading..."
 
         lifecycleScope.launch {
-            val api = ConciSerApi.createService(serverUrl)
+            val api = ConciserApi.createService(serverUrl)
 
             try {
                 val response = api.getVoices(locale)
@@ -446,10 +613,14 @@ class MainActivity : AppCompatActivity() {
                 val voiceAdapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, displayNames)
                 voiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 binding.spinnerVoice.adapter = voiceAdapter
+                binding.spinnerTakeawaysVoice.adapter = voiceAdapter
 
                 if (savedVoice.isNotEmpty()) {
                     val idx = voices.indexOfFirst { it.name == savedVoice }
-                    if (idx >= 0) binding.spinnerVoice.setSelection(idx)
+                    if (idx >= 0) {
+                        binding.spinnerVoice.setSelection(idx)
+                        binding.spinnerTakeawaysVoice.setSelection(idx)
+                    }
                 }
             } catch (e: Exception) {
                 val errorAdapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, listOf("Error loading voices"))
@@ -508,7 +679,9 @@ class MainActivity : AppCompatActivity() {
             jobId = jobId,
             title = title,
             videoMode = currentVideoMode,
-            serverUrl = getServerUrl()
+            serverUrl = getServerUrl(),
+            jobType = currentJobType,
+            outputFormat = currentOutputFormat
         )
         val jobs = loadRecentJobs().toMutableList()
         jobs.removeAll { it.jobId == jobId }  // de-dupe
@@ -522,7 +695,8 @@ class MainActivity : AppCompatActivity() {
             .getString("recent_jobs", null) ?: return emptyList()
         return try {
             val type = object : TypeToken<List<RecentJob>>() {}.type
-            Gson().fromJson(json, type) ?: emptyList()
+            (Gson().fromJson<List<RecentJob>>(json, type) ?: emptyList())
+                .sortedByDescending { it.addedAt }
         } catch (e: Exception) {
             emptyList()
         }
@@ -563,11 +737,19 @@ class MainActivity : AppCompatActivity() {
 
             // Mode badge
             val badge = TextView(this).apply {
-                text = if (job.videoMode == "audio_only") "MP3" else "MP4"
+                text = when (job.outputFormat) {
+                    "text" -> "TXT"
+                    "audio" -> "MP3"
+                    else -> "MP4"
+                }
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFFFFFFFF.toInt())
-                val bg = if (job.videoMode == "audio_only") 0xFF6c757d.toInt() else 0xFF1a73e8.toInt()
+                val bg = when (job.outputFormat) {
+                    "text" -> 0xFF28a745.toInt()  // Green for text
+                    "audio" -> 0xFF6c757d.toInt()  // Gray for audio
+                    else -> 0xFF1a73e8.toInt()     // Blue for video
+                }
                 setBackgroundColor(bg)
                 setPadding((4 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
                 layoutParams = LinearLayout.LayoutParams(
@@ -615,8 +797,8 @@ class MainActivity : AppCompatActivity() {
         // Background: prune deleted files silently
         lifecycleScope.launch {
             val surviving = jobs.filter { job ->
-                val url = ConciSerApi.getFullDownloadUrl(job.serverUrl, job.jobId)
-                ConciSerApi.checkFileExists(url)
+                val url = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+                ConciserApi.checkFileExists(url)
             }
             if (surviving.size < jobs.size) {
                 saveRecentJobs(surviving)
@@ -626,8 +808,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openRecentJob(job: RecentJob) {
-        val videoUrl = ConciSerApi.getFullDownloadUrl(job.serverUrl, job.jobId)
-        val mimeType = if (job.videoMode == "audio_only") "audio/mpeg" else "video/mp4"
+        val videoUrl = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+        val mimeType = when (job.outputFormat) {
+            "text" -> "text/html"  // Server renders markdown as HTML
+            "audio" -> "audio/mpeg"
+            else -> "video/mp4"
+        }
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse(videoUrl), mimeType)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -635,7 +821,8 @@ class MainActivity : AppCompatActivity() {
         try {
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "No media player found.", Toast.LENGTH_SHORT).show()
+            val msg = if (job.outputFormat == "text") "No browser found." else "No media player found."
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -654,7 +841,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun getServerUrl(): String =
         getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
-            .getString("server_url", ConciSerApi.DEFAULT_URL) ?: ConciSerApi.DEFAULT_URL
+            .getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
 
     private fun convertSpeedToRate(speed: Float): String {
         val percentage = ((speed - 1.0f) * 100).roundToInt()

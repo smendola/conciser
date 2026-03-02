@@ -27,7 +27,7 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun loadSettings() {
         val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
-        binding.etServerUrl.setText(prefs.getString("server_url", ConciSerApi.DEFAULT_URL))
+        binding.etServerUrl.setText(prefs.getString("server_url", ConciserApi.DEFAULT_URL))
     }
 
     private fun saveSettings() {
