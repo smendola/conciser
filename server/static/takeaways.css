@@ -17,7 +17,7 @@ body {
     margin: 0 auto;
     background: white;
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     overflow: hidden;
 }
 
@@ -88,7 +88,9 @@ body {
 }
 
 .content em {
-    font-style: italic;
+    font-style: normal;
+    font-size: 18px;
+    font-weight: 500;
     color: #666;
 }
 
