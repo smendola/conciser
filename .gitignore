@@ -22,6 +22,8 @@ share/python-wheels/
 *.egg
 MANIFEST
 
+chrome-extension/build-info.js
+
 test_outputs/
 tts_samples/
 videos.txt
