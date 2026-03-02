@@ -120,6 +120,13 @@ class VideoDownloader:
             ydl_opts_info = {
                 'quiet': True,
                 'no_warnings': True,
+                'ignoreconfig': True,
+                # Use web/android clients for consistency with download path.
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['web', 'android'],
+                    }
+                },
             }
             ydl_opts_info = self._apply_youtube_auth(ydl_opts_info)
 
@@ -172,6 +179,7 @@ class VideoDownloader:
                 'outtmpl': output_template,
                 'quiet': True,
                 'no_warnings': True,
+                'ignoreconfig': True,
                 'extract_flat': False,
                 'writethumbnail': True,
                 'writesubtitles': False,
@@ -229,18 +237,24 @@ class VideoDownloader:
             error_msg_lower = error_msg.lower()
 
             # Provide more helpful error messages
-            if "Only images are available" in error_msg or "Requested format is not available" in error_msg:
-                raise RuntimeError(
-                    "Video not available for download. This may be a YouTube Short, "
-                    "premiere, live stream, or restricted content. Try a different video."
-                )
-            elif "sign in to confirm you" in error_msg_lower and "not a bot" in error_msg_lower:
+            if "sign in to confirm you" in error_msg_lower and "not a bot" in error_msg_lower:
                 hint = (
                     "YouTube blocked this request on the remote host. "
                     "Set YOUTUBE_COOKIE_FILE to a valid Netscape-format cookies file, "
                     "then retry. Example: YOUTUBE_COOKIE_FILE=/root/yt-cookies.txt"
                 )
                 raise RuntimeError(f"Failed to download video: {error_msg}\nHint: {hint}")
+            elif (
+                "only images are available" in error_msg_lower
+                or "n challenge solving failed" in error_msg_lower
+                or ("requested format is not available" in error_msg_lower and "[youtube]" in error_msg_lower)
+            ):
+                raise RuntimeError(
+                    "YouTube did not return usable media formats from this host. "
+                    "This is often a bot/challenge restriction on remote VMs. "
+                    "Ensure YOUTUBE_COOKIE_FILE points to a fresh Netscape cookies file, "
+                    "update yt-dlp, and retry."
+                )
             else:
                 raise RuntimeError(f"Failed to download video: {error_msg}")
 
@@ -276,7 +290,13 @@ class VideoDownloader:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
+            'ignoreconfig': True,
             'extract_flat': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['web', 'android'],
+                }
+            },
         }
         ydl_opts = self._apply_youtube_auth(ydl_opts)
 
