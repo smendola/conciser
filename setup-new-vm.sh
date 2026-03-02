@@ -16,7 +16,8 @@ echo ""
 
 # Check SSH connectivity
 echo "🔍 Checking SSH connectivity..."
-if ! ssh -o ConnectTimeout=5 "$REMOTE_HOST" 'echo "SSH OK"' >/dev/null 2>&1; then
+echo "   Running: ssh -o ConnectTimeout=5 $REMOTE_HOST 'echo \"SSH OK\"'"
+if ! ssh -o ConnectTimeout=5 "$REMOTE_HOST" 'echo "SSH OK"'; then
     echo "❌ Error: Cannot connect to $REMOTE_HOST via SSH"
     echo "   Make sure you can run: ssh $REMOTE_HOST"
     exit 1

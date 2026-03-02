@@ -31,7 +31,7 @@ $SUDO systemctl start nginx
 
 # Create nginx config for NBJ Condenser
 echo "📝 Creating nginx configuration..."
-$SUDO tee /etc/nginx/conf.d/nbj-condenser.conf > /dev/null <<'EOF'
+$SUDO tee /etc/nginx/conf.d/nbj-condenser.conf <<'EOF'
 # NBJ Condenser - Nginx Reverse Proxy Configuration
 
 server {

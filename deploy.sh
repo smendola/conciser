@@ -47,8 +47,8 @@ if [ ! -d "venv" ]; then
 fi
 
 source venv/bin/activate
-pip install -q --upgrade pip
-pip install -q -e .
+pip install --upgrade pip
+pip install -e .
 
 # Copy .env if it doesn't exist
 if [ ! -f ".env" ]; then
@@ -66,7 +66,7 @@ echo "   ✅ Server started (PID: $!)"
 
 echo "   📊 Server status:"
 sleep 2
-curl -s http://localhost:5000/health || echo "   ⚠️  Server not responding yet"
+curl http://localhost:5000/health || echo "   ⚠️  Server not responding yet"
 
 ENDSSH
 

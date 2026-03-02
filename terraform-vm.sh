@@ -19,15 +19,15 @@ fi
 
 # Update system
 echo "📦 [1/6] Updating system packages..."
-$SUDO yum update -y -q
+$SUDO yum update -y
 
 # Install EPEL repository (needed for some packages)
 echo "📦 [2/6] Installing EPEL repository..."
-$SUDO yum install -y -q epel-release
+$SUDO yum install -y epel-release
 
 # Install Python 3 and development tools
 echo "🐍 [3/6] Installing Python 3 and development tools..."
-$SUDO yum install -y -q \
+$SUDO yum install -y \
     python3 \
     python3-pip \
     python3-devel \
@@ -37,17 +37,17 @@ $SUDO yum install -y -q \
 
 # Install Git
 echo "📝 [4/6] Installing Git..."
-$SUDO yum install -y -q git
+$SUDO yum install -y git
 
 # Install ffmpeg and related tools
 echo "🎬 [5/6] Installing ffmpeg and media tools..."
-$SUDO yum install -y -q \
+$SUDO yum install -y \
     ffmpeg \
     ffmpeg-devel
 
 # Install other system utilities
 echo "🔧 [6/6] Installing system utilities..."
-$SUDO yum install -y -q \
+$SUDO yum install -y \
     wget \
     curl \
     cronie
@@ -66,7 +66,7 @@ $SUDO pip3 install --upgrade yt-dlp
 
 # Clean up
 echo "🧹 Cleaning up..."
-$SUDO yum clean all -q
+$SUDO yum clean all
 
 # Verify installations
 echo ""
