@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBJ Condenser - Get Started</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='start.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 NBJ Condenser </h1>
+            <p>AI-Powered YouTube Video Condensation</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Get the <span id="browser-name">browser</span> extension</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>What is this?</h2>
+                <p>
+                    <strong>NBJ Condenser</strong> is a browser extension that allows you to condense
+                    YouTube videos. <span style="font-weight: 500;">NBJ</span> stands for Nate.B.<em>James</em>. If you know, you know. 😊
+                </p>
+            </div>
+
+            <div class="download-section">
+                <h2 style="margin: 0 0 10px 0; color: #1a73e8;">📦 Step 1: Download Extension</h2>
+                <p>Click the button below to download the NBJ Condenser extension</p>
+                <a href="/extension.zip" class="download-btn" download>⬇ Download Extension</a>
+                <p style="margin-top: 15px; font-size: 0.9em; color: #666;">
+                    File: <code>nbj-chrome-extension.zip</code><br>
+                </p>
+            </div>
+
+            <div class="section">
+                <h2>🔧 Step 2: Install in <span id="browser-name-install">Chrome</span></h2>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Open Extensions page
+                    </div>
+                    <div class="step-detail">
+                        Click to copy the URL, then paste it into your browser's address bar:<br>
+                        <button class="extensions-btn" id="copy-url-btn" onclick="copyExtensionsURL()">
+                            📋 Copy <code id="extensions-url" style="background: transparent; color: white;">chrome://extensions/</code>
+                        </button>
+                        <div id="copy-feedback" style="display: none; color: #28a745; font-weight: 600; margin-top: 10px;">
+                            ✅ Copied! Paste it in a new tab's address bar and press Enter
+                        </div>
+                        <p style="margin-top: 10px; font-size: 0.85em; color: #888;">
+                            <em>Note: For security reasons, this page can't open the extensions page automatically</em>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Turn on <strong>Developer Mode</strong>
+                    </div>
+                    <div class="step-detail">
+                        <strong>Developer mode</strong> toggle is in the top-right corner of the extensions page<br>
+                        Enable it to allow installing extensions from files
+                    </div>
+                </div>
+
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">3</span>
+                        Drag and drop the ZIP file
+                    </div>
+                    <div class="step-detail">
+                        Find <code>nbj-chrome-extension.zip</code> in your Downloads folder<br>
+                        <strong>Drag it directly onto the extensions page</strong><br>
+                        Chrome will automatically install it - no extraction or developer mode needed!
+                        <p style="margin-top: 12px; padding: 10px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #1a73e8;">
+                            <strong>💡 Pro Tip:</strong> You can drag directly from Chrome's <strong>Recent download history</strong> widget (top-right of browser)
+                            without opening your file explorer!
+                        </p>
+                    </div>
+                </div>
+
+                <div class="tip">
+                    <strong>✨ That's it!</strong> The extension should now appear in your extensions list with a blue "C" icon.
+                    Chrome may show a "not from Chrome Web Store" warning - this is normal, just click "OK" or dismiss it.
+                </div>
+
+                <details style="margin-top: 20px;">
+                    <summary style="cursor: pointer; font-weight: 600; color: #1a73e8;">
+                        Alternative: Manual Installation (if drag-and-drop doesn't work)
+                    </summary>
+                    <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+                        <ol style="margin-left: 20px;">
+                            <li>Extract the ZIP file to a folder on your computer</li>
+                            <li>Enable "Developer mode" toggle (top-right corner)</li>
+                            <li>Click "Load unpacked"</li>
+                            <li>Select the extracted folder</li>
+                        </ol>
+                    </div>
+                </details>
+            </div>
+
+            <div class="section">
+                <h2>📌 Step 3: Pin the Extension</h2>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Click the puzzle piece icon (🧩)
+                    </div>
+                    <div class="step-detail">
+                        Look in your browser toolbar (top-right corner, next to the address bar)
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Pin "NBJ Condenser"
+                    </div>
+                    <div class="step-detail">
+                        Find "NBJ Condenser" in the dropdown<br>
+                        Click the <strong>pin icon (📌)</strong> next to it<br>
+                        The "C" icon will now appear in your toolbar for easy access
+                    </div>
+                </div>
+                <p>This step is optional. If you skip it, you will need to dig around in the extensions
+                list (puzzle piece icon) to find NBJ Condenser every time you want to condense a video.</p>
+            </div>
+
+            <div class="section">
+                <h2>🎯 Step 4: Using the Extension</h2>
+
+                <div class="important" style="background: #e3f2fd; border-left-color: #1a73e8;">
+                    <strong>💡 Smart Icon Feature:</strong> The extension icon changes color to show when it's ready to use!
+                    <ul style="margin-top: 10px;">
+                        <li><strong>🔵 Colored Icon:</strong> You're on a YouTube video page - click to condense!</li>
+                        <li><strong>⚫ Gray Icon:</strong> Not on a YouTube video page - navigate to a video first</li>
+                    </ul>
+                    <p style="margin-top: 10px; margin-bottom: 0;">
+                        The icon automatically updates as you browse, so you always know when you can use it.
+                    </p>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">1</span>
+                        Go to YouTube
+                    </div>
+                    <div class="step-detail">
+                        Open <code>youtube.com</code> in your browser<br>
+                        Navigate to <strong>any video page</strong> (must be a video, not the homepage or search results)<br>
+                        <em>Watch the icon turn blue when you're on a video page!</em>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">2</span>
+                        Click the NBJ Condenser icon
+                    </div>
+                    <div class="step-detail">
+                        Click the blue "C" icon in your toolbar (or the puzzle piece icon if you didn't pin it)<br>
+                        <em>The icon will only be blue/active when you're on a YouTube video page</em><br>
+                        A popup will appear showing the current video
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">3</span>
+                        Start condensing
+                    </div>
+                    <div class="step-detail">
+                        Click the <strong>"Condense Video"</strong> button<br>
+                        The extension will submit the video to the NBJ Condenser server for processing
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">4</span>
+                        Wait for processing
+                    </div>
+                    <div class="step-detail">
+                        The popup will show real-time progress updates every 3 seconds<br>
+                        You'll see stages like "Downloading", "Transcribing", "Condensing", "Generating video"<br>
+                        <strong>Processing typically takes 1-5 minutes</strong> depending on video length<br>
+                        <strong>💡 Pro tip:</strong> You can close the popup and come back later - the extension remembers your job and will resume tracking when you reopen it!
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-title">
+                        <span class="step-number">5</span>
+                        Watch your condensed video
+                    </div>
+                    <div class="step-detail">
+                        When processing completes, you'll see a green "✅ Video ready!" message<br>
+                        Click the <strong>"Watch Video"</strong> button<br>
+                        The condensed video will open in a new tab and play automatically
+                    </div>
+                </div>
+
+                <div class="important">
+                    <strong>⚠️ Server Limitations:</strong>
+                    <ul>
+                        <li>The server processes <strong>one video at a time</strong></li>
+                        <li>If someone else is using it, you'll see "Server is busy" - just wait and try again</li>
+                        <li>Regular YouTube videos work best - some Shorts or restricted videos may not work</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🎨 What Does NBJ Condenser Do?</h2>
+
+                <div class="step">
+                    <div class="step-title" style="border: none;">
+                        AI-Powered Condensation
+                    </div>
+                    <div class="step-detail">
+                        NBJ Condenser uses AI to intelligently condense YouTube videos:
+                        <ul>
+                            <li><strong>Extracts the script</strong> from the video using speech recognition</li>
+                            <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness: 5/10)</li>
+                            <li><strong>Generates new audio</strong> with natural text-to-speech voice</li>
+                            <li><strong>Creates a slideshow</strong> using key frames from the original video</li>
+                            <li><strong>Produces a final video</strong> that can be between 75% and just 10% the length of the original video</li>
+                        </ul>
+                        <p>It can also produce a super-compact <strong>"key takeaways"</strong> page or audio file</p>
+                    </div>
+                </div>
+
+                <div class="tip">
+                    <strong>💡 Best for:</strong> Educational videos, tutorials, documentaries, podcasts, and long-form content.
+                    Perfect for when you want the key information without watching the entire video!
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>❓ Troubleshooting</h2>
+
+                <h3>"Not a YouTube video page"</h3>
+                <div class="step-detail">
+                    Make sure you're on a <code>youtube.com/watch?v=...</code> page<br>
+                    The extension only works on actual video pages, not the homepage, search results, or channel pages
+                </div>
+
+                <h3>"Connection error"</h3>
+                <div class="step-detail">
+                    The server may be offline or unreachable<br>
+                    Contact your administrator to ensure the server and ngrok are running
+                </div>
+
+                <h3>"Server is busy"</h3>
+                <div class="step-detail">
+                    Another video is currently being processed<br>
+                    Wait a few minutes and try again when the current job finishes
+                </div>
+
+                <h3>"Processing failed"</h3>
+                <div class="step-detail">
+                    Some videos can't be downloaded (age-restricted, private, removed)<br>
+                    Try a different video - standard public YouTube videos work best
+                </div>
+
+                <h3>Extension didn't install</h3>
+                <div class="step-detail">
+                    Try the alternative manual installation method (see Step 2 for details)<br>
+                    Make sure you're using Chrome or Edge (other browsers may not be compatible)<br>
+                    Check that the ZIP file downloaded completely (should be 14 KB)
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>NBJ Condenser Server</strong></p>
+            <p style="margin-top: 10px; font-size: 0.9em;">
+                Need help? Check the server logs or contact your administrator
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Detect mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        if (isMobile) {
+            // Replace entire page content with message
+            document.querySelector('.container').innerHTML = `
+                <div class="header">
+                    <h1>🎬 NBJ Condenser</h1>
+                </div>
+                <div class="content" style="text-align: center; padding: 60px 40px;">
+                    <h2 style="font-size: 2em; color: #d32f2f; margin-bottom: 20px;">
+                        Desktop Only
+                    </h2>
+                    <p style="font-size: 1.2em; color: #666; margin-top: 30px;">
+                        This Chrome extension only works on desktop browsers (Chrome or Edge).<br>
+                        Please visit this page on your computer to install.
+                    </p>
+                </div>
+            `;
+        } else {
+            // Detect browser for display
+            const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
+            const browserName = isEdge ? 'Edge' : 'Chrome';
+            const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
+
+            // Update browser name in page
+            document.querySelectorAll('#browser-name, #browser-name-install').forEach(el => {
+                el.textContent = browserName;
+            });
+
+            // Update extensions URL display
+            const urlElement = document.getElementById('extensions-url');
+            if (urlElement) {
+                urlElement.textContent = extensionsURL;
+            }
+        }
+
+        // Copy extensions URL to clipboard
+        function copyExtensionsURL() {
+            const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
+            const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
+
+            navigator.clipboard.writeText(extensionsURL).then(() => {
+                const feedback = document.getElementById('copy-feedback');
+                const btn = document.getElementById('copy-url-btn');
+
+                feedback.style.display = 'block';
+                btn.classList.add('copied');
+                btn.innerHTML = '✅ Copied to Clipboard!';
+
+                setTimeout(() => {
+                    feedback.style.display = 'none';
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '📋 Click to Copy: <code id="extensions-url" style="background: transparent; color: white;">' + extensionsURL + '</code>';
+                }, 3000);
+            }).catch(() => {
+                alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
+            });
+        }
+    </script>
+</body>
+</html>
