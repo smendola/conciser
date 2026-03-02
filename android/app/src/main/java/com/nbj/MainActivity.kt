@@ -65,6 +65,8 @@ class MainActivity : AppCompatActivity() {
     private val takeawaysTopLabels = listOf("Top 3", "Top 5", "Top 10", "Auto")
     private val takeawaysFormatValues = listOf("text", "audio")
     private val takeawaysFormatLabels = listOf("Text", "Audio")
+    private val prefsName = "nbj_prefs"
+    private var suppressAutoSave = false
 
     // Background colors for layoutStatus — mirror Chrome popup CSS classes
     private val STATUS_BG_SUBMITTING = 0xFFE8F0FE.toInt() // blue-grey (default status)
@@ -84,8 +86,10 @@ class MainActivity : AppCompatActivity() {
         // Display build timestamp
         binding.tvBuildInfo.text = "Build: ${BuildConfig.BUILD_TIMESTAMP}"
 
+        suppressAutoSave = true
         setupSettingsControls()
         loadSettingsToUI()
+        suppressAutoSave = false
         fetchVoicesAndStrategies()
         setupUI()
         handleIntent(intent)
@@ -266,7 +270,7 @@ class MainActivity : AppCompatActivity() {
                 binding.btnWatch.text = when (currentOutputFormat) {
                     "text" -> "Read Takeaways"
                     "audio" -> "Play Audio"
-                    else -> getString(R.string.watch_video)
+                    else -> "Play Video"
                 }
                 binding.btnWatch.visibility = View.VISIBLE
             }
@@ -338,7 +342,7 @@ class MainActivity : AppCompatActivity() {
     private fun submitCondense(url: String) {
         updateUI(AppState.SUBMITTING, "Submitting...")
 
-        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
         val aggressiveness = prefs.getInt("aggressiveness", 5)
         val voice = prefs.getString("voice", "") ?: ""
@@ -380,7 +384,7 @@ class MainActivity : AppCompatActivity() {
     private fun submitTakeaways(url: String) {
         updateUI(AppState.SUBMITTING, "Submitting...")
 
-        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
 
         // Get takeaways settings
@@ -437,10 +441,6 @@ class MainActivity : AppCompatActivity() {
                             isPolling = false
                             updateUI(AppState.COMPLETED)
                             addCurrentJobToRecents()
-                            // Auto-open media outputs, but do not auto-open text takeaways.
-                            if (currentOutputFormat != "text") {
-                                openCurrentResult(jobId)
-                            }
                         }
                         "error" -> {
                             isPolling = false
@@ -452,7 +452,11 @@ class MainActivity : AppCompatActivity() {
                         "processing" -> {
                             updateUI(
                                 AppState.PROCESSING,
-                                statusText = "Processing video...\nJob ID: $jobId",
+                                statusText = if (currentJobType == "takeaways") {
+                                    "Extracting takeaways...\nJob ID: $jobId"
+                                } else {
+                                    "Processing video...\nJob ID: $jobId"
+                                },
                                 progressText = status.progress
                             )
                         }
@@ -553,6 +557,12 @@ class MainActivity : AppCompatActivity() {
         val topAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysTopLabels)
         topAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerTakeawaysTop.adapter = topAdapter
+        binding.spinnerTakeawaysTop.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                autoSaveSettings()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         val formatAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysFormatLabels)
         formatAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -560,22 +570,25 @@ class MainActivity : AppCompatActivity() {
         binding.spinnerTakeawaysFormat.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 // Show/hide voice selector based on format
-                val isAudio = takeawaysFormatValues[position] == "audio"
+                val isAudio = takeawaysFormatValues.getOrNull(position) == "audio"
                 binding.tvTakeawaysVoiceLabel.visibility = if (isAudio) View.VISIBLE else View.GONE
                 binding.spinnerTakeawaysVoice.visibility = if (isAudio) View.VISIBLE else View.GONE
+                autoSaveSettings()
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         // Takeaways voice shares same list as condense voice
         binding.spinnerTakeawaysVoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {}
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                autoSaveSettings()
+            }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
     }
 
     private fun loadSettingsToUI() {
-        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
         val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
         binding.spinnerVideoMode.setSelection(videoModeValues.indexOf(videoMode).coerceAtLeast(0))
@@ -590,12 +603,25 @@ class MainActivity : AppCompatActivity() {
         binding.tvSpeechSpeedValue.text = String.format("%.2fx", speechSpeed)
 
         binding.switchPrependIntro.isChecked = prefs.getBoolean("prepend_intro", false)
+
+        val takeawaysTop = prefs.getString("takeaways_top", "auto") ?: "auto"
+        binding.spinnerTakeawaysTop.setSelection(takeawaysTopValues.indexOf(takeawaysTop).coerceAtLeast(0))
+
+        val takeawaysFormat = prefs.getString("takeaways_format", "text") ?: "text"
+        val takeawaysFormatIndex = takeawaysFormatValues.indexOf(takeawaysFormat).coerceAtLeast(0)
+        binding.spinnerTakeawaysFormat.setSelection(takeawaysFormatIndex)
+
+        val isAudio = takeawaysFormatValues.getOrNull(takeawaysFormatIndex) == "audio"
+        binding.tvTakeawaysVoiceLabel.visibility = if (isAudio) View.VISIBLE else View.GONE
+        binding.spinnerTakeawaysVoice.visibility = if (isAudio) View.VISIBLE else View.GONE
     }
 
     private fun fetchVoicesAndStrategies() {
         val serverUrl = getServerUrl()
         val locale = Locale.getDefault().language
-        val savedVoice = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).getString("voice", "") ?: ""
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val savedVoice = prefs.getString("voice", "") ?: ""
+        val savedTakeawaysVoice = prefs.getString("takeaways_voice", savedVoice) ?: savedVoice
 
         val loadingAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Loading voices..."))
         loadingAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -619,7 +645,13 @@ class MainActivity : AppCompatActivity() {
                     val idx = voices.indexOfFirst { it.name == savedVoice }
                     if (idx >= 0) {
                         binding.spinnerVoice.setSelection(idx)
-                        binding.spinnerTakeawaysVoice.setSelection(idx)
+                    }
+                }
+
+                if (savedTakeawaysVoice.isNotEmpty()) {
+                    val takeawaysIdx = voices.indexOfFirst { it.name == savedTakeawaysVoice }
+                    if (takeawaysIdx >= 0) {
+                        binding.spinnerTakeawaysVoice.setSelection(takeawaysIdx)
                     }
                 }
             } catch (e: Exception) {
@@ -648,7 +680,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun autoSaveSettings() {
-        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        if (suppressAutoSave) return
+
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val videoMode = videoModeValues.getOrElse(binding.spinnerVideoMode.selectedItemPosition) { "slideshow" }
         val aggressiveness = binding.seekbarAggressiveness.progress + 1
         val speechSpeed = 0.90f + binding.seekbarSpeechSpeed.progress * 0.01f
@@ -657,6 +691,15 @@ class MainActivity : AppCompatActivity() {
         } else {
             prefs.getString("voice", "") ?: ""
         }
+        val takeawaysTop = takeawaysTopValues.getOrElse(binding.spinnerTakeawaysTop.selectedItemPosition) { "auto" }
+        val takeawaysFormat = takeawaysFormatValues.getOrElse(binding.spinnerTakeawaysFormat.selectedItemPosition) { "text" }
+        val takeawaysVoiceName = if (voices.isNotEmpty()) {
+            voices.getOrNull(binding.spinnerTakeawaysVoice.selectedItemPosition)?.name
+                ?: prefs.getString("takeaways_voice", voiceName)
+                ?: voiceName
+        } else {
+            prefs.getString("takeaways_voice", voiceName) ?: voiceName
+        }
 
         prefs.edit()
             .putString("video_mode", videoMode)
@@ -664,6 +707,9 @@ class MainActivity : AppCompatActivity() {
             .putFloat("speech_speed", speechSpeed)
             .putString("voice", voiceName)
             .putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
+            .putString("takeaways_top", takeawaysTop)
+            .putString("takeaways_format", takeawaysFormat)
+            .putString("takeaways_voice", takeawaysVoiceName)
             .apply()
     }
 
@@ -840,7 +886,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getServerUrl(): String =
-        getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        getSharedPreferences(prefsName, Context.MODE_PRIVATE)
             .getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
 
     private fun convertSpeedToRate(speed: Float): String {

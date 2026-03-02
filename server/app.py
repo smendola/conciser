@@ -169,6 +169,7 @@ def process_video(job_id):
         job = jobs[job_id]
         job.status = "error"
         job.error = str(e)
+        job.progress = ""
         job.completed_at = datetime.now()
         print(f"[{job_id}] Error: {e}")
 
@@ -313,6 +314,7 @@ def takeaways():
         job.top = top
         job.format_type = format_type
         job.voice = voice
+        job.progress = "[init] Queued takeaways extraction"
         jobs[job_id] = job
         currently_processing = job_id
 
@@ -335,6 +337,7 @@ def process_takeaways(job_id):
     try:
         job = jobs[job_id]
         job.status = "processing"
+        job.progress = "[setup] Preparing takeaways job"
 
         # Use takeaways CLI command via subprocess
         import subprocess
@@ -367,6 +370,7 @@ def process_takeaways(job_id):
             cmd.extend(['--voice', job.voice])
 
         # Run command
+        job.progress = "[extract] Extracting key takeaways"
         print(f"[{job_id}] Running: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
 
@@ -384,6 +388,7 @@ def process_takeaways(job_id):
             raise RuntimeError(f"Takeaways file not found at expected location: {output_path}")
 
         job.output_file = str(output_path)
+        job.progress = "[finalize] Takeaways ready"
 
         job.status = "completed"
         job.completed_at = datetime.now()
@@ -393,6 +398,7 @@ def process_takeaways(job_id):
         job = jobs[job_id]
         job.status = "error"
         job.error = str(e)
+        job.progress = ""
         job.completed_at = datetime.now()
         print(f"[{job_id}] Error: {e}")
 
@@ -412,7 +418,7 @@ def status(job_id):
     response = {
         'job_id': job.id,
         'status': job.status,
-        'progress': job.progress,
+        'progress': job.progress or None,
         'created_at': job.created_at.isoformat(),
     }
 
