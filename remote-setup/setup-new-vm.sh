@@ -56,18 +56,25 @@ else
     echo ""
 fi
 
-# Step 4: Configure firewall (DISABLED - configure Oracle Cloud Security List manually)
+# Step 4: Set up systemd service
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "STEP 4: Firewall Configuration (SKIPPED)"
+echo "STEP 4: Setting up systemd service"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "⚠️  VM firewall management disabled to prevent SSH lockout."
-echo "   Configure Oracle Cloud Security List manually instead."
+ssh "$REMOTE_HOST" 'bash -s' < setup-systemd.sh
 echo ""
 
-# Step 5: Set up cleanup cron job
+# Step 5: Set up nginx reverse proxy
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "STEP 4: Setting up cleanup cron job"
+echo "STEP 5: Setting up nginx reverse proxy"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+ssh "$REMOTE_HOST" 'bash -s' < setup-nginx.sh
+echo ""
+
+# Step 6: Set up cleanup cron job
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "STEP 6: Setting up cleanup cron job"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 ssh "$REMOTE_HOST" 'bash -s' < setup-cron.sh
