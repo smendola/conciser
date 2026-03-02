@@ -23,6 +23,8 @@ setup(
         "pydantic>=2.0.0",
         "pydantic-settings>=2.0.0",
         "python-dotenv>=1.0.0",
+        "flask>=3.0.0",
+        "flask-cors>=4.0.0",
         "openai>=1.12.0",
         "anthropic>=0.18.0",
         "elevenlabs>=0.2.0",
