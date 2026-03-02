@@ -50,13 +50,9 @@ $SUDO apt-get install -y \
 echo "⚙️  Enabling services..."
 $SUDO systemctl enable --now cron 2>/dev/null || true
 
-# Upgrade pip globally
-echo "📦 Upgrading pip..."
-$SUDO pip3 install --upgrade pip setuptools wheel
-
-# Install yt-dlp (YouTube downloader) globally
-echo "📺 Installing yt-dlp..."
-$SUDO pip3 install --upgrade yt-dlp
+# Note: Skip global pip install (Ubuntu 24.04 PEP 668 protection)
+# yt-dlp and other Python packages will be installed in venv by deploy.sh
+echo "📦 Python packages will be installed in virtual environment..."
 
 # Clean up
 echo "🧹 Cleaning up..."
@@ -70,7 +66,6 @@ echo "Python:    $(python3 --version 2>&1)"
 echo "Pip:       $(pip3 --version 2>&1 | cut -d' ' -f1-2)"
 echo "Git:       $(git --version 2>&1)"
 echo "ffmpeg:    $(ffmpeg -version 2>&1 | head -1)"
-echo "yt-dlp:    $(yt-dlp --version 2>&1)"
 echo "Cron:      $(systemctl is-active cron 2>/dev/null || echo 'running')"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
