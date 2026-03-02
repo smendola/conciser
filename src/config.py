@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     groq_api_key: str = Field(default="", description="Groq API key for free Whisper transcription (whisper-large-v3)")
     azure_speech_key: str = Field(default="", description="Azure Speech Services API key for TTS with SSML support")
     azure_speech_region: str = Field(default="", description="Azure Speech Services region (e.g., eastus, westus, westeurope)")
+    youtube_cookie_file: str = Field(default="", description="Path to Netscape-format YouTube cookies file for yt-dlp authentication")
 
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)

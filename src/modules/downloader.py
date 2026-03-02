@@ -61,15 +61,30 @@ def normalize_name(name: str, max_length: int = 60) -> str:
 class VideoDownloader:
     """Downloads videos from YouTube and other platforms using yt-dlp."""
 
-    def __init__(self, output_dir: Path):
+    def __init__(self, output_dir: Path, youtube_cookie_file: str = ""):
         """
         Initialize the downloader.
 
         Args:
             output_dir: Directory to save downloaded videos
+            youtube_cookie_file: Optional path to Netscape-format YouTube cookies file
         """
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.youtube_cookie_file = youtube_cookie_file.strip()
+
+    def _apply_youtube_auth(self, ydl_opts: Dict[str, Any]) -> Dict[str, Any]:
+        """Add optional YouTube authentication options to yt-dlp config."""
+        if not self.youtube_cookie_file:
+            return ydl_opts
+
+        cookie_path = Path(self.youtube_cookie_file).expanduser()
+        if not cookie_path.exists():
+            logger.warning(f"YOUTUBE_COOKIE_FILE not found: {cookie_path}")
+            return ydl_opts
+
+        ydl_opts['cookiefile'] = str(cookie_path)
+        return ydl_opts
 
     def download(
         self,
@@ -106,6 +121,7 @@ class VideoDownloader:
                 'quiet': True,
                 'no_warnings': True,
             }
+            ydl_opts_info = self._apply_youtube_auth(ydl_opts_info)
 
             with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -170,6 +186,7 @@ class VideoDownloader:
                     }
                 },
             }
+            ydl_opts = self._apply_youtube_auth(ydl_opts)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Download the video
@@ -209,6 +226,7 @@ class VideoDownloader:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Download failed: {error_msg}")
+            error_msg_lower = error_msg.lower()
 
             # Provide more helpful error messages
             if "Only images are available" in error_msg or "Requested format is not available" in error_msg:
@@ -216,6 +234,13 @@ class VideoDownloader:
                     "Video not available for download. This may be a YouTube Short, "
                     "premiere, live stream, or restricted content. Try a different video."
                 )
+            elif "sign in to confirm you" in error_msg_lower and "not a bot" in error_msg_lower:
+                hint = (
+                    "YouTube blocked this request on the remote host. "
+                    "Set YOUTUBE_COOKIE_FILE to a valid Netscape-format cookies file, "
+                    "then retry. Example: YOUTUBE_COOKIE_FILE=/root/yt-cookies.txt"
+                )
+                raise RuntimeError(f"Failed to download video: {error_msg}\nHint: {hint}")
             else:
                 raise RuntimeError(f"Failed to download video: {error_msg}")
 
@@ -253,6 +278,7 @@ class VideoDownloader:
             'no_warnings': True,
             'extract_flat': True,
         }
+        ydl_opts = self._apply_youtube_auth(ydl_opts)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:

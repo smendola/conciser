@@ -24,7 +24,10 @@ def info(url):
         settings = get_settings()
         from ...modules.downloader import VideoDownloader
 
-        downloader = VideoDownloader(settings.temp_dir)
+        downloader = VideoDownloader(
+            settings.temp_dir,
+            youtube_cookie_file=settings.youtube_cookie_file
+        )
         info = downloader.get_video_info(url)
 
         print(f"\n{Fore.CYAN}Video Information:{Style.RESET_ALL}\n")

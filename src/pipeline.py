@@ -68,7 +68,10 @@ class CondenserPipeline:
         self.settings = settings
 
         # Initialize modules
-        self.downloader = VideoDownloader(settings.temp_dir)
+        self.downloader = VideoDownloader(
+            settings.temp_dir,
+            youtube_cookie_file=settings.youtube_cookie_file
+        )
         self.transcriber = Transcriber(
             api_key=settings.openai_api_key,
             provider=settings.transcription_service,
