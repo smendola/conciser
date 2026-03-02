@@ -2,18 +2,28 @@
 
 ## Initial Setup (once per VM)
 
+### Option A: One Command (Recommended)
+
 ```bash
-# 1. Set up VM dependencies
-ssh conciser 'bash -s' < setup-vm.sh
+./setup-new-vm.sh
+```
 
-# 2. Configure firewall
-ssh conciser 'bash -s' < setup-firewall.sh
+This runs all setup steps in order automatically.
 
-# 3. Deploy app
+### Option B: Manual Steps
+
+```bash
+# 1. Install system dependencies
+ssh conciser 'bash -s' < terraform-vm.sh
+
+# 2. Deploy app
 ./deploy.sh
 
-# 4. Copy environment file
+# 3. Copy environment file
 ./deploy-env.sh
+
+# 4. Configure firewall
+ssh conciser 'bash -s' < setup-firewall.sh
 
 # 5. Set up cleanup cron
 ssh conciser 'bash -s' < setup-cron.sh
