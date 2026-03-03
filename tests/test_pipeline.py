@@ -64,6 +64,35 @@ class TestDownloader:
         assert "1080" in downloader._get_format_string("1080p")
         assert "2160" in downloader._get_format_string("4k")
 
+    def test_caption_payload_json3_to_text(self):
+        """Test json3 caption payload conversion to transcript text."""
+        from src.modules.downloader import VideoDownloader
+
+        payload = '{"events":[{"segs":[{"utf8":"Hello "},{"utf8":"world"}]},{"segs":[{"utf8":"!"}]}]}'
+        text = VideoDownloader._caption_payload_to_text("json3", payload)
+
+        assert text == "Hello world!"
+
+    def test_choose_caption_track_prefers_english_and_subtitles(self):
+        """Test caption selection preference ordering."""
+        from src.modules.downloader import VideoDownloader
+
+        info = {
+            "automatic_captions": {
+                "en": [{"ext": "vtt", "url": "https://example.com/auto-en.vtt"}],
+            },
+            "subtitles": {
+                "en": [{"ext": "json3", "url": "https://example.com/sub-en.json3"}],
+            },
+        }
+
+        track, language, source = VideoDownloader._choose_caption_track(info)
+
+        assert track is not None
+        assert language == "en"
+        assert source == "subtitles"
+        assert track.get("url") == "https://example.com/sub-en.json3"
+
 
 class TestTranscriber:
     """Tests for Transcriber."""

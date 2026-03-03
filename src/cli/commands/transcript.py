@@ -116,10 +116,20 @@ def transcript(url, no_transcribe, output, resume):
         if video_id:
             youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
 
+        if not youtube_transcript:
+            logger.warning("YouTube transcript API unavailable, trying yt-dlp caption fallback")
+            print(f"{Fore.YELLOW}  Warning: YouTube transcript API unavailable, trying yt-dlp captions.{Style.RESET_ALL}")
+            youtube_transcript = downloader.fetch_transcript_via_yt_dlp(url)
+
         if youtube_transcript:
             logger.info("Using YouTube transcript")
             transcript_text = youtube_transcript['text']
-            print(f"  Source: YouTube transcript")
+            source_label = youtube_transcript.get('source', 'youtube_transcript_api')
+            if source_label in {'subtitles', 'automatic_captions'}:
+                format_label = youtube_transcript.get('format', 'unknown')
+                print(f"  Source: yt-dlp captions ({source_label}, {format_label})")
+            else:
+                print(f"  Source: YouTube transcript")
 
             raw_payload = youtube_transcript.get('raw')
             if raw_payload is not None:

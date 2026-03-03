@@ -4,7 +4,9 @@ import yt_dlp
 from pathlib import Path
 import logging
 import re
-from typing import Dict, Any
+import json
+from urllib import request
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,135 @@ class VideoDownloader:
 
         ydl_opts['cookiefile'] = str(cookie_path)
         return ydl_opts
+
+    @staticmethod
+    def _choose_caption_track(info: Dict[str, Any]) -> tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+        """Pick the best available subtitle/caption track from yt-dlp metadata."""
+        ext_preference = {'json3': 0, 'vtt': 1, 'srv3': 2, 'srv2': 3, 'srv1': 4, 'ttml': 5, 'srt': 6}
+        lang_preference = ('en-orig', 'en', 'en-US', 'en-GB')
+
+        candidates: list[tuple[int, int, str, Dict[str, Any]]] = []
+        for source_name, source in (
+            ('subtitles', info.get('subtitles') or {}),
+            ('automatic_captions', info.get('automatic_captions') or {}),
+        ):
+            if not isinstance(source, dict):
+                continue
+
+            for lang, tracks in source.items():
+                if not isinstance(tracks, list):
+                    continue
+
+                for track in tracks:
+                    if not isinstance(track, dict):
+                        continue
+                    if not track.get('url'):
+                        continue
+
+                    ext = (track.get('ext') or '').lower()
+                    lang_rank = lang_preference.index(lang) if lang in lang_preference else len(lang_preference)
+                    ext_rank = ext_preference.get(ext, 99)
+                    source_rank = 0 if source_name == 'subtitles' else 1
+                    candidates.append((lang_rank, source_rank, ext_rank, lang, track))
+
+        if not candidates:
+            return None, None, None
+
+        candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+        _, _, _, selected_lang, selected_track = candidates[0]
+        selected_source = 'subtitles' if selected_track in (info.get('subtitles') or {}).get(selected_lang, []) else 'automatic_captions'
+        return selected_track, selected_lang, selected_source
+
+    @staticmethod
+    def _caption_payload_to_text(ext: str, payload_text: str) -> str:
+        """Convert a subtitle payload to plain transcript text."""
+        ext = (ext or '').lower()
+        if ext == 'json3':
+            data = json.loads(payload_text)
+            parts = []
+            for event in data.get('events', []):
+                if not isinstance(event, dict):
+                    continue
+                for segment in event.get('segs') or []:
+                    if not isinstance(segment, dict):
+                        continue
+                    text = segment.get('utf8', '')
+                    if text:
+                        parts.append(text)
+            return ''.join(parts).replace('\n', ' ').strip()
+
+        lines = []
+        for line in payload_text.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if '-->' in stripped:
+                continue
+            if stripped.isdigit():
+                continue
+            if stripped.startswith('WEBVTT'):
+                continue
+            if stripped.startswith('NOTE'):
+                continue
+            lines.append(stripped)
+        return ' '.join(lines).strip()
+
+    def fetch_transcript_via_yt_dlp(self, url: str) -> Optional[Dict[str, Any]]:
+        """
+        Fetch transcript text using yt-dlp metadata + caption URL retrieval.
+
+        Returns:
+            Dict with text and raw payload metadata, or None if unavailable.
+        """
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'ignoreconfig': True,
+            'extract_flat': False,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['web', 'android'],
+                }
+            },
+        }
+        ydl_opts = self._apply_youtube_auth(ydl_opts)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+            track, language, source = self._choose_caption_track(info)
+            if not track:
+                return None
+
+            caption_url = track.get('url')
+            ext = (track.get('ext') or 'json3').lower()
+            with request.urlopen(caption_url, timeout=30) as response:
+                payload_text = response.read().decode('utf-8', errors='replace')
+
+            text = self._caption_payload_to_text(ext, payload_text)
+            if not text:
+                return None
+
+            raw_payload = payload_text
+            if ext == 'json3':
+                try:
+                    raw_payload = json.loads(payload_text)
+                except json.JSONDecodeError:
+                    raw_payload = payload_text
+
+            return {
+                'text': text,
+                'language': language or 'unknown',
+                'source': source or 'automatic_captions',
+                'format': ext,
+                'caption_url': caption_url,
+                'raw': raw_payload,
+            }
+
+        except Exception as e:
+            logger.warning(f"yt-dlp transcript fallback failed: {e}")
+            return None
 
     def download(
         self,
