@@ -171,6 +171,7 @@ class VideoDownloader:
             'quiet': True,
             'no_warnings': True,
             'ignoreconfig': True,
+            'skip_download': True,
             'extract_flat': False,
             'extractor_args': {
                 'youtube': {
