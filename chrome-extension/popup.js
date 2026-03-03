@@ -330,7 +330,6 @@ async function loadSettings() {
   };
 
   serverUrl = normalizeServerUrl(settings.serverUrl);
-  document.getElementById('serverUrlInput').value = serverUrl;
 
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
@@ -342,13 +341,11 @@ async function loadSettings() {
 
 // Save settings to storage
 async function saveSettings() {
-  const inputValue = document.getElementById('serverUrlInput').value;
-  const normalizedServerUrl = normalizeServerUrl(inputValue);
-  document.getElementById('serverUrlInput').value = normalizedServerUrl;
-  serverUrl = normalizedServerUrl;
+  const storage = await chrome.storage.local.get(['settings']);
+  const existing = storage.settings || {};
 
   const settings = {
-    serverUrl: normalizedServerUrl,
+    ...existing,
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
     voice: document.getElementById('voiceSelect').value,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
@@ -441,10 +438,6 @@ document.getElementById('videoModeSelect').addEventListener('change', () => {
 });
 
 document.getElementById('prependIntroCheck').addEventListener('change', () => {
-  handleSettingChange();
-});
-
-document.getElementById('serverUrlInput').addEventListener('change', () => {
   handleSettingChange();
 });
 

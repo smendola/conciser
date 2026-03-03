@@ -3,6 +3,10 @@
   "name": "NBJ Condenser",
   "version": "1.0.0",
   "description": "Send YouTube videos to NBJ Condenser for AI-powered condensation",
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "permissions": [
     "activeTab",
     "tabs",

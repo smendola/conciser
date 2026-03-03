@@ -79,6 +79,10 @@ def extract_frame(video_path: Path, output_path: Path, timestamp: float = 5.0) -
             '-ss', str(timestamp),
             '-i', str(video_path),
             '-vframes', '1',
+            # Newer ffmpeg is stricter about MJPEG/JPEG full-range handling.
+            # Force a JPEG-friendly pixel format and relax strictness to avoid encoder init failures.
+            '-pix_fmt', 'yuvj420p',
+            '-strict', 'unofficial',
             '-q:v', '2',
             '-y',
             str(output_path)

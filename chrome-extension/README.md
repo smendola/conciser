@@ -71,7 +71,7 @@ Videos are processed with:
 **"Connection error"**
 
 - Make sure server is running: `cd server && python app.py`
-- Verify **Server URL** in extension settings (default:
+- Verify **Server URL** in extension Options (default:
   `http://conciser.603apps.net`)
 
 **"Server is busy"**
