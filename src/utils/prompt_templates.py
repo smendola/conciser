@@ -72,7 +72,6 @@ The newlines are meaningful to the TTS engine. Use them judiciously to improve t
 
 **What can always be CUT:**
 - ALWAYS cut entirely any promotional material, sponsorship mentions, and calls to action
-  Content creators creatively try to smoothly segue into promotional material, so be on the lookout for this
 - Tangents, personal anecdotes that don't support the main points
   (e.g., how this recipe came to be; the history of science from Aristotle to the discovery at hand;
   the speaker's personal journey to discovering the topic)

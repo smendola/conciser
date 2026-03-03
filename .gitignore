@@ -23,6 +23,8 @@ share/python-wheels/
 MANIFEST
 
 chrome-extension/build-info.js
+dot-env
+yt-cookies.txt
 
 test_outputs/
 tts_samples/
