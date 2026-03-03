@@ -218,7 +218,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         # Initialize modules
         downloader = VideoDownloader(
             settings.temp_dir,
-            youtube_cookie_file=settings.youtube_cookie_file
+            youtube_cookie_file=settings.youtube_cookie_file,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
         transcriber = Transcriber(
             api_key=settings.openai_api_key,

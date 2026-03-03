@@ -88,7 +88,8 @@ def transcript(url, no_transcribe, output, resume):
         settings = get_settings()
         downloader = VideoDownloader(
             settings.temp_dir,
-            youtube_cookie_file=settings.youtube_cookie_file
+            youtube_cookie_file=settings.youtube_cookie_file,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
         transcriber = Transcriber(
             api_key=settings.openai_api_key,

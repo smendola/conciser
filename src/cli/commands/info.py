@@ -26,7 +26,8 @@ def info(url):
 
         downloader = VideoDownloader(
             settings.temp_dir,
-            youtube_cookie_file=settings.youtube_cookie_file
+            youtube_cookie_file=settings.youtube_cookie_file,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
         info = downloader.get_video_info(url)
 

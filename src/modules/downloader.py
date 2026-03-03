@@ -63,17 +63,19 @@ def normalize_name(name: str, max_length: int = 60) -> str:
 class VideoDownloader:
     """Downloads videos from YouTube and other platforms using yt-dlp."""
 
-    def __init__(self, output_dir: Path, youtube_cookie_file: str = ""):
+    def __init__(self, output_dir: Path, youtube_cookie_file: str = "", youtube_proxy_url: str = ""):
         """
         Initialize the downloader.
 
         Args:
             output_dir: Directory to save downloaded videos
             youtube_cookie_file: Optional path to Netscape-format YouTube cookies file
+            youtube_proxy_url: Optional proxy URL for yt-dlp/caption requests
         """
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.youtube_cookie_file = youtube_cookie_file.strip()
+        self.youtube_proxy_url = youtube_proxy_url.strip()
 
     def _apply_youtube_auth(self, ydl_opts: Dict[str, Any]) -> Dict[str, Any]:
         """Add optional YouTube authentication options to yt-dlp config."""
@@ -86,6 +88,14 @@ class VideoDownloader:
             return ydl_opts
 
         ydl_opts['cookiefile'] = str(cookie_path)
+        return ydl_opts
+
+    def _apply_youtube_proxy(self, ydl_opts: Dict[str, Any]) -> Dict[str, Any]:
+        """Add optional proxy configuration to yt-dlp config."""
+        if not self.youtube_proxy_url:
+            return ydl_opts
+
+        ydl_opts['proxy'] = self.youtube_proxy_url
         return ydl_opts
 
     @staticmethod
@@ -180,6 +190,7 @@ class VideoDownloader:
             },
         }
         ydl_opts = self._apply_youtube_auth(ydl_opts)
+        ydl_opts = self._apply_youtube_proxy(ydl_opts)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -191,7 +202,13 @@ class VideoDownloader:
 
             caption_url = track.get('url')
             ext = (track.get('ext') or 'json3').lower()
-            with request.urlopen(caption_url, timeout=30) as response:
+            if self.youtube_proxy_url:
+                opener = request.build_opener(request.ProxyHandler({'http': self.youtube_proxy_url, 'https': self.youtube_proxy_url}))
+                response = opener.open(caption_url, timeout=30)
+            else:
+                response = request.urlopen(caption_url, timeout=30)
+
+            with response:
                 payload_text = response.read().decode('utf-8', errors='replace')
 
             text = self._caption_payload_to_text(ext, payload_text)
@@ -261,6 +278,7 @@ class VideoDownloader:
                 },
             }
             ydl_opts_info = self._apply_youtube_auth(ydl_opts_info)
+            ydl_opts_info = self._apply_youtube_proxy(ydl_opts_info)
 
             with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -327,6 +345,7 @@ class VideoDownloader:
                 },
             }
             ydl_opts = self._apply_youtube_auth(ydl_opts)
+            ydl_opts = self._apply_youtube_proxy(ydl_opts)
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Download the video
@@ -431,6 +450,7 @@ class VideoDownloader:
             },
         }
         ydl_opts = self._apply_youtube_auth(ydl_opts)
+        ydl_opts = self._apply_youtube_proxy(ydl_opts)
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
