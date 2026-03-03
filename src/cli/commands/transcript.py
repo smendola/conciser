@@ -94,7 +94,8 @@ def transcript(url, no_transcribe, output, resume):
         transcriber = Transcriber(
             api_key=settings.openai_api_key,
             provider=settings.transcription_service,
-            groq_api_key=settings.groq_api_key
+            groq_api_key=settings.groq_api_key,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
 
         video_id = _extract_video_id(url)

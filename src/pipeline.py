@@ -76,7 +76,8 @@ class CondenserPipeline:
         self.transcriber = Transcriber(
             api_key=settings.openai_api_key,
             provider=settings.transcription_service,
-            groq_api_key=settings.groq_api_key
+            groq_api_key=settings.groq_api_key,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
         self.condenser = ContentCondenser(
             provider=settings.condenser_service,

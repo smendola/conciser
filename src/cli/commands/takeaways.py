@@ -224,7 +224,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         transcriber = Transcriber(
             api_key=settings.openai_api_key,
             provider=settings.transcription_service,
-            groq_api_key=settings.groq_api_key
+            groq_api_key=settings.groq_api_key,
+            youtube_proxy_url=settings.youtube_proxy_url
         )
         condenser = ContentCondenser(
             provider=settings.takeaways_extraction_provider,
