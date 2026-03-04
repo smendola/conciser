@@ -12,8 +12,21 @@ body {
     padding: 20px;
 }
 
+body.mobile-landing {
+    background: #fff;
+    padding: 0;
+}
+
 .mobile-container {
     max-width: 640px;
+}
+
+body.mobile-landing .container.mobile-container {
+    max-width: 100%;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
 }
 
 .mobile-hero {
@@ -26,6 +39,14 @@ body {
 .mobile-hero h1 {
     font-size: 2.4em;
     margin-bottom: 10px;
+}
+
+body.mobile-landing .mobile-hero {
+    padding: 32px 20px;
+}
+
+body.mobile-landing .mobile-hero h1 {
+    font-size: 1.85em;
 }
 
 .hero-badge {
@@ -44,10 +65,19 @@ body {
     padding: 30px;
 }
 
+body.mobile-landing .mobile-content {
+    padding: 22px 20px;
+}
+
 .mobile-section {
     border-bottom: 1px solid #eee;
     padding-bottom: 30px;
     margin-bottom: 30px;
+}
+
+body.mobile-landing .mobile-section {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
 }
 
 .mobile-section:last-child {
@@ -60,6 +90,10 @@ body {
     color: #0f8bff;
     font-size: 1.6em;
     margin-bottom: 10px;
+}
+
+body.mobile-landing .mobile-section h2 {
+    font-size: 1.35em;
 }
 
 .apk-btn {
@@ -76,6 +110,12 @@ body {
     margin: 20px 0 10px;
     box-shadow: 0 12px 20px rgba(15, 139, 255, 0.25);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+body.mobile-landing .apk-btn {
+    padding: 12px;
+    font-size: 1em;
+    box-shadow: 0 8px 14px rgba(15, 139, 255, 0.2);
 }
 
 .apk-btn:active {
@@ -97,6 +137,61 @@ body {
     margin-bottom: 12px;
 }
 
+body.mobile-landing .instruction-list {
+    margin-left: 0;
+}
+
+body.mobile-landing .instruction-list li {
+    margin-bottom: 16px;
+}
+
+body.mobile-landing .substep-list {
+    list-style: none;
+    padding-left: 0;
+    counter-reset: substep;
+}
+
+body.mobile-landing .substep-list li {
+    position: relative;
+    padding-left: 52px;
+    margin-bottom: 18px;
+}
+
+body.mobile-landing .substep-list li::before {
+    counter-increment: substep;
+    content: counter(substep);
+    position: absolute;
+    left: 0;
+    top: 0.15em;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1a73e8;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+}
+
+body.mobile-landing .substep-list span {
+    font-weight: 600;
+    color: #12263f;
+    display: block;
+    margin-bottom: 4px;
+}
+
+body.mobile-landing .substep-list p {
+    margin: 0;
+    color: #4b5d73;
+}
+
+body.mobile-landing .launcher-note {
+    color: #4b5d73;
+    font-size: 0.95em;
+    margin-top: 6px;
+}
+
 .tip-card,
 .important-card {
     background: #f5faff;
@@ -105,6 +200,12 @@ body {
     border-radius: 10px;
     margin-top: 15px;
     color: #22527a;
+}
+
+body.mobile-landing .tip-card,
+body.mobile-landing .important-card {
+    margin-top: 12px;
+    padding: 12px 14px;
 }
 
 .usage-list {
@@ -187,7 +288,7 @@ body {
     margin: 0 auto;
     background: white;
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     overflow: hidden;
 }
 
@@ -256,7 +357,7 @@ body {
 .extensions-btn:hover {
     background: #218838;
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .extensions-btn:active {
@@ -269,8 +370,15 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
 }
 
 .section {

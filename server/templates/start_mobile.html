@@ -6,7 +6,7 @@
     <title>NBJ Condenser - Android App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='start.css') }}">
 </head>
-<body>
+<body class="mobile-landing">
     <div class="container mobile-container">
         <div class="mobile-hero">
             <p class="hero-badge">Android Beta</p>
@@ -24,27 +24,52 @@
 
             <section class="mobile-section mobile-install">
                 <h2>🔒 Step 2: Install a non-Play-Store APK</h2>
-                <ol class="instruction-list">
-                    <li><strong>Download</strong> the APK above. When it finishes, tap the download notification.</li>
-                    <li><strong>Allow installs from this browser</strong> when Android prompts you (Settings → Security → Install unknown apps).</li>
-                    <li><strong>Tap Install</strong> and wait for the success toast.</li>
-                    <li><strong>Launch NBJ Condenser</strong> from your home screen or app drawer.</li>
+                <ol class="instruction-list substep-list">
+                    <li>
+                        <span>Download</span>
+                        <p>Grab the APK above. When it finishes, tap the download notification.</p>
+                    </li>
+                    <li>
+                        <span>Allow installs</span>
+                        <p>Enable installs from this browser when Android prompts you (Settings → Security → Install unknown apps).</p>
+                    </li>
+                    <li>
+                        <span>Tap Install</span>
+                        <p>Accept the prompt and wait for the success toast.</p>
+                    </li>
                 </ol>
                 <div class="tip-card">
-                    You can disable "Install unknown apps" after NBJ Condenser is installed if you want.
+                    If you want you can disable "Install unknown apps" after NBJ Condenser is installed.
+                </div>
+                <div class="tip-card">
+                    There is no need to launch the app after installation, that's not how this app works.
+                    Keep reading for instructions on how to use it.
                 </div>
             </section>
 
             <section class="mobile-section mobile-usage">
                 <h2>🚀 Step 3: Use the app</h2>
-                This app works with the Android "Share" mechanism
-                <ol class="instruction-list">
-                    <li>Open any video in the YouTube app</li>
-                    <li>Tap the share icon</li>
-                    <li>Find "NBJ Condenser" in the share targets (it's probably under "More" way at the end of the list)</li>
-                    <li>Share to NBJ Condenser</li>
+                <p>This app works through Android's share sheet:</p>
+                <ol class="instruction-list substep-list">
+                    <li>
+                        <span>Open YouTube</span>
+                        <p>Start any video in the YouTube app.</p>
+                    </li>
+                    <li>
+                        <span>Tap Share</span>
+                        <p>Use the share icon near the like/dislike buttons.</p>
+                    </li>
+                    <li>
+                        <span>Pick NBJ Condenser</span>
+                        <p>Find it in the share targets (probably under “More”).</p>
+                        <p>You may in fact need to find a second "More" item after the first :eyeroll:</p>
+                    </li>
+                    <li>
+                        <span>Share</span>
+                        <p>Send the video to NBJ Condenser and let it work.</p>
+                    </li>
                 </ol>
-                Just opening the app from the Launcher will look beautiful, but it won't do anything useful.
+                <p class="launcher-note">Opening the app from the launcher looks nice, but it won't do anything useful on its own.</p>
             </section>
 
             <section class="mobile-section mobile-questions">
@@ -60,7 +85,7 @@
                     <p class="question-followup">Follow the install checklist above to enable "Install unknown apps" for your browser.</p>
                 </div>
 
-                <div class="question-card" data-question="server">
+                <!-- <div class="question-card" data-question="server">
                     <p class="question-text">Do you know which server URL to use?</p>
                     <div class="question-actions">
                         <button type="button" data-answer="yes">Yes</button>
@@ -68,20 +93,20 @@
                     </div>
                     <p class="question-followup">Use the default <strong>http://conciser.603apps.net</strong> unless your admin gave you a different one.</p>
                 </div>
-
+ -->
                 <div class="question-card" data-question="share">
                     <p class="question-text">Need a refresher on sharing from YouTube?</p>
                     <div class="question-actions">
                         <button type="button" data-answer="yes">I'm good</button>
                         <button type="button" data-answer="no">Show me</button>
                     </div>
-                    <p class="question-followup">Open any video → Share → tap "More" if needed → pick "NBJ Condenser".</p>
+                    <p class="question-followup">Open any video → Share → tap "More" → tap "More" again if needed → pick "NBJ Condenser".</p>
                 </div>
             </section>
 
             <section class="mobile-section mobile-help">
                 <h2>💬 Have questions?</h2>
-                <p>Ping your NBJ admin or drop a note in the team chat—we'll get you condensing fast.</p>
+                <p>Sal will set you straight.</p>
             </section>
         </div>
     </div>
