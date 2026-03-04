@@ -285,96 +285,71 @@
     </div>
 
     <script>
-        // Detect mobile device
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-        if (isMobile) {
-            // Replace entire page content with message
-            document.querySelector('.container').innerHTML = `
-                <div class="header">
-                    <h1>🎬 NBJ Condenser</h1>
-                </div>
-                <div class="content" style="text-align: center; padding: 60px 40px;">
-                    <h2 style="font-size: 2em; color: #d32f2f; margin-bottom: 20px;">
-                        Desktop Only
-                    </h2>
-                    <p style="font-size: 1.2em; color: #666; margin-top: 30px;">
-                        This Chrome extension only works on desktop browsers (Chrome or Edge).<br>
-                        Please visit this page on your computer to install.
-                    </p>
-                </div>
-            `;
-        } else {
-            // Detect browser for display
+        (function() {
             const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
             const browserName = isEdge ? 'Edge' : 'Chrome';
             const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
 
-            // Update browser name in page
             document.querySelectorAll('#browser-name, #browser-name-install').forEach(el => {
                 el.textContent = browserName;
             });
 
-            // Update extensions URL display
             const urlElement = document.getElementById('extensions-url');
             if (urlElement) {
                 urlElement.textContent = extensionsURL;
             }
-        }
 
-        // Copy extensions URL to clipboard
-        function copyExtensionsURL() {
-            const isEdge = navigator.userAgent.indexOf('Edg') !== -1;
-            const extensionsURL = isEdge ? 'edge://extensions/' : 'chrome://extensions/';
-            const feedback = document.getElementById('copy-feedback');
-            const btn = document.getElementById('copy-url-btn');
+            window.copyExtensionsURL = function copyExtensionsURL() {
+                const feedback = document.getElementById('copy-feedback');
+                const btn = document.getElementById('copy-url-btn');
 
-            function showCopiedState() {
-                if (!feedback || !btn) return;
+                function showCopiedState() {
+                    if (!feedback || !btn) return;
 
-                feedback.style.display = 'block';
-                btn.classList.add('copied');
-                btn.innerHTML = '✅ Copied to Clipboard!';
+                    feedback.style.display = 'block';
+                    btn.classList.add('copied');
+                    btn.innerHTML = '✅ Copied to Clipboard!';
 
-                setTimeout(() => {
-                    feedback.style.display = 'none';
-                    btn.classList.remove('copied');
-                    btn.innerHTML = '📋 Click to Copy: <code id="extensions-url" style="background: transparent; color: white;">' + extensionsURL + '</code>';
-                }, 3000);
-            }
-
-            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                navigator.clipboard.writeText(extensionsURL)
-                    .then(showCopiedState)
-                    .catch(fallbackCopy);
-                return;
-            }
-
-            fallbackCopy();
-
-            function fallbackCopy() {
-                const textArea = document.createElement('textarea');
-                textArea.value = extensionsURL;
-                textArea.setAttribute('readonly', '');
-                textArea.style.position = 'fixed';
-                textArea.style.left = '-9999px';
-                document.body.appendChild(textArea);
-                textArea.select();
-
-                try {
-                    const copied = document.execCommand('copy');
-                    if (copied) {
-                        showCopiedState();
-                    } else {
-                        alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
-                    }
-                } catch (err) {
-                    alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
-                } finally {
-                    document.body.removeChild(textArea);
+                    setTimeout(() => {
+                        feedback.style.display = 'none';
+                        btn.classList.remove('copied');
+                        btn.innerHTML = '📋 Click to Copy: <code id="extensions-url" style="background: transparent; color: white;">' + extensionsURL + '</code>';
+                    }, 3000);
                 }
-            }
-        }
+
+                if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                    navigator.clipboard.writeText(extensionsURL)
+                        .then(showCopiedState)
+                        .catch(fallbackCopy);
+                    return;
+                }
+
+                fallbackCopy();
+
+                function fallbackCopy() {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = extensionsURL;
+                    textArea.setAttribute('readonly', '');
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-9999px';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+
+                    try {
+                        const copied = document.execCommand('copy');
+                        if (copied) {
+                            showCopiedState();
+                        } else {
+                            alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
+                        }
+                    } catch (err) {
+                        alert('Copy failed. Please manually copy this URL:\n\n' + extensionsURL);
+                    } finally {
+                        document.body.removeChild(textArea);
+                    }
+                }
+            };
+        })();
     </script>
 </body>
 </html>

@@ -5,6 +5,7 @@ Simple HTTP server that accepts YouTube URLs and processes them with nbj.
 """
 
 import os
+import re
 import sys
 import uuid
 import threading
@@ -28,6 +29,8 @@ CORS(app)  # Allow requests from Chrome extension
 jobs = {}
 current_job_lock = threading.Lock()
 currently_processing = None
+
+MOBILE_USER_AGENT_PATTERN = re.compile(r"(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)", re.IGNORECASE)
 
 
 def restore_jobs_from_disk():
@@ -182,10 +185,19 @@ def process_video(job_id):
 restore_jobs_from_disk()
 
 
+def is_mobile_user_agent(user_agent: str) -> bool:
+    """Simple user-agent check to differentiate mobile visitors."""
+    if not user_agent:
+        return False
+    return bool(MOBILE_USER_AGENT_PATTERN.search(user_agent))
+
+
 @app.route('/start')
 def start_page():
-    """Landing page with extension download and installation instructions."""
-    return render_template('start.html')
+    """Landing page for extension (desktop) or Android app (mobile)."""
+    user_agent = request.headers.get('User-Agent', '')
+    template = 'start_mobile.html' if is_mobile_user_agent(user_agent) else 'start.html'
+    return render_template(template)
 
 
 @app.route('/')
@@ -208,6 +220,22 @@ def download_extension():
         mimetype='application/zip',
         as_attachment=True,
         download_name='nbj-chrome-extension.zip'
+    )
+
+
+@app.route('/android.apk')
+def download_android_apk():
+    """Serve the latest Android APK for side-loading."""
+    apk_path = Path(__file__).parent.parent / 'android' / 'app' / 'build' / 'outputs' / 'apk' / 'release' / 'app-release.apk'
+
+    if not apk_path.exists():
+        return jsonify({'error': 'Android APK not found. Please download from desktop instead.'}), 404
+
+    return send_file(
+        apk_path,
+        mimetype='application/vnd.android.package-archive',
+        as_attachment=True,
+        download_name='nbj-condenser.apk'
     )
 
 
