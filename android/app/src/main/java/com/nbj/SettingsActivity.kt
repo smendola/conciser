@@ -39,10 +39,6 @@ class SettingsActivity : AppCompatActivity() {
 
         loadSettings()
 
-        binding.etServerUrl.addTextChangedListener { editable ->
-            schedulePing(editable?.toString().orEmpty())
-        }
-
         binding.btnSave.setOnClickListener {
             saveSettings()
         }
@@ -66,6 +62,8 @@ class SettingsActivity : AppCompatActivity() {
         getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit()
             .putString("server_url", serverUrl)
             .apply()
+
+        schedulePing(serverUrl)
 
         Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
         finish()

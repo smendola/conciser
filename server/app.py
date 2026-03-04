@@ -9,6 +9,7 @@ import re
 import sys
 import uuid
 import threading
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for
@@ -58,7 +59,15 @@ def restore_jobs_from_disk():
                 continue  # Skip unknown file types
 
             # Create a completed job entry
-            job = Job(job_id, youtube_url='[restored]', job_type=job_type)
+            youtube_url = '[restored]'
+            title = None
+            video_id_match = re.search(r"(?:^|_)vid-([a-zA-Z0-9_-]{11})(?:_|$)", file_path.stem)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+                youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+                title = fetch_video_title(youtube_url)
+
+            job = Job(job_id, youtube_url=youtube_url, job_type=job_type, title=title)
             job.status = 'completed'
             job.output_file = str(file_path)
             job.created_at = datetime.fromtimestamp(file_path.stat().st_mtime)
@@ -169,7 +178,15 @@ def process_video(job_id):
 
         # Determine output file extension
         output_ext = 'mp3' if video_mode == 'audio_only' else 'mp4'
-        output_path = jobs_dir / f"{job_id}.{output_ext}"
+        video_id = None
+        try:
+            from src.pipeline import CondenserPipeline as _CP
+            video_id = _CP._extract_video_id(job.url)  # type: ignore[attr-defined]
+        except Exception:
+            video_id = None
+
+        suffix = f"_vid-{video_id}" if video_id else ""
+        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
 
         result = pipeline.run(
             video_url=job.url,
@@ -405,7 +422,6 @@ def process_takeaways(job_id):
         job.progress = "[setup] Preparing takeaways job"
 
         # Use takeaways CLI command via subprocess
-        import subprocess
         from pathlib import Path
 
         settings = get_settings()
@@ -419,7 +435,15 @@ def process_takeaways(job_id):
 
         # Determine output file extension
         output_ext = 'mp3' if job.format_type == 'audio' else 'md'
-        output_path = jobs_dir / f"{job_id}.{output_ext}"
+        video_id = None
+        try:
+            from src.pipeline import CondenserPipeline as _CP
+            video_id = _CP._extract_video_id(job.url)  # type: ignore[attr-defined]
+        except Exception:
+            video_id = None
+
+        suffix = f"_vid-{video_id}" if video_id else ""
+        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
 
         cmd = [
             'nbj',
@@ -434,26 +458,60 @@ def process_takeaways(job_id):
         if job.voice:
             cmd.extend(['--voice', job.voice])
 
-        # Run command
-        job.progress = "[extract] Extracting key takeaways"
+        # Run command (stream output so progress updates are visible while running)
+        job.progress = "[FETCH] Starting takeaways job"
         print(f"[{job_id}] Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
 
-        # Print output for debugging
-        if result.stdout:
-            print(f"[{job_id}] STDOUT:\n{result.stdout}")
-        if result.stderr:
-            print(f"[{job_id}] STDERR:\n{result.stderr}")
+        stage_line_re = re.compile(r"^\[(?P<stage>[A-Z_]+)\]\s*(?P<message>.*)$")
+        stderr_lines = []
 
-        if result.returncode != 0:
-            raise RuntimeError(f"Takeaways extraction failed: {result.stderr}")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            cwd=Path(__file__).parent.parent,
+        )
+
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        def _drain_stderr():
+            for line in proc.stderr:
+                line = line.rstrip("\n")
+                if line:
+                    stderr_lines.append(line)
+                    print(f"[{job_id}] STDERR: {line}")
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        for raw_line in proc.stdout:
+            line = raw_line.rstrip("\n")
+            if not line:
+                continue
+
+            print(f"[{job_id}] STDOUT: {line}")
+            m = stage_line_re.match(line)
+            if m:
+                progress_callback(m.group('stage'), m.group('message'))
+
+        return_code = proc.wait()
+        stderr_thread.join(timeout=1)
+
+        if return_code != 0:
+            stderr_text = "\n".join(stderr_lines).strip()
+            raise RuntimeError(
+                f"Takeaways extraction failed (exit={return_code}): {stderr_text or 'No stderr'}"
+            )
 
         # Output file should be at the path we specified: output/jobs/{job_id}.{ext}
         if not output_path.exists():
             raise RuntimeError(f"Takeaways file not found at expected location: {output_path}")
 
         job.output_file = str(output_path)
-        job.progress = "[finalize] Takeaways ready"
+        job.progress = "[FINALIZE] Takeaways ready"
 
         job.status = "completed"
         job.completed_at = datetime.now()
@@ -595,6 +653,26 @@ def list_jobs():
             if not file_path.is_absolute():
                 file_path = Path(__file__).parent.parent / file_path
             file_exists = file_path.exists()
+
+        # Best-effort title fill-in (helps Chrome extension recent jobs list)
+        if not getattr(job, 'title', None):
+            derived_url = None
+
+            if getattr(job, 'url', None) and job.url != '[restored]':
+                derived_url = job.url
+            else:
+                output_file = getattr(job, 'output_file', None)
+                if output_file:
+                    stem = Path(output_file).stem
+                    video_id_match = re.search(r"(?:^|_)vid-([a-zA-Z0-9_-]{11})(?:_|$)", stem)
+                    if video_id_match:
+                        derived_url = f"https://www.youtube.com/watch?v={video_id_match.group(1)}"
+                        job.url = derived_url
+
+            if derived_url:
+                title = fetch_video_title(derived_url)
+                if title:
+                    job.title = title
 
         jobs_list.append({
             'job_id': job.id,

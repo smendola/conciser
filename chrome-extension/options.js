@@ -15,19 +15,6 @@ function setStatus(text, type = 'info') {
   el.className = `status ${type}`;
 }
 
-function schedulePing(rawValue) {
-  const value = (rawValue || '').trim();
-  if (!value) {
-    setStatus('Enter a server URL to test', 'info');
-    return;
-  }
-
-  clearTimeout(pingTimeoutId);
-  pingTimeoutId = window.setTimeout(() => {
-    pingServer(value);
-  }, 500);
-}
-
 async function pingServer(rawValue) {
   const serverUrl = normalizeServerUrl(rawValue);
   if (!serverUrl) {
@@ -125,8 +112,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await load();
 
   const input = document.getElementById('serverUrl');
-  input.addEventListener('input', (event) => {
-    schedulePing(event.target.value);
+  input.addEventListener('input', () => {
+    setStatus('', 'info');
   });
 
   document.getElementById('saveBtn').addEventListener('click', async () => {
