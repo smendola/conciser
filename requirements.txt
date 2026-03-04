@@ -22,6 +22,7 @@ youtube-transcript-api>=0.6.0
 ffmpeg-python>=0.2.0
 moviepy>=1.0.3
 pydub>=0.25.1
+markdown
 
 # Utilities
 scenedetect[opencv-headless]==0.6.7.1
