@@ -1,10 +1,12 @@
 package com.nbj
 
+import android.net.Uri
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Interceptor
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -84,7 +86,25 @@ interface ConciserApiService {
 
     @GET("api/strategies")
     suspend fun getStrategies(): StrategiesResponse
+
+    @GET("api/jobs")
+    suspend fun getJobs(): JobsResponse
 }
+
+data class JobsResponse(
+    val jobs: List<JobSummary>,
+    val currently_processing: String?
+)
+
+data class JobSummary(
+    val job_id: String,
+    val url: String,
+    val title: String?,
+    val status: String,
+    val job_type: String,
+    val file_exists: Boolean,
+    val created_at: String
+)
 
 data class OEmbedResponse(val title: String)
 
@@ -105,18 +125,30 @@ object ConciserApi {
         level = HttpLoggingInterceptor.Level.BODY
     }
 
-    private val client = OkHttpClient.Builder()
+    private val httpClient: OkHttpClient by lazy {
+        baseClient().build()
+    }
+
+    private fun baseClient(): OkHttpClient.Builder = OkHttpClient.Builder()
         .addInterceptor(loggingInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
 
-    fun createService(baseUrl: String): ConciserApiService {
+    fun createService(baseUrl: String, clientId: String? = null): ConciserApiService {
         val url = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val builder = baseClient()
+        if (!clientId.isNullOrBlank()) {
+            builder.addInterceptor(Interceptor { chain ->
+                val request = chain.request().newBuilder()
+                    .header("X-User-Id", clientId)
+                    .build()
+                chain.proceed(request)
+            })
+        }
         return Retrofit.Builder()
             .baseUrl(url)
-            .client(client)
+            .client(builder.build())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ConciserApiService::class.java)
@@ -126,8 +158,8 @@ object ConciserApi {
         try {
             val oEmbedUrl = "https://www.youtube.com/oembed?url=${videoUrl}&format=json"
             val request = Request.Builder().url(oEmbedUrl).build()
-            val body = client.newCall(request).execute().use { it.body?.string() }
-            Gson().fromJson(body, OEmbedResponse::class.java)?.title
+            val body = httpClient.newCall(request).execute().use { it.body?.string() }
+            body?.let { Gson().fromJson(it, OEmbedResponse::class.java)?.title }
         } catch (e: Exception) {
             null
         }
@@ -137,15 +169,16 @@ object ConciserApi {
     suspend fun checkFileExists(url: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder().url(url).head().build()
-            val code = client.newCall(request).execute().use { it.code }
+            val code = httpClient.newCall(request).execute().use { it.code }
             code != 404 && code != 410
         } catch (e: Exception) {
             true
         }
     }
 
-    fun getFullDownloadUrl(baseUrl: String, jobId: String): String {
+    fun getFullDownloadUrl(baseUrl: String, jobId: String, clientId: String? = null): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        return "${base}api/download/$jobId"
+        val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
+        return "${base}api/download/$jobId$cidParam"
     }
 }

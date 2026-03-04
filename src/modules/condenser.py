@@ -637,7 +637,9 @@ class ContentCondenser:
         transcript: str,
         video_title: str = "",
         top: int = None,
-        format: str = "text"
+        format: str = "text",
+        max_retries: int = 5,
+        initial_retry_delay: float = 1.0,
     ) -> str:
         """
         Extract key takeaways from a video transcript.
@@ -650,6 +652,14 @@ class ContentCondenser:
 
         Returns:
             Formatted takeaways list (markdown or plain text based on format)
+
+        Args:
+            transcript: Video transcript text
+            video_title: Optional title for extra context
+            top: Number of takeaways to extract
+            format: Output format ("text" or "audio")
+            max_retries: Maximum retry attempts when transient API errors occur
+            initial_retry_delay: Initial delay (seconds) before retrying, doubles each attempt
 
         Note:
             Does NOT use conversation chains (unlike condense()).
@@ -697,34 +707,59 @@ class ContentCondenser:
         if video_title:
             user_message = f"Video title: {video_title}\n\n" + user_message
 
-        try:
-            if self.provider == 'openai':
-                # Use Responses API (GLOBAL RULE: Use only Responses API for OpenAI, not chat.completions (deprecated API))
-                # One-shot extraction, no conversation chaining needed
-                response = self.client.responses.create(
-                    model=model,
-                    instructions=system_prompt,
-                    input=[{"role": "user", "content": user_message}],
-                    max_output_tokens=2048
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                if self.provider == 'openai':
+                    # Use Responses API (GLOBAL RULE: Use only Responses API for OpenAI, not chat.completions (deprecated API))
+                    # One-shot extraction, no conversation chaining needed
+                    response = self.client.responses.create(
+                        model=model,
+                        instructions=system_prompt,
+                        input=[{"role": "user", "content": user_message}],
+                        max_output_tokens=2048
+                    )
+
+                    takeaways = response.output_text.strip()
+
+                else:  # anthropic
+                    response = self.client.messages.create(
+                        model=model,
+                        max_tokens=2048,  # Takeaways are shorter than full scripts
+                        system=system_prompt,
+                        messages=[
+                            {"role": "user", "content": user_message}
+                        ]
+                    )
+
+                    takeaways = response.content[0].text.strip()
+
+                logger.info(f"Successfully extracted takeaways ({len(takeaways)} characters)")
+                return takeaways
+
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                is_retryable = (
+                    "529" in error_str or
+                    "overloaded" in error_str.lower() or
+                    "rate_limit" in error_str.lower() or
+                    "timeout" in error_str.lower() or
+                    "connection" in error_str.lower()
                 )
 
-                takeaways = response.output_text.strip()
+                if not is_retryable or attempt >= max_retries:
+                    logger.error(f"Failed to extract takeaways: {e}")
+                    raise RuntimeError(f"Failed to extract takeaways: {e}") from e
 
-            else:  # anthropic
-                response = self.client.messages.create(
-                    model=model,
-                    max_tokens=2048,  # Takeaways are shorter than full scripts
-                    system=system_prompt,
-                    messages=[
-                        {"role": "user", "content": user_message}
-                    ]
+                delay = initial_retry_delay * (2 ** attempt)
+                logger.warning(
+                    f"Takeaways extraction failed (attempt {attempt + 1}/{max_retries + 1}): {error_str}. "
+                    f"Retrying in {delay:.1f}s..."
                 )
+                time.sleep(delay)
 
-                takeaways = response.content[0].text.strip()
-
-            logger.info(f"Successfully extracted takeaways ({len(takeaways)} characters)")
-            return takeaways
-
-        except Exception as e:
-            logger.error(f"Failed to extract takeaways: {e}")
-            raise RuntimeError(f"Failed to extract takeaways: {e}")
+        raise RuntimeError(
+            f"Failed to extract takeaways after {max_retries + 1} attempts. Last error: {last_error}"
+        )

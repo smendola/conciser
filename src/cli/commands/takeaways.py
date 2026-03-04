@@ -15,6 +15,7 @@ from ...modules.edge_tts import EdgeTTS
 from ...modules.azure_tts import AzureTTS
 from ...modules.tts import VoiceCloner
 from ..common import _load_videos_txt
+from ..progress import ProgressDisplay
 
 
 def _suppress_httpx_info_logs() -> None:
@@ -105,6 +106,10 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
 
     import logging
     logger = logging.getLogger(__name__)
+
+    def update_progress(stage: str, message: str):
+        logger.info(f"[{stage}] {message}")
+        ProgressDisplay.show(stage, message)
 
     try:
         print(f"\n{Fore.CYAN}{'='*60}{Style.RESET_ALL}")
@@ -238,7 +243,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         )
 
         # Stage 1: Fetch metadata (no video download needed for takeaways)
-        print(f"{Fore.CYAN}[1/4] Fetching video metadata...{Style.RESET_ALL}")
+        update_progress("FETCH", "Fetching video metadata...")
         video_info = downloader.download(url, metadata_only=True)
         video_folder = video_info['video_folder']
         metadata = video_info.get('metadata', {})
@@ -254,10 +259,10 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         transcript_path = video_folder / f"transcript_{video_id}.txt"
 
         if resume and transcript_path.exists():
-            print(f"{Fore.CYAN}[2/4] Loading cached transcript...{Style.RESET_ALL}")
+            update_progress("FETCH", "Loading cached transcript...")
             transcript = transcript_path.read_text(encoding='utf-8')
         else:
-            print(f"{Fore.CYAN}[2/4] Fetching transcript...{Style.RESET_ALL}")
+            update_progress("FETCH", "Fetching transcript...")
 
             # Try YouTube transcript first (no video download needed)
             youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
@@ -268,7 +273,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             else:
                 # Need to download video for Whisper transcription
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
-                print(f"{Fore.YELLOW}  YouTube transcript unavailable, downloading video for Whisper...{Style.RESET_ALL}")
+                update_progress("FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
 
                 video_info = downloader.download(url, metadata_only=False)
                 video_path = video_info['video_path']
@@ -290,10 +295,10 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             takeaways_path = video_folder / f"takeaways_{video_id}_top{top if top else 'auto'}.md"
 
         if resume and takeaways_path.exists():
-            print(f"{Fore.CYAN}[3/4] Loading cached takeaways...{Style.RESET_ALL}")
+            update_progress("EXTRACT", "Loading cached takeaways...")
             takeaways_text = takeaways_path.read_text(encoding='utf-8')
         else:
-            print(f"{Fore.CYAN}[3/4] Extracting key takeaways...{Style.RESET_ALL}")
+            update_progress("EXTRACT", "Extracting key takeaways...")
             takeaways_text = condenser.extract_takeaways(
                 transcript=transcript,
                 video_title=video_title,
@@ -319,7 +324,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
 
         # Stage 4: Generate audio (if requested)
         if format == 'audio':
-            print(f"{Fore.CYAN}[4/4] Generating audio...{Style.RESET_ALL}")
+            update_progress("FINALIZE", "Generating audio...")
 
             # Build audio script with intro
             audio_script = f"Here are the key takeaways from {video_title}.\n\n{takeaways_text}"
@@ -362,7 +367,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
 
             print(f"  Audio saved: {audio_path}\n")
         else:
-            print(f"{Fore.CYAN}[4/4] Skipping audio (text output only){Style.RESET_ALL}\n")
+            update_progress("FINALIZE", "Skipping audio (text output only)")
+            print()
 
         # Summary
         print(f"{Fore.GREEN}{'='*60}{Style.RESET_ALL}")
@@ -388,6 +394,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                 print(f"{Fore.CYAN}Opened {file_to_open.name} with xdg-open{Style.RESET_ALL}\n")
             except Exception as e:
                 print(f"{Fore.YELLOW}Warning: Failed to open file with xdg-open: {e}{Style.RESET_ALL}\n")
+
+        update_progress("COMPLETE", "Takeaways extraction complete")
 
     except KeyboardInterrupt:
         print(f"\n{Fore.YELLOW}Interrupted by user{Style.RESET_ALL}")

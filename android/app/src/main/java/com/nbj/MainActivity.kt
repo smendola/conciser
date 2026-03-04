@@ -344,6 +344,7 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
+        val clientId = ClientIdentity.getOrCreate(this)
         val aggressiveness = prefs.getInt("aggressiveness", 5)
         val voice = prefs.getString("voice", "") ?: ""
         val speechSpeed = prefs.getFloat("speech_speed", 1.10f)
@@ -365,7 +366,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = ConciserApi.createService(serverUrl)
+                val api = ConciserApi.createService(serverUrl, clientId)
                 val response = api.condenseVideo(request)
                 currentJobId = response.job_id
 
@@ -386,6 +387,7 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
+        val clientId = ClientIdentity.getOrCreate(this)
 
         // Get takeaways settings
         val topValue = takeawaysTopValues.getOrNull(binding.spinnerTakeawaysTop.selectedItemPosition) ?: "auto"
@@ -411,7 +413,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val api = ConciserApi.createService(serverUrl)
+                val api = ConciserApi.createService(serverUrl, clientId)
                 val response = api.extractTakeaways(request)
                 currentJobId = response.job_id
 
@@ -431,7 +433,7 @@ class MainActivity : AppCompatActivity() {
         isPolling = true
 
         lifecycleScope.launch {
-            val api = ConciserApi.createService(serverUrl)
+            val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
             while (isPolling) {
                 try {
                     val status = api.getStatus(jobId)
@@ -482,7 +484,8 @@ class MainActivity : AppCompatActivity() {
     // -------------------------------------------------------------------------
 
     private fun openCurrentResult(jobId: String) {
-        val videoUrl = ConciserApi.getFullDownloadUrl(getServerUrl(), jobId)
+        val clientId = ClientIdentity.getOrCreate(this)
+        val videoUrl = ConciserApi.getFullDownloadUrl(getServerUrl(), jobId, clientId)
         val mimeType = when (currentOutputFormat) {
             "text" -> "text/html"
             "audio" -> "audio/mpeg"
@@ -629,7 +632,7 @@ class MainActivity : AppCompatActivity() {
         binding.tvStrategyDesc.text = "Loading..."
 
         lifecycleScope.launch {
-            val api = ConciserApi.createService(serverUrl)
+            val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
 
             try {
                 val response = api.getVoices(locale)
@@ -842,8 +845,9 @@ class MainActivity : AppCompatActivity() {
 
         // Background: prune deleted files silently
         lifecycleScope.launch {
+            val clientId = ClientIdentity.getOrCreate(this@MainActivity)
             val surviving = jobs.filter { job ->
-                val url = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+                val url = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId, clientId)
                 ConciserApi.checkFileExists(url)
             }
             if (surviving.size < jobs.size) {
@@ -854,7 +858,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openRecentJob(job: RecentJob) {
-        val videoUrl = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId)
+        val clientId = ClientIdentity.getOrCreate(this)
+        val videoUrl = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId, clientId)
         val mimeType = when (job.outputFormat) {
             "text" -> "text/html"  // Server renders markdown as HTML
             "audio" -> "audio/mpeg"

@@ -22,6 +22,15 @@
         android:inputType="textUri"
         android:autofillHints="url" />
 
+    <TextView
+        android:id="@+id/tvServerStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Server status not checked"
+        android:textSize="13sp"
+        android:textColor="@color/text_secondary" />
+
     <Button
         android:id="@+id/btnSave"
         android:layout_width="wrap_content"

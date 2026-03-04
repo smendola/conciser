@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for
+from urllib.parse import quote_plus
 from flask_cors import CORS
 
 # Add parent directory to path to import nbj modules
@@ -70,7 +71,7 @@ def restore_jobs_from_disk():
 
 
 class Job:
-    def __init__(self, job_id, youtube_url, job_type='condense', title=None):
+    def __init__(self, job_id, youtube_url, job_type='condense', title=None, client_id=None):
         self.id = job_id
         self.url = youtube_url
         self.title = title  # Video title
@@ -81,6 +82,28 @@ class Job:
         self.error = None
         self.created_at = datetime.now()
         self.completed_at = None
+        self.client_id = client_id
+
+
+def _extract_client_id():
+    client_id = request.args.get('cid')
+    if client_id:
+        return client_id.strip()
+
+    header_value = request.headers.get('X-User-Id') or request.headers.get('x-user-id')
+    if header_value:
+        return header_value.strip()
+
+    return None
+
+
+def _client_id_response(optional=False):
+    client_id = _extract_client_id()
+    if client_id:
+        return client_id, None
+    if optional:
+        return None, None
+    return None, (jsonify({'error': 'Missing client identifier'}), 401)
 
 
 def fetch_video_title(youtube_url):
@@ -226,7 +249,7 @@ def download_extension():
 @app.route('/android.apk')
 def download_android_apk():
     """Serve the latest Android APK for side-loading."""
-    apk_path = Path(__file__).parent.parent / 'android' / 'app' / 'build' / 'outputs' / 'apk' / 'release' / 'app-release.apk'
+    apk_path = Path(__file__).parent.parent / 'dist' / 'nbj-condenser.apk'
 
     if not apk_path.exists():
         return jsonify({'error': 'Android APK not found. Please download from desktop instead.'}), 404
@@ -243,6 +266,10 @@ def download_android_apk():
 def condense():
     """Submit a YouTube URL for processing."""
     global currently_processing
+
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
 
     data = request.json
     youtube_url = data.get('url')
@@ -284,7 +311,7 @@ def condense():
         # Create job and store parameters
         job_id = str(uuid.uuid4())[:8]
         title = fetch_video_title(youtube_url)
-        job = Job(job_id, youtube_url, job_type='condense', title=title)
+        job = Job(job_id, youtube_url, job_type='condense', title=title, client_id=client_id)
         job.aggressiveness = aggressiveness
         job.voice = voice
         job.speech_rate = speech_rate
@@ -309,6 +336,10 @@ def condense():
 def takeaways():
     """Extract takeaways from a YouTube video."""
     global currently_processing
+
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
 
     data = request.json
     youtube_url = data.get('url')
@@ -344,7 +375,7 @@ def takeaways():
         # Create job
         job_id = str(uuid.uuid4())[:8]
         title = fetch_video_title(youtube_url)
-        job = Job(job_id, youtube_url, job_type='takeaways', title=title)
+        job = Job(job_id, youtube_url, job_type='takeaways', title=title, client_id=client_id)
         job.top = top
         job.format_type = format_type
         job.voice = voice
@@ -444,9 +475,16 @@ def process_takeaways(job_id):
 @app.route('/api/status/<job_id>', methods=['GET'])
 def status(job_id):
     """Get status of a processing job."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
     job = jobs.get(job_id)
 
     if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.client_id and job.client_id != client_id:
         return jsonify({'error': 'Job not found'}), 404
 
     response = {
@@ -460,7 +498,10 @@ def status(job_id):
         response['completed_at'] = job.completed_at.isoformat()
 
     if job.status == 'completed':
-        response['download_url'] = f"/api/download/{job.id}"
+        download_url = f"/api/download/{job.id}"
+        if job.client_id:
+            download_url += f"?cid={quote_plus(job.client_id)}"
+        response['download_url'] = download_url
 
     if job.error:
         response['error'] = job.error
@@ -471,6 +512,10 @@ def status(job_id):
 @app.route('/api/download/<job_id>', methods=['GET'])
 def download(job_id):
     """Download the processed output file."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
     job = jobs.get(job_id)
 
     if not job:
@@ -478,6 +523,9 @@ def download(job_id):
 
     if job.status != 'completed':
         return jsonify({'error': 'File not ready yet'}), 400
+
+    if job.client_id and job.client_id != client_id:
+        return jsonify({'error': 'Job not found'}), 404
 
     if not job.output_file or not Path(job.output_file).exists():
         return jsonify({'error': 'Output file not found'}), 404
@@ -531,8 +579,15 @@ def download(job_id):
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
     """List all jobs (for debugging)."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
     jobs_list = []
     for job in jobs.values():
+        if job.client_id and job.client_id != client_id:
+            continue
+
         # Check if output file exists
         file_exists = False
         if job.output_file:
@@ -613,23 +668,31 @@ def get_voices():
         return jsonify({'error': 'Failed to fetch voices', 'voices': []}), 500
 
 
-if __name__ == '__main__':
+def _print_startup_banner():
     print("=" * 60)
     print("NBJ Condenser Server")
     print("=" * 60)
     print("\nServer starting on http://127.0.0.1:5000")
-    print("\nPublic URL: http://conciser.603apps.net")
+    # print("\nPublic URL: http://conciser.603apps.net")
     print("\nEndpoints:")
-    print("  GET    /start - Extension download & installation guide")
-    print("  POST   /api/condense  - Submit YouTube URL for condensation")
-    print("  POST   /api/takeaways - Extract key takeaways from video")
-    print("  GET    /api/status/:id - Check job status")
-    print("  GET    /api/download/:id - Download output file")
-    print("  GET    /api/strategies - Get aggressiveness strategies")
-    print("  GET    /api/voices?locale=en - Get Edge TTS voices")
-    print("  GET    /api/jobs - List all jobs")
-    print("  GET    /health - Health check")
-    print("\n👉 Share this link: http://conciser.603apps.net/start")
+    print("  GET    /start            - Extension download & installation guide")
+    print("  GET    /extension.zip    - Download Chrome extension bundle")
+    print("  GET    /android.apk      - Download Android APK")
+    print("  POST   /api/condense     - Submit YouTube URL for condensation")
+    print("  POST   /api/takeaways    - Extract key takeaways from video")
+    print("  GET    /api/status/<id>  - Check job status")
+    print("  GET    /api/download/<id>- Download output file")
+    print("  GET    /api/strategies   - Get aggressiveness strategies")
+    print("  GET    /api/voices       - Get Edge TTS voices")
+    print("  GET    /api/jobs         - List all jobs")
+    print("  GET    /health           - Health check")
+    # print("\n👉 Share this link: http://conciser.603apps.net/start")
     print("\n" + "=" * 60 + "\n")
+
+
+if __name__ == '__main__':
+    # Avoid printing twice when Werkzeug reloads the dev server
+    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        _print_startup_banner()
 
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)

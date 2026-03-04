@@ -5,15 +5,51 @@ let currentJobId = null;
 let currentTakeawaysJobId = null;
 let pollInterval = null;
 let takeawaysPollInterval = null;
-const DEFAULT_SERVER_URL = 'https://cuda-linux.puma-garibaldi.ts.net'
+const DEFAULT_SERVER_URL = 'http://conciser.603apps.net'
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let currentTab = 'condense';
+let clientId = null;
+
+async function ensureClientId() {
+  if (clientId) return clientId;
+  const storage = await chrome.storage.local.get(['clientId']);
+  let storedId = storage.clientId;
+  if (!storedId) {
+    const generated = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    storedId = `ext-${generated}`;
+    await chrome.storage.local.set({ clientId: storedId });
+  }
+  clientId = storedId;
+  return clientId;
+}
+
+function withAuthHeaders(options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (clientId) {
+    headers.set('X-User-Id', clientId);
+  }
+  return { ...options, headers };
+}
+
+async function fetchWithAuth(url, options = {}) {
+  await ensureClientId();
+  return fetch(url, withAuthHeaders(options));
+}
+
+function buildDownloadUrl(jobId) {
+  let url = `${serverUrl}/api/download/${jobId}`;
+  if (clientId) {
+    url += `?cid=${encodeURIComponent(clientId)}`;
+  }
+  return url;
+}
 
 // Initialize popup
 async function initializePopup() {
+  clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
@@ -97,7 +133,7 @@ async function initializePopup() {
 // Fetch and display recent jobs
 async function loadRecentJobs() {
   try {
-    const response = await fetch(`${serverUrl}/api/jobs`);
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
     const data = await response.json();
 
     // Filter completed jobs that have files
@@ -136,8 +172,7 @@ async function loadRecentJobs() {
       condenseList.querySelectorAll('.recent-job').forEach(el => {
         el.addEventListener('click', () => {
           const jobId = el.getAttribute('data-job-id');
-          const downloadUrl = `${serverUrl}/api/download/${jobId}`;
-          chrome.tabs.create({ url: downloadUrl });
+          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
         });
       });
     } else {
@@ -171,8 +206,7 @@ async function loadRecentJobs() {
       takeawaysList.querySelectorAll('.recent-job').forEach(el => {
         el.addEventListener('click', () => {
           const jobId = el.getAttribute('data-job-id');
-          const downloadUrl = `${serverUrl}/api/download/${jobId}`;
-          chrome.tabs.create({ url: downloadUrl });
+          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
         });
       });
     } else {
@@ -194,7 +228,7 @@ async function fetchStrategies() {
       updateStrategyDescription();
       return;
     }
-    const response = await fetch(`${serverUrl}/api/strategies`);
+    const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
     const data = await response.json();
     strategies = data.strategies;
     await chrome.storage.local.set({ strategiesCache: { data: strategies, timestamp: Date.now() } });
@@ -276,7 +310,7 @@ async function fetchVoices() {
     if (cache && cache.locale === locale && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
       voices = cache.data;
     } else {
-      const response = await fetch(`${serverUrl}/api/voices?locale=${locale}`);
+      const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
       const data = await response.json();
       voices = data.voices || [];
       await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
@@ -319,7 +353,8 @@ async function fetchVoices() {
 
 // Load settings from storage
 async function loadSettings() {
-  const saved = await chrome.storage.local.get(['settings']) || {};
+  const storage = await chrome.storage.local.get(['settings']);
+  const saved = storage?.settings || {};
   const settings = Object.assign({
     serverUrl: DEFAULT_SERVER_URL,
     aggressiveness: 5,
@@ -466,7 +501,7 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
     const videoMode = document.getElementById('videoModeSelect').value;
     const prependIntro = document.getElementById('prependIntroCheck').checked;
 
-    const response = await fetch(`${serverUrl}/api/condense`, {
+    const response = await fetchWithAuth(`${serverUrl}/api/condense`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -542,7 +577,7 @@ function startPolling() {
 
 async function checkStatus() {
   try {
-    const response = await fetch(`${serverUrl}/api/status/${currentJobId}`);
+    const response = await fetchWithAuth(`${serverUrl}/api/status/${currentJobId}`);
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -597,8 +632,7 @@ function showCompleted(data) {
   `;
 
   document.getElementById('downloadBtn').addEventListener('click', async () => {
-    const downloadUrl = `${serverUrl}/api/download/${currentJobId}`;
-    chrome.tabs.create({ url: downloadUrl });
+    chrome.tabs.create({ url: buildDownloadUrl(currentJobId) });
 
     // Mark this video as watched
     const storage = await chrome.storage.local.get(['watchedVideos']);
@@ -644,7 +678,7 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
       payload.voice = voice;
     }
 
-    const response = await fetch(`${serverUrl}/api/takeaways`, {
+    const response = await fetchWithAuth(`${serverUrl}/api/takeaways`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -707,7 +741,7 @@ function startTakeawaysPolling() {
 
 async function checkTakeawaysStatus() {
   try {
-    const response = await fetch(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
+    const response = await fetchWithAuth(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -762,8 +796,7 @@ function showTakeawaysCompleted(data) {
   `;
 
   document.getElementById('downloadTakeawaysBtn').addEventListener('click', async () => {
-    const downloadUrl = `${serverUrl}/api/download/${currentTakeawaysJobId}`;
-    chrome.tabs.create({ url: downloadUrl });
+    chrome.tabs.create({ url: buildDownloadUrl(currentTakeawaysJobId) });
   });
 }
 
