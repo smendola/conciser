@@ -5,7 +5,7 @@ let currentJobId = null;
 let currentTakeawaysJobId = null;
 let pollInterval = null;
 let takeawaysPollInterval = null;
-const DEFAULT_SERVER_URL = 'http://conciser.603apps.net';
+const DEFAULT_SERVER_URL = 'https://cuda-linux.puma-garibaldi.ts.net'
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
@@ -319,15 +319,15 @@ async function fetchVoices() {
 
 // Load settings from storage
 async function loadSettings() {
-  const storage = await chrome.storage.local.get(['settings']);
-  const settings = storage.settings || {
+  const saved = await chrome.storage.local.get(['settings']) || {};
+  const settings = Object.assign({
     serverUrl: DEFAULT_SERVER_URL,
     aggressiveness: 5,
     voice: null,
-    speechSpeed: 1.10,
+    speechSpeed: 1.0,
     videoMode: 'slideshow',
     prependIntro: false
-  };
+  }, saved);
 
   serverUrl = normalizeServerUrl(settings.serverUrl);
 
