@@ -10,7 +10,7 @@ import uuid
 import threading
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for
 from flask_cors import CORS
 
 # Add parent directory to path to import nbj modules
@@ -186,6 +186,12 @@ restore_jobs_from_disk()
 def start_page():
     """Landing page with extension download and installation instructions."""
     return render_template('start.html')
+
+
+@app.route('/')
+def root_redirect():
+    """Alias root URL to the start page."""
+    return redirect(url_for('start_page'))
 
 
 @app.route('/extension.zip')
