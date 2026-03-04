@@ -278,6 +278,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                 transcript = transcript_result['text']
 
             transcript_path.write_text(transcript, encoding='utf-8')
+            logger.info(f"Trascript saved to: {transcript_path}")
 
         print(f"  Transcript: {len(transcript)} characters\n")
 
@@ -312,6 +313,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             # Ensure parent directory exists
             takeaways_path.parent.mkdir(parents=True, exist_ok=True)
             takeaways_path.write_text(full_text, encoding='utf-8')
+            logger.info(f"takeaways saved to: {takeaways_path}")
 
         print(f"  Takeaways saved: {takeaways_path}\n")
 

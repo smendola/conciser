@@ -31,6 +31,9 @@ colorama>=0.4.6
 tqdm>=4.66.0
 tenacity>=8.2.0
 
+# Testing
+pytest>=9.0.0
+
 # Optional: For local processing (Phase 2+)
 # torch>=2.0.0
 # opencv-python>=4.8.0
