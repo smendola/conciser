@@ -228,8 +228,10 @@ class CondenserPipeline:
             # Stage 2: Extract and transcribe audio
             _t = time.time()
             if resume:
-                # Check for existing transcript
-                existing_transcript = self._find_existing_transcript(video_path)
+                # Check for existing transcript (only if we have a video path)
+                existing_transcript = None
+                if video_path:
+                    existing_transcript = self._find_existing_transcript(video_path)
 
                 if existing_transcript:
                     update_progress("TRANSCRIBE", f"Resuming from step TRANSCRIBE - found existing transcript")
