@@ -132,13 +132,44 @@ def embed_cover_art_mp3(mp3_path: Path, image_path: Path, output_path: Optional[
     if not image_path.exists():
         raise RuntimeError(f"Cover image not found: {image_path}")
 
-    tmp_out = output_path.with_suffix(output_path.suffix + ".tmp")
+    # Many players (notably Windows Media Player) are unreliable with WebP cover art in MP3.
+    # Convert to JPEG for maximum compatibility.
+    cover_path = image_path
+    tmp_cover = None
+    if image_path.suffix.lower() == ".webp":
+        tmp_cover = image_path.with_name(image_path.stem + ".cover.jpg")
+        try:
+            cmd_img = [
+                'ffmpeg',
+                '-i', str(image_path),
+                '-frames:v', '1',
+                '-q:v', '2',
+                '-y',
+                str(tmp_cover)
+            ]
+            subprocess.run(cmd_img, capture_output=True, text=True, check=True)
+            cover_path = tmp_cover
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to convert WebP cover to JPEG; embedding WebP as-is. ffmpeg error: {e.stderr}")
+            cover_path = image_path
+
+    # Never write the ffmpeg output to the same path as the input.
+    # For in-place embedding (output_path == mp3_path), also avoid reading directly from the
+    # destination file while we replace it.
+    tmp_in = None
+    if output_path.resolve() == mp3_path.resolve():
+        tmp_in = mp3_path.with_name(mp3_path.stem + ".cover.in" + mp3_path.suffix)
+    tmp_out = output_path.with_name(output_path.stem + ".cover.tmp" + output_path.suffix)
 
     try:
+        if tmp_in is not None:
+            import shutil
+            shutil.copy(mp3_path, tmp_in)
+
         cmd = [
             'ffmpeg',
-            '-i', str(mp3_path),
-            '-i', str(image_path),
+            '-i', str(tmp_in if tmp_in is not None else mp3_path),
+            '-i', str(cover_path),
             '-map', '0:a',
             '-map', '1:v',
             '-c', 'copy',
@@ -153,8 +184,7 @@ def embed_cover_art_mp3(mp3_path: Path, image_path: Path, output_path: Optional[
         logger.info(f"Embedding cover art into MP3: {mp3_path} -> {output_path}")
         subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-        if output_path.exists():
-            output_path.unlink()
+        # Atomic replace of output
         tmp_out.replace(output_path)
         return output_path
 
@@ -163,6 +193,10 @@ def embed_cover_art_mp3(mp3_path: Path, image_path: Path, output_path: Optional[
         raise RuntimeError(f"Failed to embed cover art: {e.stderr}")
     finally:
         tmp_out.unlink(missing_ok=True)
+        if tmp_in is not None:
+            tmp_in.unlink(missing_ok=True)
+        if tmp_cover is not None:
+            tmp_cover.unlink(missing_ok=True)
 
 
 def get_audio_duration(audio_path: Path) -> float:

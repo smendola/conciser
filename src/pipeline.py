@@ -532,11 +532,7 @@ class CondenserPipeline:
 
     def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
         """
-        Extract audio and transcribe.
-
-        Tries to fetch YouTube transcript first if video_id is provided.
-        Falls back to Whisper transcription if YouTube transcript is unavailable.
-        If video_path is None and YouTube transcript fails, downloads the video.
+        Extract audio and transcribe based on TRANSCRIPTION_METHOD setting.
 
         Args:
             video_path: Path to video file (may be None if metadata_only was used)
@@ -547,12 +543,82 @@ class CondenserPipeline:
         """
         from colorama import Fore, Style
 
-        # ── TESTING: force Whisper ── remove this block to restore YouTube-first behaviour ──
-        FORCE_WHISPER = False
-        # ── END TESTING ──────────────────────────────────────────────────────────────────
+        method = self.settings.transcription_method.lower()
+        logger.info(f"Using transcription method: {method}")
+
+        if method == "youtube":
+            return self._transcribe_youtube_only(video_path, video_folder, video_id, video_url, quality)
+        elif method == "whisper":
+            return self._transcribe_whisper_only(video_path, video_folder, video_id, video_url, quality)
+        elif method == "chained":
+            return self._transcribe_chained(video_path, video_folder, video_id, video_url, quality)
+        else:
+            raise ValueError(f"Invalid TRANSCRIPTION_METHOD: {method}. Must be 'youtube', 'whisper', or 'chained'.")
+
+    def _transcribe_youtube_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+        """Transcribe using YouTube API only - FAIL if not available."""
+        from colorama import Fore, Style
+
+        if not video_id:
+            raise ValueError("YouTube-only transcription requires video_id")
+
+        logger.info("Fetching YouTube transcript (YouTube-only mode)...")
+        youtube_transcript = self.transcriber.fetch_youtube_transcript(video_id)
+
+        if youtube_transcript:
+            logger.info("Using YouTube transcript (no Whisper API cost)")
+            # Save transcript
+            transcript_json_path = video_folder / "transcript_yt_extract.json"
+            self.transcriber.save_transcript(youtube_transcript, transcript_json_path)
+            return youtube_transcript
+        else:
+            from colorama import Fore, Style
+            error_msg = f"{Fore.RED}YouTube transcript not available and transcription method is 'youtube' (YouTube-only).{Style.RESET_ALL}"
+            print(error_msg)
+            raise RuntimeError("YouTube transcript not available and transcription method is set to 'youtube'")
+
+    def _transcribe_whisper_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+        """Transcribe using Whisper only - skip YouTube API."""
+        from colorama import Fore, Style
+
+        logger.info("Using Whisper transcription (Whisper-only mode)...")
+
+        # Need to download video if we don't have it yet
+        if video_path is None:
+            if video_url is None:
+                raise ValueError("Cannot download video: video_url not provided")
+            print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
+            download_result = self.downloader.download(
+                video_url, 
+                quality=quality, 
+                metadata_only=False,
+                existing_folder=video_folder
+            )
+            video_path = download_result['video_path']
+            print(f"  Downloaded: {video_path}")
+
+        audio_path = video_folder / "extracted_audio.wav"
+
+        if not audio_path.exists():
+            extract_audio(video_path, audio_path)
+
+        # Transcribe
+        transcript_result = self.transcriber.transcribe(audio_path, include_timestamps=True)
+
+        # Save transcript
+        import re as _re
+        _model_norm = _re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
+        transcript_json_path = video_folder / f"transcript_{_model_norm}.json"
+        self.transcriber.save_transcript(transcript_result, transcript_json_path)
+
+        return transcript_result
+
+    def _transcribe_chained(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+        """Transcribe using chained method: try YouTube first, fallback to Whisper."""
+        from colorama import Fore, Style
 
         # Try YouTube transcript first if we have a video ID
-        if video_id and not FORCE_WHISPER:
+        if video_id:
             logger.info("Checking for YouTube transcript...")
             youtube_transcript = self.transcriber.fetch_youtube_transcript(video_id)
 
@@ -566,38 +632,22 @@ class CondenserPipeline:
                 print(f"{Fore.RED}YouTube transcript not available, falling back to Whisper transcription...{Style.RESET_ALL}")
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
 
-                # Need to download video if we don't have it yet
-                if video_path is None:
-                    if video_url is None:
-                        raise ValueError("Cannot download video: video_url not provided")
-                    print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
-                    download_result = self.downloader.download(
-                        video_url, 
-                        quality=quality, 
-                        metadata_only=False,
-                        existing_folder=video_folder
-                    )
-                    video_path = download_result['video_path']
-                    print(f"  Downloaded: {video_path}")
-
         # Fallback: Extract audio and use Whisper
-        if FORCE_WHISPER:
-            print(f"{Fore.YELLOW}FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly...{Style.RESET_ALL}")
-            logger.warning("FORCE_WHISPER=True — skipping YouTube transcript, using Whisper directly")
+        logger.info("Using Whisper transcription as fallback...")
 
-            # Need to download video if we don't have it yet
-            if video_path is None:
-                if video_url is None:
-                    raise ValueError("Cannot download video: video_url not provided")
-                print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
-                download_result = self.downloader.download(
-                    video_url, 
-                    quality=quality, 
-                    metadata_only=False,
-                    existing_folder=video_folder
-                )
-                video_path = download_result['video_path']
-                print(f"  Downloaded: {video_path}")
+        # Need to download video if we don't have it yet
+        if video_path is None:
+            if video_url is None:
+                raise ValueError("Cannot download video: video_url not provided")
+            print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
+            download_result = self.downloader.download(
+                video_url, 
+                quality=quality, 
+                metadata_only=False,
+                existing_folder=video_folder
+            )
+            video_path = download_result['video_path']
+            print(f"  Downloaded: {video_path}")
 
         audio_path = video_folder / "extracted_audio.wav"
 

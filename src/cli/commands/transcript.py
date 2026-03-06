@@ -83,7 +83,10 @@ def transcript(url, no_transcribe, output, resume):
             print(f"Video index: {idx} → {video_id_resolved}" + (f"  ({label})" if label else ""))
 
         print(f"URL: {url}")
-        print(f"Mode: {'YouTube transcript only' if no_transcribe else 'YouTube transcript with Whisper fallback'}\n")
+        method = settings.transcription_method.lower()
+        if no_transcribe:
+            method = "youtube"
+        print(f"Method: {method}\n")
 
         settings = get_settings()
         downloader = VideoDownloader(
@@ -113,56 +116,33 @@ def transcript(url, no_transcribe, output, resume):
             print(f"{Fore.GREEN}✓ Done{Style.RESET_ALL}\n")
             return
 
-        print(f"{Fore.CYAN}[1/2] Fetching YouTube transcript...{Style.RESET_ALL}")
-        youtube_transcript = None
-        if video_id:
+        if method == "youtube":
+            print(f"{Fore.CYAN}[1/1] Fetching YouTube transcript (YouTube-only mode)...{Style.RESET_ALL}")
+            if not video_id:
+                raise ValueError("YouTube-only transcription requires video_id")
+            
             youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
-
-        if not youtube_transcript:
-            logger.warning("YouTube transcript API unavailable, trying yt-dlp caption fallback")
-            print(f"{Fore.YELLOW}  Warning: YouTube transcript API unavailable, trying yt-dlp captions.{Style.RESET_ALL}")
-            youtube_transcript = downloader.fetch_transcript_via_yt_dlp(url)
-
-        if youtube_transcript:
-            logger.info("Using YouTube transcript")
+            
+            if not youtube_transcript:
+                raise RuntimeError("YouTube transcript not available and transcription method is 'youtube' (YouTube-only)")
+            
             transcript_text = youtube_transcript['text']
-            source_label = youtube_transcript.get('source', 'youtube_transcript_api')
-            if source_label in {'subtitles', 'automatic_captions'}:
-                format_label = youtube_transcript.get('format', 'unknown')
-                print(f"  Source: yt-dlp captions ({source_label}, {format_label})")
-            else:
-                print(f"  Source: YouTube transcript")
-
-            raw_payload = youtube_transcript.get('raw')
-            if raw_payload is not None:
-                raw_path = settings.temp_dir / f"yt_transcript_raw_{video_id if video_id else 'video'}.json"
-                raw_path.parent.mkdir(parents=True, exist_ok=True)
-                raw_path.write_text(
-                    json.dumps(raw_payload, indent=2, ensure_ascii=False),
-                    encoding='utf-8'
-                )
-                print(f"  Raw YT payload: {raw_path}")
-        else:
-            if no_transcribe:
-                raise RuntimeError(
-                    "YouTube transcript unavailable and --no-transcribe was set. "
-                    "No Whisper fallback allowed."
-                )
-
-            logger.warning("YouTube transcript not available, falling back to Whisper transcription")
-            print(f"{Fore.YELLOW}  Warning: YouTube transcript unavailable, falling back to Whisper.{Style.RESET_ALL}")
-
+            print(f"  Source: YouTube transcript")
+            
+        elif method == "whisper":
+            print(f"{Fore.CYAN}[1/1] Using Whisper transcription (Whisper-only mode)...{Style.RESET_ALL}")
+            
             if settings.transcription_service == 'groq':
                 if not settings.groq_api_key and not settings.openai_api_key:
                     raise RuntimeError(
-                        "Whisper fallback requires GROQ_API_KEY or OPENAI_API_KEY."
+                        "Whisper transcription requires GROQ_API_KEY or OPENAI_API_KEY."
                     )
             elif not settings.openai_api_key:
                 raise RuntimeError(
-                    "Whisper fallback requires OPENAI_API_KEY when TRANSCRIPTION_SERVICE=openai."
+                    "Whisper transcription requires OPENAI_API_KEY when TRANSCRIPTION_SERVICE=openai."
                 )
 
-            print(f"{Fore.CYAN}[2/2] Downloading video for Whisper transcription...{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}Downloading video for Whisper transcription...{Style.RESET_ALL}")
             video_info = downloader.download(url, metadata_only=False)
             video_path = video_info['video_path']
             print(f"  Downloaded: {video_path}")
@@ -170,6 +150,61 @@ def transcript(url, no_transcribe, output, resume):
             transcript_result = transcriber.transcribe(video_path)
             transcript_text = transcript_result['text']
             print(f"  Source: Whisper ({settings.transcription_service})")
+            
+        elif method == "chained":
+            print(f"{Fore.CYAN}[1/2] Fetching YouTube transcript...{Style.RESET_ALL}")
+            youtube_transcript = None
+            if video_id:
+                youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
+
+            if not youtube_transcript:
+                logger.warning("YouTube transcript API unavailable, trying yt-dlp caption fallback")
+                print(f"{Fore.YELLOW}  Warning: YouTube transcript API unavailable, trying yt-dlp captions.{Style.RESET_ALL}")
+                youtube_transcript = downloader.fetch_transcript_via_yt_dlp(url)
+
+            if youtube_transcript:
+                logger.info("Using YouTube transcript")
+                transcript_text = youtube_transcript['text']
+                source_label = youtube_transcript.get('source', 'youtube_transcript_api')
+                if source_label in {'subtitles', 'automatic_captions'}:
+                    format_label = youtube_transcript.get('format', 'unknown')
+                    print(f"  Source: yt-dlp captions ({source_label}, {format_label})")
+                else:
+                    print(f"  Source: YouTube transcript")
+
+                raw_payload = youtube_transcript.get('raw')
+                if raw_payload is not None:
+                    raw_path = settings.temp_dir / f"yt_transcript_raw_{video_id if video_id else 'video'}.json"
+                    raw_path.parent.mkdir(parents=True, exist_ok=True)
+                    raw_path.write_text(
+                        json.dumps(raw_payload, indent=2, ensure_ascii=False),
+                        encoding='utf-8'
+                    )
+                    print(f"  Raw YT payload: {raw_path}")
+            else:
+                logger.warning("YouTube transcript not available, falling back to Whisper transcription")
+                print(f"{Fore.YELLOW}  Warning: YouTube transcript unavailable, falling back to Whisper.{Style.RESET_ALL}")
+
+                if settings.transcription_service == 'groq':
+                    if not settings.groq_api_key and not settings.openai_api_key:
+                        raise RuntimeError(
+                            "Whisper fallback requires GROQ_API_KEY or OPENAI_API_KEY."
+                        )
+                elif not settings.openai_api_key:
+                    raise RuntimeError(
+                        "Whisper fallback requires OPENAI_API_KEY when TRANSCRIPTION_SERVICE=openai."
+                    )
+
+                print(f"{Fore.CYAN}[2/2] Downloading video for Whisper transcription...{Style.RESET_ALL}")
+                video_info = downloader.download(url, metadata_only=False)
+                video_path = video_info['video_path']
+                print(f"  Downloaded: {video_path}")
+
+                transcript_result = transcriber.transcribe(video_path)
+                transcript_text = transcript_result['text']
+                print(f"  Source: Whisper ({settings.transcription_service})")
+        else:
+            raise ValueError(f"Invalid TRANSCRIPTION_METHOD: {method}. Must be 'youtube', 'whisper', or 'chained'.")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(transcript_text, encoding='utf-8')

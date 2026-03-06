@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     output_dir: Path = Field(default=PROJECT_ROOT / "output")
 
     # Service preferences
+    transcription_method: str = Field(default="chained", description="youtube (YouTube API only), whisper (Whisper only), or chained (try YouTube, fallback to Whisper)")
     transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
     condenser_service: str = Field(default="openai", description="openai or anthropic")
     voice_service: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
