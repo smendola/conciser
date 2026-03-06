@@ -17,6 +17,12 @@
             {{ html_content | safe }}
         </div>
 
+        <div class="download-section">
+            <a href="/api/download/{{ job_id }}?cid={{ client_id }}&download=1" class="download-btn">
+                📥 Download as Markdown
+            </a>
+        </div>
+
         <div class="footer">
             <p><strong>NBJ Condenser</strong></p>
         </div>

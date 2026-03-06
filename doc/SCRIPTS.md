@@ -5,11 +5,13 @@ This document explains all deployment and setup scripts.
 ## 🚀 Quick Start
 
 **For a brand new VM:**
+
 ```bash
 ./setup-new-vm.sh
 ```
 
 **For updates to existing VM:**
+
 ```bash
 ./deploy.sh
 ```
@@ -19,10 +21,12 @@ This document explains all deployment and setup scripts.
 ### Infrastructure / One-Time Setup
 
 #### `terraform-vm.sh`
-**Purpose:** Install all system-level dependencies on the VM  
-**Run from:** Local machine  
-**Frequency:** Once per new VM  
+
+**Purpose:** Install all system-level dependencies on the VM\
+**Run from:** Local machine\
+**Frequency:** Once per new VM\
 **What it does:**
+
 - Updates system packages (yum update)
 - Installs EPEL repository
 - Installs Python 3 + development tools
@@ -33,6 +37,7 @@ This document explains all deployment and setup scripts.
 - Installs yt-dlp globally
 
 **Usage:**
+
 ```bash
 ssh conciser 'bash -s' < terraform-vm.sh
 ```
@@ -42,10 +47,12 @@ ssh conciser 'bash -s' < terraform-vm.sh
 ---
 
 #### `setup-new-vm.sh`
-**Purpose:** Orchestrate complete VM setup in one command  
-**Run from:** Local machine  
-**Frequency:** Once per new VM  
+
+**Purpose:** Orchestrate complete VM setup in one command\
+**Run from:** Local machine\
+**Frequency:** Once per new VM\
 **What it does:**
+
 1. Checks SSH connectivity
 2. Runs `terraform-vm.sh` (installs dependencies)
 3. Runs `deploy.sh` (deploys code)
@@ -54,6 +61,7 @@ ssh conciser 'bash -s' < terraform-vm.sh
 6. Runs `setup-cron.sh` (sets up cleanup job)
 
 **Usage:**
+
 ```bash
 ./setup-new-vm.sh          # Uses 'conciser' host
 ./setup-new-vm.sh myhost   # Use custom SSH host
@@ -64,16 +72,19 @@ ssh conciser 'bash -s' < terraform-vm.sh
 ---
 
 #### `setup-firewall.sh`
-**Purpose:** Configure VM firewall to allow port 5000  
-**Run from:** Local machine  
-**Frequency:** Once per new VM  
+
+**Purpose:** Configure VM firewall to allow port 5000\
+**Run from:** Local machine\
+**Frequency:** Once per new VM\
 **What it does:**
+
 - Starts and enables firewalld
 - Opens port 5000/tcp
 - Verifies the rule was added
 - Displays Oracle Cloud Security List instructions
 
 **Usage:**
+
 ```bash
 ssh conciser 'bash -s' < setup-firewall.sh
 ```
@@ -83,15 +94,18 @@ ssh conciser 'bash -s' < setup-firewall.sh
 ---
 
 #### `setup-cron.sh`
-**Purpose:** Set up daily cleanup cron job  
-**Run from:** Local machine  
-**Frequency:** Once per new VM  
+
+**Purpose:** Set up daily cleanup cron job\
+**Run from:** Local machine\
+**Frequency:** Once per new VM\
 **What it does:**
+
 - Makes `scripts/cleanup.sh` executable
 - Adds cron job to run daily at 3 AM
 - Shows current crontab
 
 **Usage:**
+
 ```bash
 ssh conciser 'bash -s' < setup-cron.sh
 ```
@@ -101,10 +115,12 @@ ssh conciser 'bash -s' < setup-cron.sh
 ### Application Deployment
 
 #### `deploy.sh`
-**Purpose:** Deploy code updates to the VM  
-**Run from:** Local machine  
-**Frequency:** Every time you make code changes  
+
+**Purpose:** Deploy code updates to the VM\
+**Run from:** Local machine\
+**Frequency:** Every time you make code changes\
 **What it does:**
+
 1. Commits local changes to git
 2. Pushes to GitHub
 3. SSHs to VM
@@ -114,6 +130,7 @@ ssh conciser 'bash -s' < setup-cron.sh
 7. Restarts Flask server
 
 **Usage:**
+
 ```bash
 ./deploy.sh
 ```
@@ -123,13 +140,16 @@ ssh conciser 'bash -s' < setup-cron.sh
 ---
 
 #### `deploy-env.sh`
-**Purpose:** Copy .env file to VM  
-**Run from:** Local machine  
-**Frequency:** Once per new VM, or when .env changes  
+
+**Purpose:** Copy .env file to VM\
+**Run from:** Local machine\
+**Frequency:** Once per new VM, or when .env changes\
 **What it does:**
+
 - Copies `.env` file via SCP to the VM
 
 **Usage:**
+
 ```bash
 ./deploy-env.sh
 ```
@@ -141,17 +161,19 @@ ssh conciser 'bash -s' < setup-cron.sh
 ### Maintenance
 
 #### `scripts/cleanup.sh`
-**Purpose:** Clean up old temp and output files  
-**Run from:** VM (automatically via cron)  
-**Frequency:** Daily at 3 AM (via cron)  
+
+**Purpose:** Clean up old temp and output files\
+**Run from:** VM (automatically via cron)\
+**Frequency:** Daily at 3 AM (via cron)\
 **What it does:**
+
 - Deletes files from `temp/` older than 7 days
 - Deletes files from `output/` older than 7 days
-- Deletes files from `server/output/` older than 7 days
 - Deletes log files older than 30 days
 - Removes empty directories
 
 **Manual usage:**
+
 ```bash
 ssh conciser '/home/opc/nbj-condenser/scripts/cleanup.sh'
 ```
@@ -168,10 +190,9 @@ After setup, the VM will have:
     ├── .env                    # API keys (copied via deploy-env.sh)
     ├── venv/                   # Python virtual environment
     ├── temp/                   # Temporary processing files
-    ├── output/                 # CLI output files
+    ├── output/                 # All output files (CLI and server)
     ├── server/
-    │   ├── app.py             # Flask server
-    │   └── output/            # Server output files
+    │   └── app.py             # Flask server
     ├── scripts/
     │   └── cleanup.sh         # Cleanup script (runs via cron)
     ├── server.log             # Server logs
@@ -183,6 +204,7 @@ After setup, the VM will have:
 ## 🔄 Typical Workflow
 
 ### First Time Setup
+
 ```bash
 ./setup-new-vm.sh
 # Wait 5-10 minutes
@@ -191,6 +213,7 @@ After setup, the VM will have:
 ```
 
 ### Daily Development
+
 ```bash
 # Make code changes
 ./deploy.sh
@@ -199,6 +222,7 @@ After setup, the VM will have:
 ```
 
 ### Updating Environment Variables
+
 ```bash
 # Edit .env locally
 ./deploy-env.sh
@@ -210,6 +234,7 @@ After setup, the VM will have:
 ## 🐛 Troubleshooting Scripts
 
 ### SSH connection fails
+
 ```bash
 # Test SSH connection
 ssh conciser 'echo "SSH OK"'
@@ -219,6 +244,7 @@ cat ~/.ssh/config | grep -A5 conciser
 ```
 
 ### terraform-vm.sh fails
+
 ```bash
 # Check internet connectivity on VM
 ssh conciser 'ping -c 3 google.com'
@@ -231,6 +257,7 @@ ssh conciser 'bash -x -s' < terraform-vm.sh
 ```
 
 ### deploy.sh fails
+
 ```bash
 # Check git status
 ssh conciser 'cd nbj-condenser && git status'
@@ -243,6 +270,7 @@ ssh conciser 'cat nbj-condenser/server.log'
 ```
 
 ### Firewall issues
+
 ```bash
 # Check firewalld status
 ssh conciser 'sudo systemctl status firewalld'

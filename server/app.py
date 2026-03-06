@@ -23,75 +23,15 @@ from src.config import get_settings
 from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
 from src.utils.prompt_templates import get_strategy_description
+from server.job_service import JobService
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from Chrome extension
 
-# In-memory job storage (restored from disk on startup)
-jobs = {}
-current_job_lock = threading.Lock()
-currently_processing = None
+# Job service for concurrent processing
+job_service = JobService(max_workers=3)
 
 MOBILE_USER_AGENT_PATTERN = re.compile(r"(android|iphone|ipad|ipod|blackberry|iemobile|opera mini)", re.IGNORECASE)
-
-
-def restore_jobs_from_disk():
-    """Restore completed jobs from output/jobs/ directory on server startup."""
-    settings = get_settings()
-    jobs_dir = settings.output_dir / 'jobs'
-
-    if not jobs_dir.exists():
-        print("No jobs directory found, starting fresh")
-        return
-
-    restored_count = 0
-    for file_path in jobs_dir.glob('*'):
-        if file_path.is_file():
-            job_id = file_path.stem
-            ext = file_path.suffix.lower()
-
-            # Determine job type from extension
-            if ext == '.md':
-                job_type = 'takeaways'
-            elif ext in ['.mp4', '.mp3']:
-                job_type = 'condense'
-            else:
-                continue  # Skip unknown file types
-
-            # Create a completed job entry
-            youtube_url = '[restored]'
-            title = None
-            video_id_match = re.search(r"(?:^|_)vid-([a-zA-Z0-9_-]{11})(?:_|$)", file_path.stem)
-            if video_id_match:
-                video_id = video_id_match.group(1)
-                youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-                title = fetch_video_title(youtube_url)
-
-            job = Job(job_id, youtube_url=youtube_url, job_type=job_type, title=title)
-            job.status = 'completed'
-            job.output_file = str(file_path)
-            job.created_at = datetime.fromtimestamp(file_path.stat().st_mtime)
-            job.completed_at = job.created_at
-
-            jobs[job_id] = job
-            restored_count += 1
-
-    print(f"Restored {restored_count} completed jobs from disk")
-
-
-class Job:
-    def __init__(self, job_id, youtube_url, job_type='condense', title=None, client_id=None):
-        self.id = job_id
-        self.url = youtube_url
-        self.title = title  # Video title
-        self.job_type = job_type  # 'condense' or 'takeaways'
-        self.status = "queued"  # queued, processing, completed, error
-        self.progress = ""
-        self.output_file = None
-        self.error = None
-        self.created_at = datetime.now()
-        self.completed_at = None
-        self.client_id = client_id
 
 
 def _extract_client_id():
@@ -129,100 +69,6 @@ def fetch_video_title(youtube_url):
     except Exception as e:
         print(f"Failed to fetch video title: {e}")
         return None
-
-
-def progress_callback(stage: str, message: str):
-    """Called by pipeline to update progress."""
-    global currently_processing
-    if currently_processing:
-        job = jobs.get(currently_processing)
-        if job:
-            job.progress = f"[{stage}] {message}"
-            print(f"[{job.id}] {job.progress}")
-
-
-def process_video(job_id):
-    """Process video in background thread."""
-    global currently_processing
-
-    try:
-        job = jobs[job_id]
-        job.status = "processing"
-
-        # Initialize pipeline
-        settings = get_settings()
-        pipeline = CondenserPipeline(settings)
-
-        # Debug: Print actual Python API call in magenta
-        DEBUG_SHOW_PROMPT = False
-        if DEBUG_SHOW_PROMPT:
-            params = {
-                'video_url': job.url,
-                'aggressiveness': 5,
-                'quality': '1080p',
-                'video_gen_mode': 'slideshow',
-                'tts_provider': 'edge',
-                'voice_id': 'en-GB-RyanNeural',
-                'skip_voice_clone': True,
-                'progress_callback': 'progress_callback',
-                'resume': False
-            }
-            print(f"\033[35mpipeline.run({params})\033[0m")
-
-        # Run with job parameters (use stored values or defaults)
-        video_mode = getattr(job, 'video_mode', 'slideshow')
-
-        # Output to: output/jobs/{job_id}.{ext}
-        jobs_dir = settings.output_dir / 'jobs'
-        jobs_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine output file extension
-        output_ext = 'mp3' if video_mode == 'audio_only' else 'mp4'
-        video_id = None
-        try:
-            from src.pipeline import CondenserPipeline as _CP
-            video_id = _CP._extract_video_id(job.url)  # type: ignore[attr-defined]
-        except Exception:
-            video_id = None
-
-        suffix = f"_vid-{video_id}" if video_id else ""
-        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
-
-        result = pipeline.run(
-            video_url=job.url,
-            aggressiveness=getattr(job, 'aggressiveness', 5),
-            output_path=output_path,
-            quality="1080p",
-            video_gen_mode=video_mode,
-            tts_provider="edge",
-            voice_id=getattr(job, 'voice', 'en-GB-RyanNeural'),
-            tts_rate=getattr(job, 'speech_rate', '+0%'),
-            skip_voice_clone=True,
-            progress_callback=progress_callback,
-            resume=False,
-            prepend_intro=getattr(job, 'prepend_intro', False)
-        )
-
-        job.output_file = str(output_path)
-        job.status = "completed"
-        job.completed_at = datetime.now()
-        print(f"[{job_id}] Completed: {job.output_file}")
-
-    except Exception as e:
-        job = jobs[job_id]
-        job.status = "error"
-        job.error = str(e)
-        job.progress = ""
-        job.completed_at = datetime.now()
-        print(f"[{job_id}] Error: {e}")
-
-    finally:
-        with current_job_lock:
-            currently_processing = None
-
-
-# Restore jobs on startup (after Job class is defined)
-restore_jobs_from_disk()
 
 
 def is_mobile_user_agent(user_agent: str) -> bool:
@@ -282,8 +128,6 @@ def download_android_apk():
 @app.route('/api/condense', methods=['POST'])
 def condense():
     """Submit a YouTube URL for processing."""
-    global currently_processing
-
     client_id, error_response = _client_id_response()
     if error_response:
         return error_response
@@ -317,31 +161,22 @@ def condense():
     if not isinstance(aggressiveness, int) or aggressiveness < 1 or aggressiveness > 10:
         return jsonify({'error': 'aggressiveness must be between 1 and 10'}), 400
 
-    # Check if already processing
-    with current_job_lock:
-        if currently_processing:
-            return jsonify({
-                'error': 'Server is busy processing another video',
-                'current_job': currently_processing
-            }), 429
-
-        # Create job and store parameters
-        job_id = str(uuid.uuid4())[:8]
-        title = fetch_video_title(youtube_url)
-        job = Job(job_id, youtube_url, job_type='condense', title=title, client_id=client_id)
-        job.aggressiveness = aggressiveness
-        job.voice = voice
-        job.speech_rate = speech_rate
-        job.video_mode = video_mode
-        job.prepend_intro = prepend_intro
-        jobs[job_id] = job
-        currently_processing = job_id
-
-    # Start processing in background
-    thread = threading.Thread(target=process_video, args=(job_id,))
-    thread.daemon = True
-    thread.start()
-
+    # Submit to JobService
+    title = fetch_video_title(youtube_url)
+    params = {
+        'aggressiveness': aggressiveness,
+        'voice': voice,
+        'speech_rate': speech_rate,
+        'video_mode': video_mode,
+        'prepend_intro': prepend_intro,
+    }
+    job_id = job_service.create_job(
+        url=youtube_url,
+        job_type='condense',
+        title=title,
+        client_id=client_id,
+        params=params,
+    )
     return jsonify({
         'job_id': job_id,
         'status': 'queued',
@@ -352,8 +187,6 @@ def condense():
 @app.route('/api/takeaways', methods=['POST'])
 def takeaways():
     """Extract takeaways from a YouTube video."""
-    global currently_processing
-
     client_id, error_response = _client_id_response()
     if error_response:
         return error_response
@@ -380,154 +213,25 @@ def takeaways():
         print(f"Voice: {voice}")
     print(f"{'='*60}\n")
 
-    # Check if already processing (takeaways can run concurrently with condense in the CLI,
-    # but for simplicity in the server, we'll use the same lock)
-    with current_job_lock:
-        if currently_processing:
-            return jsonify({
-                'error': 'Server is busy processing another job',
-                'current_job': currently_processing
-            }), 429
-
-        # Create job
-        job_id = str(uuid.uuid4())[:8]
-        title = fetch_video_title(youtube_url)
-        job = Job(job_id, youtube_url, job_type='takeaways', title=title, client_id=client_id)
-        job.top = top
-        job.format_type = format_type
-        job.voice = voice
-        job.progress = "[init] Queued takeaways extraction"
-        jobs[job_id] = job
-        currently_processing = job_id
-
-    # Start processing in background
-    thread = threading.Thread(target=process_takeaways, args=(job_id,))
-    thread.daemon = True
-    thread.start()
-
+    # Submit to JobService
+    title = fetch_video_title(youtube_url)
+    params = {
+        'top': top,
+        'format_type': format_type,
+        'voice': voice,
+    }
+    job_id = job_service.create_job(
+        url=youtube_url,
+        job_type='takeaways',
+        title=title,
+        client_id=client_id,
+        params=params,
+    )
     return jsonify({
         'job_id': job_id,
         'status': 'queued',
         'message': 'Takeaways extraction started'
     })
-
-
-def process_takeaways(job_id):
-    """Process takeaways extraction in background thread."""
-    global currently_processing
-
-    try:
-        job = jobs[job_id]
-        job.status = "processing"
-        job.progress = "[setup] Preparing takeaways job"
-
-        # Use takeaways CLI command via subprocess
-        from pathlib import Path
-
-        settings = get_settings()
-        temp_dir = settings.temp_dir
-
-        # Build command (use nbj command directly instead of python -m)
-        # Output to: output/jobs/{job_id}.{ext}
-        settings = get_settings()
-        jobs_dir = settings.output_dir / 'jobs'
-        jobs_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine output file extension
-        output_ext = 'mp3' if job.format_type == 'audio' else 'md'
-        video_id = None
-        try:
-            from src.pipeline import CondenserPipeline as _CP
-            video_id = _CP._extract_video_id(job.url)  # type: ignore[attr-defined]
-        except Exception:
-            video_id = None
-
-        suffix = f"_vid-{video_id}" if video_id else ""
-        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
-
-        cmd = [
-            'nbj',
-            'takeaways', job.url,
-            '--format', job.format_type,
-            '--output', str(output_path.with_suffix(''))  # nbj adds extension
-        ]
-
-        if job.top:
-            cmd.extend(['--top', str(job.top)])
-
-        if job.voice:
-            cmd.extend(['--voice', job.voice])
-
-        # Run command (stream output so progress updates are visible while running)
-        job.progress = "[FETCH] Starting takeaways job"
-        print(f"[{job_id}] Running: {' '.join(cmd)}")
-
-        stage_line_re = re.compile(r"^\[(?P<stage>[A-Z_]+)\]\s*(?P<message>.*)$")
-        stderr_lines = []
-
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            cwd=Path(__file__).parent.parent,
-        )
-
-        assert proc.stdout is not None
-        assert proc.stderr is not None
-
-        def _drain_stderr():
-            for line in proc.stderr:
-                line = line.rstrip("\n")
-                if line:
-                    stderr_lines.append(line)
-                    print(f"[{job_id}] STDERR: {line}")
-
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
-
-        for raw_line in proc.stdout:
-            line = raw_line.rstrip("\n")
-            if not line:
-                continue
-
-            print(f"[{job_id}] STDOUT: {line}")
-            m = stage_line_re.match(line)
-            if m:
-                progress_callback(m.group('stage'), m.group('message'))
-
-        return_code = proc.wait()
-        stderr_thread.join(timeout=1)
-
-        if return_code != 0:
-            stderr_text = "\n".join(stderr_lines).strip()
-            raise RuntimeError(
-                f"Takeaways extraction failed (exit={return_code}): {stderr_text or 'No stderr'}"
-            )
-
-        # Output file should be at the path we specified: output/jobs/{job_id}.{ext}
-        if not output_path.exists():
-            raise RuntimeError(f"Takeaways file not found at expected location: {output_path}")
-
-        job.output_file = str(output_path)
-        job.progress = "[FINALIZE] Takeaways ready"
-
-        job.status = "completed"
-        job.completed_at = datetime.now()
-        print(f"[{job_id}] Completed: {job.output_file}")
-
-    except Exception as e:
-        job = jobs[job_id]
-        job.status = "error"
-        job.error = str(e)
-        job.progress = ""
-        job.completed_at = datetime.now()
-        print(f"[{job_id}] Error: {e}")
-
-    finally:
-        with current_job_lock:
-            currently_processing = None
 
 
 @app.route('/api/status/<job_id>', methods=['GET'])
@@ -537,32 +241,38 @@ def status(job_id):
     if error_response:
         return error_response
 
-    job = jobs.get(job_id)
-
+    # Query JobService
+    job = job_service.get_job(job_id)
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
-    if job.client_id and job.client_id != client_id:
+    if job['client_id'] and job['client_id'] != client_id:
         return jsonify({'error': 'Job not found'}), 404
 
     response = {
-        'job_id': job.id,
-        'status': job.status,
-        'progress': job.progress or None,
-        'created_at': job.created_at.isoformat(),
+        'job_id': job['id'],
+        'status': job['status'],
+        'progress': job.get('progress') or None,
+        'created_at': job['created_at'],
     }
 
-    if job.completed_at:
-        response['completed_at'] = job.completed_at.isoformat()
+    if job['completed_at']:
+        response['completed_at'] = job['completed_at']
 
-    if job.status == 'completed':
-        download_url = f"/api/download/{job.id}"
-        if job.client_id:
-            download_url += f"?cid={quote_plus(job.client_id)}"
+    if job['status'] == 'completed' and job['output_file']:
+        download_url = f"/api/download/{job['id']}"
+        if job['client_id']:
+            download_url += f"?cid={quote_plus(job['client_id'])}"
         response['download_url'] = download_url
 
-    if job.error:
-        response['error'] = job.error
+    if job['error']:
+        response['error'] = job['error']
+
+    # Add queue position if queued
+    if job['status'] == 'queued':
+        position = job_service.get_queue_position(job_id)
+        if position is not None:
+            response['queue_position'] = position
 
     return jsonify(response)
 
@@ -574,65 +284,71 @@ def download(job_id):
     if error_response:
         return error_response
 
-    job = jobs.get(job_id)
-
+    # Query JobService
+    job = job_service.get_job(job_id)
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
-    if job.status != 'completed':
-        return jsonify({'error': 'File not ready yet'}), 400
-
-    if job.client_id and job.client_id != client_id:
+    if job['client_id'] and job['client_id'] != client_id:
         return jsonify({'error': 'Job not found'}), 404
 
-    if not job.output_file or not Path(job.output_file).exists():
+    if job['status'] != 'completed' or not job['output_file']:
+        return jsonify({'error': 'Job not ready for download'}), 400
+
+    output_path = Path(job['output_file'])
+    if not output_path.is_absolute():
+        output_path = Path(__file__).parent.parent / output_path
+    
+    if not output_path.exists():
         return jsonify({'error': 'Output file not found'}), 404
 
-    # Detect file type and set appropriate MIME type
-    # Convert to absolute path to ensure Flask resolves it correctly
-    file_path = Path(job.output_file)
-    if not file_path.is_absolute():
-        # If somehow stored as relative, make it absolute from project root
-        file_path = Path(__file__).parent.parent / file_path
-
-    # For markdown files, render as HTML
-    if file_path.suffix.lower() == '.md':
-        import markdown
-        import re
-
-        # Read markdown content
-        md_content = file_path.read_text(encoding='utf-8')
-
-        # Extract first H1 heading for page title (e.g., "# Key Takeaways: Video Title")
-        # Then remove it from the content to avoid duplication
-        page_title = "🎯 Key Takeaways"
-        title_match = re.match(r'^#\s+(.+?)$', md_content, re.MULTILINE)
-        if title_match:
-            page_title = "🎯 " + title_match.group(1)
-            # Remove the first H1 from content
-            md_content = re.sub(r'^#\s+.+?$', '', md_content, count=1, flags=re.MULTILINE).lstrip()
-
-        # Convert to HTML
-        html_content = markdown.markdown(md_content, extensions=['extra', 'nl2br'])
-        return render_template(
-            'takeaways.html',
-            page_title=page_title,
-            job_id=job_id,
-            html_content=html_content,
-        )
-
-    # For audio/video files, send directly
-    elif file_path.suffix.lower() == '.mp3':
-        mimetype = 'audio/mpeg'
-    else:
-        mimetype = 'video/mp4'
-
+    # Check if download is forced (for markdown files)
+    force_download = request.args.get('download') == '1'
+    
+    # If it's a markdown file and not forcing download, render as HTML
+    if output_path.suffix == '.md' and not force_download:
+        try:
+            import markdown
+            
+            # Read the markdown content
+            md_content = output_path.read_text(encoding='utf-8')
+            
+            # Extract title from markdown content
+            page_title = "Takeaways"
+            lines = md_content.strip().split('\n')
+            for line in lines:
+                if line.startswith('# '):
+                    page_title = line[2:].strip()
+                    break
+            
+            # Remove the title line from markdown content to prevent duplicate
+            md_content = md_content.strip()
+            if md_content.startswith('# '):
+                first_newline = md_content.find('\n')
+                if first_newline != -1:
+                    md_content = md_content[first_newline + 1:].strip()
+                else:
+                    md_content = ""  # Only title was in the file
+            
+            # Convert to HTML
+            html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
+            
+            # Render using the existing template
+            return render_template('takeaways.html', 
+                                 job_id=job_id, 
+                                 page_title=page_title,
+                                 html_content=html_content,
+                                 client_id=client_id)
+            
+        except Exception as e:
+            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+    
+    # For non-markdown files (audio, video), serve as attachment
     return send_file(
-        str(file_path.absolute()),
-        mimetype=mimetype,
-        as_attachment=False
+        output_path,
+        as_attachment=True,
+        download_name=output_path.name
     )
-
 
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
@@ -642,61 +358,41 @@ def list_jobs():
         return error_response
 
     jobs_list = []
-    for job in jobs.values():
-        if job.client_id and job.client_id != client_id:
-            continue
-
+    for job in job_service.list_jobs(client_id=client_id):
         # Check if output file exists
         file_exists = False
-        if job.output_file:
-            file_path = Path(job.output_file)
+        if job['output_file']:
+            file_path = Path(job['output_file'])
             if not file_path.is_absolute():
                 file_path = Path(__file__).parent.parent / file_path
             file_exists = file_path.exists()
 
-        # Best-effort title fill-in (helps Chrome extension recent jobs list)
-        if not getattr(job, 'title', None):
-            derived_url = None
-
-            if getattr(job, 'url', None) and job.url != '[restored]':
-                derived_url = job.url
-            else:
-                output_file = getattr(job, 'output_file', None)
-                if output_file:
-                    stem = Path(output_file).stem
-                    video_id_match = re.search(r"(?:^|_)vid-([a-zA-Z0-9_-]{11})(?:_|$)", stem)
-                    if video_id_match:
-                        derived_url = f"https://www.youtube.com/watch?v={video_id_match.group(1)}"
-                        job.url = derived_url
-
-            if derived_url:
-                title = fetch_video_title(derived_url)
-                if title:
-                    job.title = title
-
         jobs_list.append({
-            'job_id': job.id,
-            'url': job.url,
-            'title': getattr(job, 'title', None),
-            'status': job.status,
-            'job_type': job.job_type,
+            'job_id': job['id'],
+            'url': job['url'],
+            'title': job.get('title'),
+            'status': job['status'],
+            'job_type': job['job_type'],
             'file_exists': file_exists,
-            'created_at': job.created_at.isoformat()
+            'created_at': job['created_at']
         })
 
+    running_jobs = job_service.get_running_jobs()
     return jsonify({
         'jobs': jobs_list,
-        'currently_processing': currently_processing
+        'currently_processing': running_jobs
     })
 
 
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint."""
+    running_jobs = job_service.get_running_jobs()
     return jsonify({
         'status': 'ok',
-        'busy': currently_processing is not None,
-        'total_jobs': len(jobs)
+        'busy': len(running_jobs) > 0,
+        'running_jobs': len(running_jobs),
+        'max_workers': job_service.max_workers
     })
 
 
@@ -772,5 +468,12 @@ if __name__ == '__main__':
     # Avoid printing twice when Werkzeug reloads the dev server
     if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         _print_startup_banner()
+
+    # Start job service worker loop
+    job_service.start()
+    import threading
+    worker_thread = threading.Thread(target=job_service.start_worker_loop, daemon=True)
+    worker_thread.start()
+    print("Concurrent mode enabled with JobService")
 
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)

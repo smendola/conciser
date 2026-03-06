@@ -9,7 +9,6 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 TEMP_DIR="$PROJECT_DIR/temp"
 OUTPUT_DIR="$PROJECT_DIR/output"
-SERVER_OUTPUT_DIR="$PROJECT_DIR/server/output"
 
 # Delete files older than 7 days
 DAYS_OLD=7
@@ -31,14 +30,6 @@ if [ -d "$OUTPUT_DIR" ]; then
     find "$OUTPUT_DIR" -type f -mtime +$DAYS_OLD -delete
     OUTPUT_SIZE=$(du -sh "$OUTPUT_DIR" 2>/dev/null | cut -f1)
     echo "  Output dir size: $OUTPUT_SIZE"
-fi
-
-# Cleanup server/output/
-if [ -d "$SERVER_OUTPUT_DIR" ]; then
-    echo "Cleaning $SERVER_OUTPUT_DIR..."
-    find "$SERVER_OUTPUT_DIR" -type f -mtime +$DAYS_OLD -delete
-    SERVER_OUTPUT_SIZE=$(du -sh "$SERVER_OUTPUT_DIR" 2>/dev/null | cut -f1)
-    echo "  Server output dir size: $SERVER_OUTPUT_SIZE"
 fi
 
 # Cleanup old log files (keep last 30 days)

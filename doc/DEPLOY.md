@@ -88,7 +88,6 @@ This adds a cron job that runs daily at 3 AM to delete:
 
 - `temp/` files older than 7 days
 - `output/` files older than 7 days
-- `server/output/` files older than 7 days
 - Log files older than 30 days
 
 ## Daily Usage
@@ -192,7 +191,7 @@ ssh conciser 'bash -s' < setup-firewall.sh
 ssh conciser 'df -h'
 
 # Check project size
-ssh conciser 'du -sh nbj-condenser/{temp,output,server/output}'
+ssh conciser 'du -sh nbj-condenser/{temp,output}'
 
 # Run cleanup manually
 ssh conciser '/home/opc/nbj-condenser/scripts/cleanup.sh'
@@ -212,10 +211,9 @@ ssh conciser 'bash -s' < setup-vm.sh
 └── nbj-condenser/           # Git repo
     ├── venv/                # Python virtual environment
     ├── temp/                # Temporary processing files
-    ├── output/              # CLI output files
+    ├── output/              # All output files (CLI and server)
     ├── server/
-    │   ├── app.py
-    │   └── output/          # Server output files
+    │   └── app.py
     ├── scripts/
     │   └── cleanup.sh       # Cron cleanup script
     ├── server.log           # Server logs

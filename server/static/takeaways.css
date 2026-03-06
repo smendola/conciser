@@ -69,11 +69,12 @@ body {
 .content p {
     margin-bottom: 15px;
     color: #555;
+    font-size: 17px;
 }
 
 .content ul,
 .content ol {
-    margin-left: 30px;
+    margin-left: 18px;
     margin-bottom: 15px;
 }
 
@@ -89,7 +90,7 @@ body {
 
 .content em {
     font-style: normal;
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 500;
     color: #666;
 }
@@ -123,6 +124,31 @@ body {
     margin: 20px 0;
     color: #666;
     font-style: italic;
+}
+
+.download-section {
+    text-align: center;
+    padding: 20px 40px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.download-btn {
+    display: inline-block;
+    background: #1a73e8;
+    color: white;
+    padding: 12px 24px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.9em;
+    transition: background-color 0.2s ease;
+}
+
+.download-btn:hover {
+    background: #1557b0;
+    text-decoration: none;
+    color: white;
 }
 
 .footer {
@@ -163,6 +189,15 @@ body {
     .content ul,
     .content ol {
         margin-left: 20px;
+    }
+
+    .download-section {
+        padding: 15px 18px;
+    }
+
+    .download-btn {
+        padding: 10px 20px;
+        font-size: 0.85em;
     }
 
     .footer {

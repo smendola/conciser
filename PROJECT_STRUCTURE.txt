@@ -24,7 +24,6 @@ nbj-condenser/
 ├── server/
 │   ├── app.py                     # Flask REST server (port 5000)
 │   ├── requirements.txt           # Server-specific dependencies
-│   ├── output/                    # Server-generated output files
 │   └── README.md
 │
 ├── chrome-extension/
