@@ -374,6 +374,14 @@ class VideoDownloader:
 
                 video_path = video_files[0]
                 logger.info(f"Download completed: {video_path}")
+                
+                # Find and log thumbnail file
+                thumbnail_files = [f for f in downloaded_files if f.suffix.lower() in ['.webp', '.jpg', '.png']]
+                if thumbnail_files:
+                    thumbnail_path = thumbnail_files[0]
+                    logger.info(f"Thumbnail saved to: {thumbnail_path}")
+                else:
+                    logger.warning("No thumbnail file found")
 
                 metadata = {
                     'video_id': video_id,
