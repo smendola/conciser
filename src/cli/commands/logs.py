@@ -3,6 +3,8 @@ from pathlib import Path
 import sys
 import time
 import signal
+import os
+import shutil
 
 import click
 from colorama import Fore, Style
@@ -13,6 +15,22 @@ from ...config import get_settings
 def _suppress_httpx_info_logs() -> None:
     import logging as stdlib_logging
     stdlib_logging.getLogger('httpx').setLevel(stdlib_logging.WARNING)
+
+
+def _get_terminal_width() -> int:
+    """Get terminal width, fallback to 80 if unavailable."""
+    try:
+        return shutil.get_terminal_size().columns
+    except:
+        return 80
+
+
+def _calculate_message_width(total_width: int, job_id_width: int, stage_width: int) -> int:
+    """Calculate appropriate message width based on terminal width."""
+    # Account for timestamps (20), job_id, stage, and separators (3*4 spaces)
+    used_width = 20 + job_id_width + stage_width + 12  # 3*4 spaces between columns
+    message_width = total_width - used_width
+    return max(20, min(message_width, 200))  # Min 20, Max 200 chars
 
 
 from ..app import cli  # noqa: E402
@@ -36,7 +54,12 @@ from ..app import cli  # noqa: E402
     default=False,
     help='Live tail - follow new events as they arrive'
 )
-def logs(job_id, limit, stage, follow):
+@click.option(
+    '--width', '-w',
+    type=int,
+    help='Width of message column (auto-detected from terminal if not specified)'
+)
+def logs(job_id, limit, stage, follow, width):
     """View pipeline logs from job processing.
 
     Examples:
@@ -45,6 +68,7 @@ def logs(job_id, limit, stage, follow):
         nbj logs f8ab4b2a           # Show events for specific job
         nbj logs -s TRANSCRIBE      # Show only transcription events
         nbj logs --follow -s ERROR  # Live tail only error events
+        nbj logs -w 120             # Set message column width to 120 chars
     """
     _suppress_httpx_info_logs()
 
@@ -60,10 +84,17 @@ def logs(job_id, limit, stage, follow):
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         
-        if follow:
-            _tail_logs(conn, job_id, stage, limit)
+        # Determine message width
+        if width is None:
+            terminal_width = _get_terminal_width()
+            width = terminal_width
         else:
-            _show_logs(conn, job_id, stage, limit)
+            terminal_width = width
+        
+        if follow:
+            _tail_logs(conn, job_id, stage, limit, terminal_width)
+        else:
+            _show_logs(conn, job_id, stage, limit, terminal_width)
             
         conn.close()
         
@@ -75,7 +106,7 @@ def logs(job_id, limit, stage, follow):
         sys.exit(1)
 
 
-def _show_logs(conn, job_id, limit, stage):
+def _show_logs(conn, job_id, stage, limit, terminal_width):
     """Show static logs."""
     # Build query
     query = """
@@ -106,14 +137,14 @@ def _show_logs(conn, job_id, limit, stage):
     
     # Display events (newest first, but we'll reverse for chronological display)
     events.reverse()
-    _display_events(events)
+    _display_events(events, terminal_width)
     
     # Show job info if specific job
     if job_id and events:
         _show_job_details(conn, job_id)
 
 
-def _tail_logs(conn, job_id, stage, limit):
+def _tail_logs(conn, job_id, stage, limit, terminal_width):
     """Live tail new events."""
     print(f"{Fore.CYAN}Starting live tail...{Style.RESET_ALL}")
     print(f"{Fore.CYAN}Press Ctrl+C to stop{Style.RESET_ALL}\n")
@@ -143,7 +174,7 @@ def _tail_logs(conn, job_id, stage, limit):
     # Show initial events (chronological order)
     if events:
         events.reverse()
-        _display_events(events)
+        _display_events(events, terminal_width)
         print(f"{Fore.CYAN}--- Initial events loaded ---{Style.RESET_ALL}\n")
     
     # Track last timestamp
@@ -178,7 +209,7 @@ def _tail_logs(conn, job_id, stage, limit):
             new_events = cursor.fetchall()
             
             if new_events:
-                _display_events(new_events)
+                _display_events(new_events, terminal_width)
                 if new_events:
                     last_timestamp = new_events[-1]['timestamp']
             
@@ -192,7 +223,7 @@ def _tail_logs(conn, job_id, stage, limit):
             time.sleep(1)
 
 
-def _display_events(events):
+def _display_events(events, terminal_width):
     """Display events with formatting."""
     if not events:
         return
@@ -200,11 +231,15 @@ def _display_events(events):
     # Calculate column widths
     job_id_width = max(12, max(len(str(event['job_id'])) for event in events))
     stage_width = max(12, max(len(str(event['stage'])) for event in events))
+    message_width = _calculate_message_width(terminal_width, job_id_width, stage_width)
     
     # Print header (only if not in tail mode)
     if not hasattr(_display_events, 'header_shown'):
-        print(f"{Fore.CYAN}{'TIMESTAMP':<20}  {'JOB ID':<{job_id_width}}  {'STAGE':<{stage_width}}  {'MESSAGE'}{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'-' * 20}  {'-' * job_id_width}  {'-' * stage_width}  {'-' * 50}{Style.RESET_ALL}")
+        header_message = "MESSAGE"
+        header_display = header_message[:message_width].ljust(message_width)
+        print(f"{Fore.CYAN}{'TIMESTAMP':<20}  {'JOB ID':<{job_id_width}}  {'STAGE':<{stage_width}}  {header_display}{Style.RESET_ALL}")
+        separator = "-" * message_width
+        print(f"{Fore.CYAN}{'-' * 20}  {'-' * job_id_width}  {'-' * stage_width}  {separator}{Style.RESET_ALL}")
         _display_events.header_shown = True
     
     # Print events
@@ -228,7 +263,8 @@ def _display_events(events):
         }.get(stage_str.upper(), '')
         
         # Truncate long messages
-        display_message = message[:47] + "..." if len(message) > 50 else message
+        display_message = message[:message_width-3] + "..." if len(message) > message_width else message
+        display_message = display_message.ljust(message_width)
         
         print(f"{timestamp:<20}  {job_id_str:<{job_id_width}}  {stage_color}{stage_str:<{stage_width}}{Style.RESET_ALL}  {display_message}")
 
