@@ -279,7 +279,7 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                 video_info = downloader.download(
                     url, 
                     metadata_only=False,
-                    folder_label=video_folder.name if video_folder else None
+                    existing_folder=video_folder
                 )
                 video_path = video_info['video_path']
                 print(f"  Downloaded: {video_path}")

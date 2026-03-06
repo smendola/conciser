@@ -555,12 +555,11 @@ class CondenserPipeline:
                     if video_url is None:
                         raise ValueError("Cannot download video: video_url not provided")
                     print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
-                    # Use existing video_folder if available from metadata download
                     download_result = self.downloader.download(
                         video_url, 
                         quality=quality, 
-                        folder_label=video_folder.name if video_folder else None,
-                        metadata_only=False
+                        metadata_only=False,
+                        existing_folder=video_folder
                     )
                     video_path = download_result['video_path']
                     print(f"  Downloaded: {video_path}")
@@ -575,12 +574,11 @@ class CondenserPipeline:
                 if video_url is None:
                     raise ValueError("Cannot download video: video_url not provided")
                 print(f"{Fore.YELLOW}Downloading video for Whisper transcription...{Style.RESET_ALL}")
-                # Use existing video_folder if available from metadata download
                 download_result = self.downloader.download(
                     video_url, 
                     quality=quality, 
-                    folder_label=video_folder.name if video_folder else None,
-                    metadata_only=False
+                    metadata_only=False,
+                    existing_folder=video_folder
                 )
                 video_path = download_result['video_path']
                 print(f"  Downloaded: {video_path}")

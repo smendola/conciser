@@ -241,7 +241,8 @@ class VideoDownloader:
         quality: str = "1080p",
         output_filename: str = None,
         folder_label: str = None,
-        metadata_only: bool = False
+        metadata_only: bool = False,
+        existing_folder: Path = None
     ) -> Dict[str, Any]:
         """
         Download video from URL into organized folder structure, or just fetch metadata.
@@ -252,6 +253,7 @@ class VideoDownloader:
             output_filename: Optional custom filename (overrides normalized naming)
             folder_label: Optional label for folder name (from videos.txt)
             metadata_only: If True, only fetch metadata and create folder, skip video download
+            existing_folder: Optional existing folder to reuse instead of creating new one
 
         Returns:
             Dictionary with:
@@ -295,9 +297,19 @@ class VideoDownloader:
 
             # Create video-specific folder: {video_id}_{normalized_title}/
             # Note: video_id is kept as-is (not lowercased or mangled)
-            video_folder = self.output_dir / f"{video_id}_{normalized_title}"
-            video_folder.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Using video folder: {video_folder}")
+            if existing_folder:
+                if existing_folder.exists():
+                    video_folder = existing_folder
+                    logger.info(f"Using existing folder: {video_folder}")
+                else:
+                    logger.warning(f"Existing folder {existing_folder} not found, creating new folder")
+                    video_folder = self.output_dir / f"{video_id}_{normalized_title}"
+                    video_folder.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Created new video folder: {video_folder}")
+            else:
+                video_folder = self.output_dir / f"{video_id}_{normalized_title}"
+                video_folder.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Using video folder: {video_folder}")
 
             # If metadata_only, return early without downloading
             if metadata_only:

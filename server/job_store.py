@@ -217,8 +217,12 @@ class JobStore:
         """Get the next queued job for processing."""
         with self._conn() as conn:
             query = """
-                SELECT * FROM jobs 
-                WHERE status = 'queued'
+                UPDATE jobs 
+                SET status = 'processing'
+                WHERE id = (
+                    SELECT id FROM (
+                        SELECT id FROM jobs 
+                        WHERE status = 'queued'
             """
             args = []
             if job_types:
@@ -226,9 +230,15 @@ class JobStore:
                 query += f" AND job_type IN ({placeholders})"
                 args.extend(job_types)
 
-            query += " ORDER BY created_at ASC LIMIT 1"
+            query += """
+                        ORDER BY created_at ASC LIMIT 1
+                    ) AS subquery
+                )
+                RETURNING *
+            """
 
             row = conn.execute(query, args).fetchone()
+            conn.commit()
             return dict(row) if row else None
 
     def reset_stale_processing_jobs(self) -> int:

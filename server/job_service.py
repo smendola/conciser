@@ -121,7 +121,7 @@ class JobService:
                 return
 
             logger.info(f"Found job {job_id} with type {job['job_type']}")
-            self.store.update_status(job_id, "processing")
+            # Status is already set to 'processing' in get_next_queued_job
 
             if job["job_type"] == "condense":
                 self._process_condense(job)
