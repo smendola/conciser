@@ -365,7 +365,7 @@ async function loadSettings() {
   }, saved);
 
   serverUrl = normalizeServerUrl(settings.serverUrl);
-
+  
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
   document.getElementById('speedSlider').value = settings.speechSpeed;
@@ -578,6 +578,22 @@ function startPolling() {
 async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentJobId}`);
+    
+    // If job returns 404, forget it ever existed
+    if (response.status === 404) {
+      clearInterval(pollInterval);
+      await clearJobStorage();
+      // Also clear completed jobs for this URL
+      const storage = await chrome.storage.local.get(['completedJobs']);
+      if (storage.completedJobs && storage.completedJobs[currentUrl]) {
+        delete storage.completedJobs[currentUrl];
+        await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+      }
+      showStatus('error', `Job ${currentJobId} not found on server`);
+      resetButton();
+      return;
+    }
+    
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -742,6 +758,22 @@ function startTakeawaysPolling() {
 async function checkTakeawaysStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
+    
+    // If job returns 404, forget it ever existed
+    if (response.status === 404) {
+      clearInterval(takeawaysPollInterval);
+      await clearTakeawaysJobStorage();
+      // Also clear completed takeaways jobs for this URL
+      const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+      if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+        delete storage.completedTakeawaysJobs[currentUrl];
+        await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+      }
+      showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
+      resetTakeawaysButton();
+      return;
+    }
+    
     const data = await response.json();
 
     if (data.status === 'completed') {

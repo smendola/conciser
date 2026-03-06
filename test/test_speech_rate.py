@@ -3,10 +3,12 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-
 from pathlib import Path
-from modules.edge_tts import EdgeTTS
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.modules.edge_tts import EdgeTTS
 
 def test_speech_rate():
     """Test different speech rates."""

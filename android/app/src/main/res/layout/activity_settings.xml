@@ -39,6 +39,23 @@
         android:text="@string/save"
         style="@style/Widget.Material3.Button" />
 
+    <Button
+        android:id="@+id/btnResetState"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="🗑️ Reset All State"
+        android:backgroundTint="@color/error"
+        style="@style/Widget.Material3.Button" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Clears all jobs, settings, and cached data"
+        android:textSize="12sp"
+        android:textColor="@color/text_secondary" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -108,6 +108,28 @@ async function resetToDefault() {
   await save();
 }
 
+async function resetAllState() {
+  if (!confirm('Are you sure you want to reset all state? This will clear:\n\n• All active and completed jobs\n• All settings\n• Cached voices and strategies\n• Client ID\n\nThis cannot be undone.')) {
+    return;
+  }
+
+  try {
+    // Clear all storage
+    await chrome.storage.local.clear();
+    
+    setStatus('All state has been reset. Reloading...', 'ok');
+    
+    // Reload the page to refresh everything
+    setTimeout(() => {
+      location.reload();
+    }, 1000);
+    
+  } catch (error) {
+    setStatus('Failed to reset state', 'error');
+    console.error('Reset state error:', error);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   await load();
 
@@ -130,6 +152,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       await resetToDefault();
     } catch (e) {
       setStatus('Failed to reset', 'error');
+      console.error(e);
+    }
+  });
+
+  document.getElementById('resetStateBtn').addEventListener('click', async () => {
+    try {
+      await resetAllState();
+    } catch (e) {
+      setStatus('Failed to reset state', 'error');
       console.error(e);
     }
   });

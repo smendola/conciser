@@ -113,6 +113,58 @@ def extract_audio(video_path: Path, output_path: Path, sample_rate: int = 16000)
         raise RuntimeError(f"Failed to extract audio: {e.stderr}")
 
 
+def embed_cover_art_mp3(mp3_path: Path, image_path: Path, output_path: Optional[Path] = None) -> Path:
+    """Embed cover art into an MP3 file using ffmpeg.
+
+    Args:
+        mp3_path: Path to input MP3
+        image_path: Path to image (jpg/png/webp)
+        output_path: Optional path for output MP3 (defaults to mp3_path)
+
+    Returns:
+        Path to MP3 with embedded cover art
+    """
+    if output_path is None:
+        output_path = mp3_path
+
+    if not mp3_path.exists():
+        raise RuntimeError(f"MP3 not found: {mp3_path}")
+    if not image_path.exists():
+        raise RuntimeError(f"Cover image not found: {image_path}")
+
+    tmp_out = output_path.with_suffix(output_path.suffix + ".tmp")
+
+    try:
+        cmd = [
+            'ffmpeg',
+            '-i', str(mp3_path),
+            '-i', str(image_path),
+            '-map', '0:a',
+            '-map', '1:v',
+            '-c', 'copy',
+            '-id3v2_version', '3',
+            '-metadata:s:v', 'title=Album cover',
+            '-metadata:s:v', 'comment=Cover (front)',
+            '-disposition:v:0', 'attached_pic',
+            '-y',
+            str(tmp_out)
+        ]
+
+        logger.info(f"Embedding cover art into MP3: {mp3_path} -> {output_path}")
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+        if output_path.exists():
+            output_path.unlink()
+        tmp_out.replace(output_path)
+        return output_path
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"FFmpeg error: {e.stderr}")
+        raise RuntimeError(f"Failed to embed cover art: {e.stderr}")
+    finally:
+        tmp_out.unlink(missing_ok=True)
+
+
 def get_audio_duration(audio_path: Path) -> float:
     """
     Get duration of audio file in seconds.

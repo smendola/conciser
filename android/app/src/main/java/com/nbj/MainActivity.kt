@@ -26,6 +26,7 @@ import com.google.gson.reflect.TypeToken
 import com.nbj.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -471,7 +472,16 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } catch (e: Exception) {
-                    // Keep polling on transient network errors — mirrors Chrome popup behavior
+                    // Check if it's a 404 error
+                    if (e is retrofit2.HttpException && e.code() == 404) {
+                        isPolling = false
+                        currentJobId = null
+                        updateUI(
+                            AppState.ERROR,
+                            statusText = "Job $jobId not found on server"
+                        )
+                    }
+                    // Keep polling on other network errors — mirrors Chrome popup behavior
                 }
 
                 if (isPolling) delay(3000)

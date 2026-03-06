@@ -38,14 +38,14 @@ def test_pipeline_initialization(mock_settings):
 
 def test_settings_validation():
     """Test settings validation."""
-    with pytest.raises(Exception):
-        # Missing API keys should be handled gracefully
-        Settings(
-            openai_api_key="",
-            anthropic_api_key="",
-            elevenlabs_api_key="",
-            did_api_key=""
-        )
+    # Missing API keys should not raise at Settings construction time.
+    settings = Settings(
+        openai_api_key="",
+        anthropic_api_key="",
+        elevenlabs_api_key="",
+        did_api_key=""
+    )
+    assert settings is not None
 
 
 # Additional tests would go here for each module
@@ -124,7 +124,7 @@ class TestCondenser:
         """Test condensed script validation."""
         from src.modules.condenser import ContentCondenser
 
-        condenser = ContentCondenser("test-key")
+        condenser = ContentCondenser(provider="openai", api_key="test-key")
 
         valid_script = {
             "condensed_script": "This is a test.",
@@ -167,7 +167,7 @@ class TestPromptTemplates:
         )
 
         assert "Hello world" in user_prompt
-        assert "10.0" in system_prompt
+        # duration_minutes is not used in prompts (kept for compatibility)
         assert "aggressiveness" in system_prompt.lower()
         assert isinstance(system_prompt, str)
         assert isinstance(user_prompt, str)

@@ -417,6 +417,22 @@ class CondenserPipeline:
                 shutil.copy(generated_audio_path, output_path)
                 logger.info(f"Audio-only output saved to: {output_path}")
 
+                # Embed cover art from downloaded thumbnail (if available)
+                try:
+                    from .utils.audio_utils import embed_cover_art_mp3
+                    thumb_candidates = [
+                        video_folder / "source_video.jpg",
+                        video_folder / "source_video.jpeg",
+                        video_folder / "source_video.png",
+                        video_folder / "source_video.webp",
+                    ]
+                    thumb_path = next((p for p in thumb_candidates if p.exists()), None)
+                    if thumb_path is not None:
+                        embed_cover_art_mp3(output_path, thumb_path)
+                        logger.info(f"Embedded cover art into MP3 from: {thumb_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to embed cover art into MP3: {e}")
+
                 # Build stats structure to match normal return
                 stats = {
                     'original_duration_minutes': duration_minutes,

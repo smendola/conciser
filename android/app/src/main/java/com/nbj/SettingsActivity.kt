@@ -1,6 +1,8 @@
 package com.nbj
 
+import android.app.AlertDialog
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -41,6 +43,10 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.btnSave.setOnClickListener {
             saveSettings()
+        }
+
+        binding.btnResetState.setOnClickListener {
+            showResetConfirmationDialog()
         }
     }
 
@@ -143,6 +149,33 @@ class SettingsActivity : AppCompatActivity() {
         data class HttpError(val code: Int) : HealthResult()
         data class ReportedIssue(val status: String) : HealthResult()
         object Unreachable : HealthResult()
+    }
+
+    private fun showResetConfirmationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset All State")
+            .setMessage("Are you sure you want to reset all state? This will clear:\n\n• All active and completed jobs\n• All settings\n• Cached voices and strategies\n• Client ID\n\nThis cannot be undone.")
+            .setPositiveButton("Reset") { _, _ ->
+                resetAllState()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun resetAllState() {
+        // Clear all SharedPreferences
+        getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+        
+        // Clear client ID
+        getSharedPreferences("client_identity", Context.MODE_PRIVATE).edit().clear().apply()
+        
+        Toast.makeText(this, "All state has been reset", Toast.LENGTH_SHORT).show()
+        
+        // Go back to main activity to refresh everything
+        val intent = Intent(this, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+        startActivity(intent)
+        finish()
     }
 
     override fun onSupportNavigateUp(): Boolean {
