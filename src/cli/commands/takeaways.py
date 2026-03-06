@@ -275,7 +275,12 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                 logger.warning("YouTube transcript not available, falling back to Whisper transcription")
                 update_progress("FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
 
-                video_info = downloader.download(url, metadata_only=False)
+                # Use existing video_folder from metadata download
+                video_info = downloader.download(
+                    url, 
+                    metadata_only=False,
+                    folder_label=video_folder.name if video_folder else None
+                )
                 video_path = video_info['video_path']
                 print(f"  Downloaded: {video_path}")
 
