@@ -23,6 +23,7 @@ from .commands import check as _check  # noqa: E402,F401
 from .commands import condense as _condense  # noqa: E402,F401
 from .commands import info as _info  # noqa: E402,F401
 from .commands import init as _init  # noqa: E402,F401
+from .commands import jobs as _jobs  # noqa: E402,F401
 from .commands import setup as _setup  # noqa: E402,F401
 from .commands import show_script as _show_script  # noqa: E402,F401
 from .commands import takeaways as _takeaways  # noqa: E402,F401
