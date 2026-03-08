@@ -48,6 +48,23 @@
       box-sizing: border-box;
     }
 
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+      background-color: white;
+      cursor: pointer;
+    }
+
+    .url-input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
     .actions {
       display: flex;
       gap: 10px;
@@ -113,8 +130,17 @@
 
     <div class="field">
       <label for="serverUrl">Server URL</label>
-      <input type="url" id="serverUrl" placeholder="http://conciser.603apps.net" spellcheck="false" />
-      <div class="hint">Example: <code>http://conciser.603apps.net</code></div>
+      <div class="url-input-group">
+        <select id="serverUrlSelect">
+          <option value="">Select a server or enter custom URL below...</option>
+          <option value="https://conciser.603apps.net">https://conciser.603apps.net</option>
+          <option value="http://x13-wsl.puma-garibaldi.ts.net:5000">http://x13-wsl.puma-garibaldi.ts.net:5000</option>
+          <option value="http://cuda-linux.puma-garibaldi.ts.net:5000">http://cuda-linux.puma-garibaldi.ts.net:5000</option>
+          <option value="custom">Custom URL...</option>
+        </select>
+        <input type="url" id="serverUrl" placeholder="Enter custom URL" spellcheck="false" />
+      </div>
+      <div class="hint">Select from the list or enter a custom URL</div>
     </div>
 
     <div class="actions">

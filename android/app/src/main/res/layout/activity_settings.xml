@@ -13,14 +13,22 @@
         android:textStyle="bold"
         android:textColor="@color/text_primary" />
 
+    <Spinner
+        android:id="@+id/spinnerServerUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:minHeight="48dp" />
+
     <EditText
         android:id="@+id/etServerUrl"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="@string/server_url_hint"
+        android:hint="Enter custom URL"
         android:inputType="textUri"
-        android:autofillHints="url" />
+        android:autofillHints="url"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/tvServerStatus"

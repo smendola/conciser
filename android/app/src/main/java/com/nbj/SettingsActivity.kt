@@ -4,6 +4,9 @@ import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -31,6 +34,12 @@ class SettingsActivity : AppCompatActivity() {
             .build()
     }
 
+    private val presetUrls = listOf(
+        "https://conciser.603apps.net",
+        "http://x13-wsl.puma-garibaldi.ts.net:5000",
+        "http://cuda-linux.puma-garibaldi.ts.net:5000"
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
@@ -39,6 +48,7 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         title = getString(R.string.settings)
 
+        setupSpinner()
         loadSettings()
 
         binding.btnSave.setOnClickListener {
@@ -48,17 +58,90 @@ class SettingsActivity : AppCompatActivity() {
         binding.btnResetState.setOnClickListener {
             showResetConfirmationDialog()
         }
+
+        binding.etServerUrl.addTextChangedListener {
+            schedulePing(it.toString())
+        }
+    }
+
+    private fun setupSpinner() {
+        val adapter = ArrayAdapter.createFromResource(
+            this,
+            R.array.server_url_options,
+            android.R.layout.simple_spinner_item
+        )
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerServerUrl.adapter = adapter
+
+        binding.spinnerServerUrl.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                when (position) {
+                    0 -> {
+                        // "Select a server or enter custom URL..."
+                        binding.etServerUrl.visibility = View.GONE
+                        binding.etServerUrl.setText("")
+                    }
+                    in 1..3 -> {
+                        // Preset URLs
+                        binding.etServerUrl.visibility = View.GONE
+                        binding.etServerUrl.setText("")
+                        val selectedUrl = presetUrls[position - 1]
+                        schedulePing(selectedUrl)
+                    }
+                    4 -> {
+                        // "Custom URL..."
+                        binding.etServerUrl.visibility = View.VISIBLE
+                        binding.etServerUrl.requestFocus()
+                    }
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                // Do nothing
+            }
+        }
     }
 
     private fun loadSettings() {
         val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
-        val savedUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL)
-        binding.etServerUrl.setText(savedUrl)
-        schedulePing(savedUrl.orEmpty())
+        val savedUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL).orEmpty()
+
+        // Check if the saved URL is one of the presets
+        val presetIndex = presetUrls.indexOf(savedUrl)
+        if (presetIndex >= 0) {
+            // Select the preset (add 1 to account for the first "Select..." option)
+            binding.spinnerServerUrl.setSelection(presetIndex + 1)
+            binding.etServerUrl.visibility = View.GONE
+        } else if (savedUrl.isNotEmpty()) {
+            // Custom URL
+            binding.spinnerServerUrl.setSelection(4) // "Custom URL..."
+            binding.etServerUrl.setText(savedUrl)
+            binding.etServerUrl.visibility = View.VISIBLE
+        } else {
+            // No URL set
+            binding.spinnerServerUrl.setSelection(0)
+            binding.etServerUrl.visibility = View.GONE
+        }
+
+        if (savedUrl.isNotEmpty()) {
+            schedulePing(savedUrl)
+        }
     }
 
     private fun saveSettings() {
-        val serverUrl = binding.etServerUrl.text.toString().trim()
+        val selectedPosition = binding.spinnerServerUrl.selectedItemPosition
+        val serverUrl = when (selectedPosition) {
+            0 -> {
+                Toast.makeText(this, "Please select a server", Toast.LENGTH_SHORT).show()
+                return
+            }
+            in 1..3 -> presetUrls[selectedPosition - 1]
+            4 -> binding.etServerUrl.text.toString().trim()
+            else -> {
+                Toast.makeText(this, "Invalid selection", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
 
         if (serverUrl.isEmpty() || !serverUrl.startsWith("http")) {
             Toast.makeText(this, "Please enter a valid URL", Toast.LENGTH_SHORT).show()
@@ -72,7 +155,7 @@ class SettingsActivity : AppCompatActivity() {
         schedulePing(serverUrl)
 
         Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
-        finish()
+        // Note: Do not call finish() here - keep the form open
     }
 
     private fun schedulePing(rawUrl: String) {

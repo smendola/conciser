@@ -1,4 +1,9 @@
-const DEFAULT_SERVER_URL = 'http://conciser.603apps.net';
+const DEFAULT_SERVER_URL = 'https://conciser.603apps.net';
+const PRESET_URLS = [
+  'https://conciser.603apps.net',
+  'http://x13-wsl.puma-garibaldi.ts.net:5000',
+  'http://cuda-linux.puma-garibaldi.ts.net:5000'
+];
 let pingTimeoutId = null;
 let currentPingController = null;
 
@@ -78,16 +83,35 @@ async function load() {
   const settings = storage.settings || {};
 
   const normalized = normalizeServerUrl(settings.serverUrl);
-  document.getElementById('serverUrl').value = normalized;
+  const selectEl = document.getElementById('serverUrlSelect');
+  const inputEl = document.getElementById('serverUrl');
+
+  // Check if the current URL is one of the presets
+  if (PRESET_URLS.includes(normalized)) {
+    selectEl.value = normalized;
+    inputEl.value = '';
+    inputEl.style.display = 'none';
+  } else {
+    selectEl.value = normalized ? 'custom' : '';
+    inputEl.value = normalized;
+    inputEl.style.display = normalized ? 'block' : 'none';
+  }
+
   if (normalized) {
     pingServer(normalized);
   }
 }
 
 async function save() {
-  const input = document.getElementById('serverUrl');
-  const serverUrl = normalizeServerUrl(input.value);
-  input.value = serverUrl;
+  const selectEl = document.getElementById('serverUrlSelect');
+  const inputEl = document.getElementById('serverUrl');
+
+  let serverUrl;
+  if (selectEl.value && selectEl.value !== 'custom') {
+    serverUrl = normalizeServerUrl(selectEl.value);
+  } else {
+    serverUrl = normalizeServerUrl(inputEl.value);
+  }
 
   const storage = await chrome.storage.local.get(['settings']);
   const existing = storage.settings || {};
@@ -104,7 +128,13 @@ async function save() {
 }
 
 async function resetToDefault() {
-  document.getElementById('serverUrl').value = DEFAULT_SERVER_URL;
+  const selectEl = document.getElementById('serverUrlSelect');
+  const inputEl = document.getElementById('serverUrl');
+
+  selectEl.value = DEFAULT_SERVER_URL;
+  inputEl.value = '';
+  inputEl.style.display = 'none';
+
   await save();
 }
 
@@ -133,9 +163,40 @@ async function resetAllState() {
 document.addEventListener('DOMContentLoaded', async () => {
   await load();
 
-  const input = document.getElementById('serverUrl');
-  input.addEventListener('input', () => {
+  const selectEl = document.getElementById('serverUrlSelect');
+  const inputEl = document.getElementById('serverUrl');
+
+  // Handle dropdown changes
+  selectEl.addEventListener('change', () => {
     setStatus('', 'info');
+    if (selectEl.value === 'custom') {
+      inputEl.style.display = 'block';
+      inputEl.focus();
+    } else if (selectEl.value === '') {
+      inputEl.style.display = 'none';
+      inputEl.value = '';
+    } else {
+      inputEl.style.display = 'none';
+      inputEl.value = '';
+      // Trigger ping when selecting a preset
+      if (pingTimeoutId) {
+        clearTimeout(pingTimeoutId);
+      }
+      pingTimeoutId = setTimeout(() => {
+        pingServer(selectEl.value);
+      }, 300);
+    }
+  });
+
+  // Handle custom input changes
+  inputEl.addEventListener('input', () => {
+    setStatus('', 'info');
+    if (pingTimeoutId) {
+      clearTimeout(pingTimeoutId);
+    }
+    pingTimeoutId = setTimeout(() => {
+      pingServer(inputEl.value);
+    }, 800);
   });
 
   document.getElementById('saveBtn').addEventListener('click', async () => {
