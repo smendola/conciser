@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 # Read and increment build number
-BUILD_NUMBER_FILE="build_number"
+BUILD_NUMBER_FILE=".build_number"
 if [ ! -f "$BUILD_NUMBER_FILE" ]; then
   echo "Build number file not found. Creating one."
   echo 0 > "$BUILD_NUMBER_FILE"
