@@ -102,7 +102,7 @@ async function load() {
   }
 }
 
-async function save() {
+async function save(andPing = true) {
   const selectEl = document.getElementById('serverUrlSelect');
   const inputEl = document.getElementById('serverUrl');
 
@@ -123,19 +123,12 @@ async function save() {
     }
   });
 
-  setStatus('Saved. Checking server...', 'pending');
-  await pingServer(serverUrl);
-}
+  setStatus('Saved', 'ok');
 
-async function resetToDefault() {
-  const selectEl = document.getElementById('serverUrlSelect');
-  const inputEl = document.getElementById('serverUrl');
-
-  selectEl.value = DEFAULT_SERVER_URL;
-  inputEl.value = '';
-  inputEl.style.display = 'none';
-
-  await save();
+  if (andPing) {
+    // Use a small delay to let the UI update before the ping
+    setTimeout(() => pingServer(serverUrl), 100);
+  }
 }
 
 async function resetAllState() {
@@ -144,16 +137,9 @@ async function resetAllState() {
   }
 
   try {
-    // Clear all storage
     await chrome.storage.local.clear();
-
     setStatus('All state has been reset. Reloading...', 'ok');
-
-    // Reload the page to refresh everything
-    setTimeout(() => {
-      location.reload();
-    }, 1000);
-
+    setTimeout(() => location.reload(), 1000);
   } catch (error) {
     setStatus('Failed to reset state', 'error');
     console.error('Reset state error:', error);
@@ -168,53 +154,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Handle dropdown changes
   selectEl.addEventListener('change', () => {
-    setStatus('', 'info');
     if (selectEl.value === 'custom') {
       inputEl.style.display = 'block';
       inputEl.focus();
-    } else if (selectEl.value === '') {
-      inputEl.style.display = 'none';
-      inputEl.value = '';
+      // Don't save here, wait for blur on the text input
     } else {
       inputEl.style.display = 'none';
       inputEl.value = '';
-      // Trigger ping when selecting a preset
-      if (pingTimeoutId) {
-        clearTimeout(pingTimeoutId);
-      }
-      pingTimeoutId = setTimeout(() => {
-        pingServer(selectEl.value);
-      }, 300);
+      save(); // Save and ping immediately
     }
   });
 
-  // Handle custom input changes
-  inputEl.addEventListener('input', () => {
-    setStatus('', 'info');
-    if (pingTimeoutId) {
-      clearTimeout(pingTimeoutId);
-    }
-    pingTimeoutId = setTimeout(() => {
-      pingServer(inputEl.value);
-    }, 800);
-  });
-
-  document.getElementById('saveBtn').addEventListener('click', async () => {
-    try {
-      await save();
-    } catch (e) {
-      setStatus('Failed to save', 'error');
-      console.error(e);
-    }
-  });
-
-  document.getElementById('resetBtn').addEventListener('click', async () => {
-    try {
-      await resetToDefault();
-    } catch (e) {
-      setStatus('Failed to reset', 'error');
-      console.error(e);
-    }
+  // Handle custom input blur (focus lost)
+  inputEl.addEventListener('blur', () => {
+    save(); // Save and ping when focus is lost
   });
 
   document.getElementById('resetStateBtn').addEventListener('click', async () => {

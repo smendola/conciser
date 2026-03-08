@@ -23,6 +23,7 @@ share/python-wheels/
 MANIFEST
 
 chrome-extension/build-info.js
+chrome-extension.crx
 dot-env
 yt-cookies.txt
 

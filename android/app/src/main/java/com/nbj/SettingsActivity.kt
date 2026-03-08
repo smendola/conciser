@@ -51,16 +51,16 @@ class SettingsActivity : AppCompatActivity() {
         setupSpinner()
         loadSettings()
 
-        binding.btnSave.setOnClickListener {
-            saveSettings()
-        }
 
         binding.btnResetState.setOnClickListener {
             showResetConfirmationDialog()
         }
 
-        binding.etServerUrl.addTextChangedListener {
-            schedulePing(it.toString())
+        binding.etServerUrl.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                val url = binding.etServerUrl.text.toString().trim()
+                autoSave(url)
+            }
         }
     }
 
@@ -86,7 +86,7 @@ class SettingsActivity : AppCompatActivity() {
                         binding.etServerUrl.visibility = View.GONE
                         binding.etServerUrl.setText("")
                         val selectedUrl = presetUrls[position - 1]
-                        schedulePing(selectedUrl)
+                        autoSave(selectedUrl)
                     }
                     4 -> {
                         // "Custom URL..."
@@ -128,34 +128,27 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveSettings() {
-        val selectedPosition = binding.spinnerServerUrl.selectedItemPosition
-        val serverUrl = when (selectedPosition) {
-            0 -> {
-                Toast.makeText(this, "Please select a server", Toast.LENGTH_SHORT).show()
-                return
-            }
-            in 1..3 -> presetUrls[selectedPosition - 1]
-            4 -> binding.etServerUrl.text.toString().trim()
-            else -> {
-                Toast.makeText(this, "Invalid selection", Toast.LENGTH_SHORT).show()
-                return
-            }
+    private fun autoSave(serverUrl: String) {
+        if (serverUrl.isEmpty()) {
+            // Don't save an empty URL, but clear the status
+            updateServerStatus("", R.color.text_secondary)
+            return
         }
 
-        if (serverUrl.isEmpty() || !serverUrl.startsWith("http")) {
-            Toast.makeText(this, "Please enter a valid URL", Toast.LENGTH_SHORT).show()
-            return
+        if (!serverUrl.startsWith("http")) {
+            updateServerStatus(getString(R.string.server_status_invalid), R.color.error)
+            // Still save the invalid URL
         }
 
         getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit()
             .putString("server_url", serverUrl)
             .apply()
 
+        // Always ping, even if the URL seems invalid, to give feedback
         schedulePing(serverUrl)
 
-        Toast.makeText(this, "Settings saved", Toast.LENGTH_SHORT).show()
-        // Note: Do not call finish() here - keep the form open
+        // Optional: Show a brief "Saved" message if needed, but auto-save should be silent
+        // Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
     }
 
     private fun schedulePing(rawUrl: String) {
