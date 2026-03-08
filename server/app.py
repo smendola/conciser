@@ -94,34 +94,37 @@ def root_redirect():
 
 @app.route('/extension.zip')
 def download_extension():
-    """Download the packaged Chrome extension."""
-    # Serve the pre-packaged extension from dist/
-    extension_zip = Path(__file__).parent.parent / 'dist' / 'nbj-chrome-extension.zip'
-
-    if not extension_zip.exists():
+    """Download the latest packaged Chrome extension."""
+    dist_dir = Path(__file__).parent.parent / 'dist'
+    files = list(dist_dir.glob('nbj-chrome-extension-*.zip'))
+    if not files:
         return jsonify({'error': 'Extension package not found'}), 404
 
+    latest_file = max(files, key=lambda p: p.stat().st_mtime)
+
     return send_file(
-        extension_zip,
+        latest_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='nbj-chrome-extension.zip'
+        download_name=latest_file.name
     )
 
 
 @app.route('/android.apk')
 def download_android_apk():
     """Serve the latest Android APK for side-loading."""
-    apk_path = Path(__file__).parent.parent / 'dist' / 'nbj-condenser.apk'
-
-    if not apk_path.exists():
+    dist_dir = Path(__file__).parent.parent / 'dist'
+    files = list(dist_dir.glob('nbj-condenser-*.apk'))
+    if not files:
         return jsonify({'error': 'Android APK not found. Please download from desktop instead.'}), 404
 
+    latest_file = max(files, key=lambda p: p.stat().st_mtime)
+
     return send_file(
-        apk_path,
+        latest_file,
         mimetype='application/vnd.android.package-archive',
         as_attachment=True,
-        download_name='nbj-condenser.apk'
+        download_name=latest_file.name
     )
 
 

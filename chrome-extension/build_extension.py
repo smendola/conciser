@@ -6,6 +6,7 @@ Output: dist/nbj-chrome-extension.zip
 """
 
 import zipfile
+import json
 from pathlib import Path
 import shutil
 from datetime import datetime
@@ -16,7 +17,11 @@ def build_extension():
     extension_dir = Path(__file__).parent  # chrome-extension/
     project_root = extension_dir.parent    # project root
     dist_dir = project_root / 'dist'
-    output_zip = dist_dir / 'nbj-chrome-extension.zip'
+    with open(extension_dir / 'manifest.json', 'r') as f:
+        manifest = json.load(f)
+        version = manifest.get('version', '0.0.0')
+
+    output_zip = dist_dir / f'nbj-chrome-extension-{version}.zip'
 
     # Validate extension directory exists
     if not extension_dir.exists():
