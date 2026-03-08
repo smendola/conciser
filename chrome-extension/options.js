@@ -1,8 +1,8 @@
 const DEFAULT_SERVER_URL = 'https://conciser.603apps.net';
 const PRESET_URLS = [
   'https://conciser.603apps.net',
-  'http://x13-wsl.puma-garibaldi.ts.net:5000',
-  'http://cuda-linux.puma-garibaldi.ts.net:5000'
+  'https://x13.puma-garibaldi.ts.net',
+  'https://cuda-linux.puma-garibaldi.ts.net'
 ];
 let pingTimeoutId = null;
 let currentPingController = null;
@@ -146,14 +146,14 @@ async function resetAllState() {
   try {
     // Clear all storage
     await chrome.storage.local.clear();
-    
+
     setStatus('All state has been reset. Reloading...', 'ok');
-    
+
     // Reload the page to refresh everything
     setTimeout(() => {
       location.reload();
     }, 1000);
-    
+
   } catch (error) {
     setStatus('Failed to reset state', 'error');
     console.error('Reset state error:', error);

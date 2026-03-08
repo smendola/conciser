@@ -13,9 +13,9 @@
 
     <string-array name="server_url_options">
         <item>Select a server or enter custom URL...</item>
-        <item>https://conciser.603apps.net</item>
-        <item>http://x13-wsl.puma-garibaldi.ts.net:5000</item>
-        <item>http://cuda-linux.puma-garibaldi.ts.net:5000</item>
+        <item>1. Conciser</item>
+        <item>2. X13</item>
+        <item>3. CUDA-LINUX</item>
         <item>Custom URL...</item>
     </string-array>
     <string name="save">Save</string>

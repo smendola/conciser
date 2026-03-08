@@ -36,8 +36,8 @@ class SettingsActivity : AppCompatActivity() {
 
     private val presetUrls = listOf(
         "https://conciser.603apps.net",
-        "http://x13-wsl.puma-garibaldi.ts.net:5000",
-        "http://cuda-linux.puma-garibaldi.ts.net:5000"
+        "https://x13.puma-garibaldi.ts.net",
+        "https://cuda-linux.puma-garibaldi.ts.net"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
