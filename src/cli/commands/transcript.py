@@ -83,12 +83,12 @@ def transcript(url, no_transcribe, output, resume):
             print(f"Video index: {idx} → {video_id_resolved}" + (f"  ({label})" if label else ""))
 
         print(f"URL: {url}")
+
+        settings = get_settings()
         method = settings.transcription_method.lower()
         if no_transcribe:
             method = "youtube"
         print(f"Method: {method}\n")
-
-        settings = get_settings()
         downloader = VideoDownloader(
             settings.temp_dir,
             youtube_cookie_file=settings.youtube_cookie_file,
