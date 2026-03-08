@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from .config import Settings
 from .modules.downloader import VideoDownloader
 from .modules.transcriber import Transcriber
+from .modules.proxy_config import BrightDataProxy
 from .modules.condenser import ContentCondenser
 from .modules.tts import VoiceCloner
 from .modules.edge_tts import EdgeTTS
@@ -67,17 +68,36 @@ class CondenserPipeline:
         """
         self.settings = settings
 
+        # Initialize BrightData proxy if configured
+        brightdata_proxy = None
+        if settings.brightdata_enabled and settings.brightdata_customer_id and settings.brightdata_zone_password:
+            brightdata_proxy = BrightDataProxy.from_env(
+                customer_id=settings.brightdata_customer_id,
+                password=settings.brightdata_zone_password,
+                zone=settings.brightdata_zone,
+                country=settings.brightdata_country or None
+            )
+            if brightdata_proxy:
+                logger.info("BrightData residential proxy enabled")
+
         # Initialize modules
         self.downloader = VideoDownloader(
             settings.temp_dir,
             youtube_cookie_file=settings.youtube_cookie_file,
-            youtube_proxy_url=settings.youtube_proxy_url
+            youtube_proxy_url=settings.youtube_proxy_url,
+            brightdata_proxy=brightdata_proxy
         )
+
+        # Determine proxy URL for transcriber (BrightData takes precedence)
+        transcriber_proxy_url = settings.youtube_proxy_url
+        if brightdata_proxy:
+            transcriber_proxy_url = brightdata_proxy.get_proxy_url()
+
         self.transcriber = Transcriber(
             api_key=settings.openai_api_key,
             provider=settings.transcription_service,
             groq_api_key=settings.groq_api_key,
-            youtube_proxy_url=settings.youtube_proxy_url
+            youtube_proxy_url=transcriber_proxy_url
         )
         self.condenser = ContentCondenser(
             provider=settings.condenser_service,

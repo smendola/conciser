@@ -7,6 +7,7 @@ import re
 import json
 from urllib import request
 from typing import Dict, Any, Optional
+from .proxy_config import BrightDataProxy
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,13 @@ def normalize_name(name: str, max_length: int = 60) -> str:
 class VideoDownloader:
     """Downloads videos from YouTube and other platforms using yt-dlp."""
 
-    def __init__(self, output_dir: Path, youtube_cookie_file: str = "", youtube_proxy_url: str = ""):
+    def __init__(
+        self,
+        output_dir: Path,
+        youtube_cookie_file: str = "",
+        youtube_proxy_url: str = "",
+        brightdata_proxy: Optional[BrightDataProxy] = None
+    ):
         """
         Initialize the downloader.
 
@@ -71,11 +78,20 @@ class VideoDownloader:
             output_dir: Directory to save downloaded videos
             youtube_cookie_file: Optional path to Netscape-format YouTube cookies file
             youtube_proxy_url: Optional proxy URL for yt-dlp/caption requests
+            brightdata_proxy: Optional BrightDataProxy instance (takes precedence over youtube_proxy_url)
         """
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.youtube_cookie_file = youtube_cookie_file.strip()
-        self.youtube_proxy_url = youtube_proxy_url.strip()
+        self.brightdata_proxy = brightdata_proxy
+
+        # BrightData proxy takes precedence over generic proxy URL
+        if self.brightdata_proxy:
+            self.youtube_proxy_url = self.brightdata_proxy.get_proxy_url()
+            logger.info(f"Using BrightData residential proxy: zone={self.brightdata_proxy.zone}, "
+                       f"country={self.brightdata_proxy.country or 'auto'}")
+        else:
+            self.youtube_proxy_url = youtube_proxy_url.strip()
 
     def _apply_youtube_auth(self, ydl_opts: Dict[str, Any]) -> Dict[str, Any]:
         """Add optional YouTube authentication options to yt-dlp config."""
@@ -96,6 +112,13 @@ class VideoDownloader:
             return ydl_opts
 
         ydl_opts['proxy'] = self.youtube_proxy_url
+
+        # For geo-restricted content, also set geo_verification_proxy
+        # This ensures BrightData's residential IP is used for geo-checks
+        if self.brightdata_proxy or 'brd.' in self.youtube_proxy_url:
+            ydl_opts['geo_verification_proxy'] = self.youtube_proxy_url
+            logger.debug("Geo-verification proxy enabled for residential IP")
+
         return ydl_opts
 
     @staticmethod

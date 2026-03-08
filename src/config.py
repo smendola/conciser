@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     youtube_cookie_file: str = Field(default="", description="Path to Netscape-format YouTube cookies file for yt-dlp authentication")
     youtube_proxy_url: str = Field(default="", description="Optional proxy URL for YouTube access (e.g., http://user:pass@host:port)")
 
+    # BrightData residential proxy configuration
+    # NOTE: For residential/ISP proxies, you need customer ID + zone password (NOT API key)
+    # Get these from: https://brightdata.com/cp/zones (create a zone, view credentials)
+    brightdata_customer_id: str = Field(default="", description="BrightData customer ID from zone credentials (e.g., hl_abc123)")
+    brightdata_zone_password: str = Field(default="", description="BrightData zone password (NOT API key)")
+    brightdata_zone: str = Field(default="residential", description="BrightData zone name (default: residential, or isp)")
+    brightdata_country: str = Field(default="", description="Optional country code for geo-targeting (e.g., us, gb, de)")
+    brightdata_enabled: bool = Field(default=False, description="Enable BrightData proxy (takes precedence over youtube_proxy_url)")
+
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
     default_output_quality: str = Field(default="1080p")
