@@ -67,18 +67,17 @@ class AzureTTS:
                 audio_config=audio_config
             )
 
-            # Wire up sentence-boundary progress if requested
+            # Wire up word-boundary progress if requested
             if progress_callback:
-                import re
-                total_sentences = max(1, len(re.findall(r'[.!?]', text)))
-                sentence_count = [0]
+                total_words = max(1, len(text.split()))
+                word_count = [0]
 
                 def _on_boundary(evt):
-                    if evt.boundary_type == speechsdk.SpeechSynthesisBoundaryType.Sentence:
-                        sentence_count[0] += 1
-                        progress_callback(min(99, int(sentence_count[0] / total_sentences * 100)))
+                    if evt.boundary_type == speechsdk.SpeechSynthesisBoundaryType.Word:
+                        word_count[0] += 1
+                        progress_callback(min(99, int(word_count[0] / total_words * 100)))
 
-                synthesizer.synthesis_word_boundary += _on_boundary
+                synthesizer.synthesis_word_boundary.connect(_on_boundary)
 
             # Synthesize based on input type
             if is_ssml:

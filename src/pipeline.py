@@ -314,7 +314,7 @@ class CondenserPipeline:
                     logger.info(f"SSML (resume) loaded from: {ssml_path}")
                     ssml_text = ssml_path.read_text(encoding="utf-8")
                 else:
-                    update_progress("SSML", "Rewriting condensed script into SSML for Azure TTS...")
+                    update_progress("SSML", "Refining condensed script for TTS...")
                     try:
                         if self.condenser.provider == "openai":
                             previous_response_id = condensed_result.get('_openai_previous_response_id')
@@ -370,6 +370,14 @@ class CondenserPipeline:
 
             # Stage 5: Generate speech
             _t = time.time()
+            _tts_last = [0.0, -1]  # [last_time, last_pct]
+            def _tts_progress(pct):
+                now = time.time()
+                if pct == _tts_last[1] or (pct != 100 and now - _tts_last[0] < 1.0):
+                    return
+                _tts_last[0] = now
+                _tts_last[1] = pct
+                update_progress("VOICE_GENERATE", f"{pct}%")
             if resume:
                 # Check for existing generated speech
                 existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id, aggressiveness, tts_rate, tts_mode)
@@ -380,25 +388,25 @@ class CondenserPipeline:
                 else:
                     update_progress("VOICE_GENERATE", "Generating speech with voice...")
                     try:
-                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=_tts_progress)
                     except Exception as e:
                         if tts_provider == "azure" and tts_mode == "ssml":
                             logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                             tts_mode = "text"
                             tts_script = condensed_script
-                            generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
+                            generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=_tts_progress)
                         else:
                             raise
             else:
                 update_progress("VOICE_GENERATE", "Generating speech with voice...")
                 try:
-                    generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                    generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=_tts_progress)
                 except Exception as e:
                     if tts_provider == "azure" and tts_mode == "ssml":
                         logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                         tts_mode = "text"
                         tts_script = condensed_script
-                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=_tts_progress)
                     else:
                         raise
 
