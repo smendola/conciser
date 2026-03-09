@@ -103,7 +103,17 @@ def _print_stream_chunk(text: str, mode: str, char_count: list):
         sys.stdout.flush()
 
 
-def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, mode: str) -> str:
+def _handle_stream_delta(delta: str, chunks: list, char_count: list, mode: str, word_count_callback):
+    """Process one streaming delta: print it and fire word_count_callback on paragraph breaks."""
+    chunks.append(delta)
+    _print_stream_chunk(delta, mode, char_count)
+    if word_count_callback and "\\n" in delta:
+        n = len("".join(chunks).split())
+        if n >= 50:
+            word_count_callback(n)
+
+
+def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, mode: str, word_count_callback=None) -> str:
     """Call OpenAI Responses API with streaming; return (full response text, response_id)."""
     import sys
     from openai.lib.streaming.responses import ResponseTextDeltaEvent
@@ -118,16 +128,14 @@ def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, m
     ) as stream:
         for event in stream:
             if isinstance(event, ResponseTextDeltaEvent):
-                delta = event.delta
-                chunks.append(delta)
-                _print_stream_chunk(delta, mode, char_count)
+                _handle_stream_delta(event.delta, chunks, char_count, mode, word_count_callback)
         final_response = stream.get_final_response()
     sys.stdout.write("\n")
     sys.stdout.flush()
     return "".join(chunks), final_response.id
 
 
-def _stream_responses_api_no_chain(client, model: str, system_prompt: str, user_prompt: str, mode: str) -> tuple[str, str]:
+def _stream_responses_api_no_chain(client, model: str, system_prompt: str, user_prompt: str, mode: str, word_count_callback=None) -> tuple[str, str]:
     """Stream a one-shot Responses API call (no chain); return (full response text, response_id)."""
     import sys
     from openai.lib.streaming.responses import ResponseTextDeltaEvent
@@ -142,9 +150,7 @@ def _stream_responses_api_no_chain(client, model: str, system_prompt: str, user_
     ) as stream:
         for event in stream:
             if isinstance(event, ResponseTextDeltaEvent):
-                delta = event.delta
-                chunks.append(delta)
-                _print_stream_chunk(delta, mode, char_count)
+                _handle_stream_delta(event.delta, chunks, char_count, mode, word_count_callback)
         final_response = stream.get_final_response()
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -243,9 +249,8 @@ class ContentCondenser:
                     "content": "Respond only with `Ready` to confirm, or any other text to signal a problem."
                 }],
             )
-            # print(response)
-            if response.output[0].content[0].text != "Ready":
-                raise ValueError(f"Failed to initialize chain for aggressiveness {level}/10: {response.choices[0].message.content}")
+            if response.output_text.strip().strip('"') != "Ready":
+                raise ValueError(f"Failed to initialize chain for aggressiveness {level}/10: {response.output_text}")
             chains[str(level)] = response.id
             logger.info(f"  aggressiveness {level} → {response.id}")
 
@@ -260,7 +265,8 @@ class ContentCondenser:
         target_reduction_percentage: int = None,
         max_retries: int = 5,
         initial_retry_delay: float = 2.0,
-        llm_progress: str = None
+        llm_progress: str = None,
+        word_count_callback=None
     ) -> Dict[str, Any]:
         """
         Condense transcript to shorter version.
@@ -363,10 +369,10 @@ class ContentCondenser:
                     elif self.provider == "openai":
                         if openai_chain_id:
                             # Responses API: continue from pre-seeded chain (no system prompt needed)
-                            if llm_progress:
+                            if llm_progress or word_count_callback:
                                 response_text, openai_response_id = _stream_responses_api(
                                     self.client, self.model, openai_chain_id,
-                                    user_prompt, llm_progress
+                                    user_prompt, llm_progress, word_count_callback
                                 )
                             else:
                                 response = self.client.responses.create(
@@ -379,9 +385,9 @@ class ContentCondenser:
                                 response_text = response.output_text
                                 openai_response_id = response.id
                         else:
-                            if llm_progress:
+                            if llm_progress or word_count_callback:
                                 response_text, openai_response_id = _stream_responses_api_no_chain(
-                                    self.client, self.model, system_prompt, user_prompt, llm_progress
+                                    self.client, self.model, system_prompt, user_prompt, llm_progress, word_count_callback
                                 )
                             else:
                                 response = self.client.responses.create(

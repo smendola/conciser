@@ -112,7 +112,8 @@ class CondenserPipeline:
         tts_rate: str = "+0%",
         prepend_intro: bool = False,
         llm_progress: str = None,
-        name_override: str = None
+        name_override: str = None,
+        word_count_callback=None
     ) -> Dict[str, Any]:
         """
         Run the complete condensation pipeline.
@@ -271,7 +272,8 @@ class CondenserPipeline:
                         duration_minutes,
                         aggressiveness,
                         video_folder,
-                        llm_progress=llm_progress
+                        llm_progress=llm_progress,
+                        word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated..."))
                     )
                     condensed_script = condensed_result['condensed_script']
             else:
@@ -281,7 +283,8 @@ class CondenserPipeline:
                     duration_minutes,
                     aggressiveness,
                     video_folder,
-                    llm_progress=llm_progress
+                    llm_progress=llm_progress,
+                    word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated..."))
                 )
                 condensed_script = condensed_result['condensed_script']
 
@@ -351,11 +354,11 @@ class CondenserPipeline:
             _t = time.time()
             if tts_provider == 'edge':
                 # Edge TTS doesn't need voice cloning
-                update_progress("VOICE_CLONE", f"Using Edge TTS; voice {voice_id}...")
+                update_progress("VOICE_SELECT", f"Using Edge TTS; voice {voice_id}...")
                 used_voice_id = voice_id
                 cleanup_voice = False
             elif skip_voice_clone:
-                update_progress("VOICE_CLONE", f"Using premade voice; ID: {voice_id}...")
+                update_progress("VOICE_SELECT", f"Using premade voice; ID: {voice_id}...")
                 used_voice_id = voice_id
                 cleanup_voice = False
             else:
@@ -673,14 +676,16 @@ class CondenserPipeline:
         duration_minutes: float,
         aggressiveness: int,
         video_folder: Path,
-        llm_progress: str = None
+        llm_progress: str = None,
+        word_count_callback=None
     ) -> Dict[str, Any]:
         """Condense transcript using LLM."""
         condensed_result = self.condenser.condense(
             transcript,
             duration_minutes,
             aggressiveness,
-            llm_progress=llm_progress
+            llm_progress=llm_progress,
+            word_count_callback=word_count_callback
         )
 
         # Validate

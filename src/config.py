@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8',
-        case_sensitive=False
+        case_sensitive=False,
+        extra='ignore'
     )
 
     # API Keys
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
     default_output_quality: str = Field(default="1080p")
-
+    
     # Use absolute paths anchored to project root (not relative to cwd)
     # This ensures CLI and server use the same directories
     temp_dir: Path = Field(default=PROJECT_ROOT / "temp")
@@ -55,6 +56,9 @@ class Settings(BaseSettings):
     condensation_model_anthropic: str = Field(default="claude-sonnet-4.6", description="Anthropic model for condensation")
     takeaways_model_openai: str = Field(default="gpt-5-nano", description="OpenAI model for takeaways extraction")
     takeaways_model_anthropic: str = Field(default="claude-haiku-4-5-20251001", description="Anthropic model for takeaways extraction")
+
+    # Pipeline behavior
+    resume: bool = Field(default=True, description="Resume from existing intermediate files (use cached results)")
 
     # Processing options
     target_reduction_percentage: Optional[int] = Field(default=None, ge=10, le=90)

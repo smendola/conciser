@@ -40,8 +40,8 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--resume/--no-resume',
-    default=True,
-    help='Resume from existing intermediate files (default: enabled)'
+    default=None,
+    help='Resume from existing intermediate files (default: enabled, or RESUME env var)'
 )
 @click.option(
     '--video-gen-mode',
@@ -81,9 +81,9 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--llm-progress',
-    type=click.Choice(['dots', 'text']),
+    type=click.Choice(['dots', 'text', 'wordcount']),
     default=None,
-    help='Show LLM streaming output: dots (one dot per chunk) or text (raw streamed text).'
+    help='Show LLM streaming output: dots (one dot per chunk), text (raw streamed text), or wordcount (word count updates).'
 )
 @click.option(
     '--xdg-open', '-O',
@@ -172,6 +172,9 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         # Load settings first
         settings = get_settings()
+
+        if resume is None:
+            resume = settings.resume
 
         # Validate speech rate format
         import re
@@ -291,6 +294,11 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
         # Run pipeline
         print(f"{Fore.GREEN}Starting condensation pipeline...{Style.RESET_ALL}\n")
 
+        wordcount_callback = None
+        if llm_progress == 'wordcount':
+            wordcount_callback = lambda n: print(f"[CONDENSE] {n} words generated...", flush=True)
+            llm_progress = None
+
         result = pipeline.run(
             video_url=url,
             aggressiveness=aggressiveness,
@@ -306,7 +314,8 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
             tts_rate=speech_rate,
             prepend_intro=prepend_intro,
             llm_progress=llm_progress,
-            name_override=name_override
+            name_override=name_override,
+            word_count_callback=wordcount_callback,
         )
 
         # Display results

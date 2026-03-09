@@ -12,6 +12,7 @@ class ProgressDisplay:
         'TRANSCRIBE': Fore.BLUE,
         'CONDENSE': Fore.MAGENTA,
         'SSML': Fore.CYAN,
+        'VOICE_SELECT': Fore.YELLOW,
         'VOICE_CLONE': Fore.YELLOW,
         'VOICE_GENERATE': Fore.YELLOW,
         'VIDEO_GENERATE': Fore.GREEN,
