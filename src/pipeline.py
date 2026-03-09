@@ -380,13 +380,13 @@ class CondenserPipeline:
                 else:
                     update_progress("VOICE_GENERATE", "Generating speech with voice...")
                     try:
-                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
                     except Exception as e:
                         if tts_provider == "azure" and tts_mode == "ssml":
                             logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                             tts_mode = "text"
                             tts_script = condensed_script
-                            generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                            generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
                         else:
                             raise
             else:
@@ -398,7 +398,7 @@ class CondenserPipeline:
                         logger.warning(f"Azure SSML synthesis failed; falling back to plain text TTS. Error: {e}")
                         tts_mode = "text"
                         tts_script = condensed_script
-                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode)
+                        generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=lambda pct: update_progress("VOICE_GENERATE", f"{pct}%"))
                     else:
                         raise
 
@@ -763,6 +763,7 @@ class CondenserPipeline:
         tts_rate: str = "+0%",
         aggressiveness: int = 5,
         tts_mode: str = "text",
+        progress_callback=None,
     ) -> Path:
         """Generate speech from script."""
         # Create unique filename encoding all params that affect the audio bytes
@@ -778,6 +779,7 @@ class CondenserPipeline:
                 voice=voice_id,
                 rate=tts_rate,
                 is_ssml=(tts_mode == "ssml"),
+                progress_callback=progress_callback,
             )
         elif tts_provider == "azure":
             # Use Azure TTS (supports SSML)
@@ -789,6 +791,7 @@ class CondenserPipeline:
                 voice=voice_id,
                 rate=tts_rate,
                 is_ssml=(tts_mode == "ssml"),
+                progress_callback=progress_callback,
             )
         else:
             # Use ElevenLabs with chunked generation for long scripts
@@ -796,7 +799,8 @@ class CondenserPipeline:
                 script,
                 voice_id,
                 output_path,
-                chunk_size=5000
+                chunk_size=5000,
+                progress_callback=progress_callback,
             )
 
         # Normalize audio

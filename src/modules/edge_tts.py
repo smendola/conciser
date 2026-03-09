@@ -23,11 +23,29 @@ class EdgeTTS:
         output_path: Path,
         rate: str = "+0%",
         is_ssml: bool = False,
+        progress_callback=None,
     ) -> Path:
         """Generate speech asynchronously."""
         _ = is_ssml
         communicate = edge_tts.Communicate(text, voice, rate=rate)
-        await communicate.save(str(output_path))
+
+        if progress_callback is None:
+            await communicate.save(str(output_path))
+            return output_path
+
+        import re
+        total_sentences = max(1, len(re.findall(r'[.!?]', text)))
+        sentence_count = 0
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+            elif chunk["type"] == "SentenceBoundary":
+                sentence_count += 1
+                progress_callback(min(99, int(sentence_count / total_sentences * 100)))
+        with open(str(output_path), "wb") as f:
+            f.write(audio_data)
+        progress_callback(100)
         return output_path
 
     def generate_speech(
@@ -37,6 +55,7 @@ class EdgeTTS:
         voice: str = "en-US-AriaNeural",
         rate: str = "+0%",
         is_ssml: bool = False,
+        progress_callback=None,
     ) -> Path:
         """
         Generate speech from text using Edge TTS.
@@ -57,7 +76,7 @@ class EdgeTTS:
                 logger.info("Edge TTS SSML mode is disabled; generating speech from plain text")
 
             # Run async function
-            asyncio.run(self._generate_speech_async(text, voice, output_path, rate, is_ssml=is_ssml))
+            asyncio.run(self._generate_speech_async(text, voice, output_path, rate, is_ssml=is_ssml, progress_callback=progress_callback))
 
             if not output_path.exists() or output_path.stat().st_size <= 0:
                 raise RuntimeError(

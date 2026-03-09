@@ -415,30 +415,47 @@ def get_strategies():
 
 @app.route('/api/voices', methods=['GET'])
 def get_voices():
-    """Get available Edge TTS voices filtered by user locale."""
+    """Get available TTS voices filtered by locale, using the configured voice service."""
     locale = request.args.get('locale', 'en-US')
+    settings = get_settings()
 
     try:
-        edge_tts = EdgeTTS()
-        all_voices = edge_tts.list_voices()
-
-        # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
-        filtered_voices = sorted(
-            [
-                {
-                    'name': v['name'],
-                    'gender': v['gender'],
-                    'locale': v['locale'],
-                    'friendly_name': v['name'].split('-', 2)[-1]
-                                              .replace(r"Multilingual", "")
-                                              .replace(r"Expressive", "")
-                                              .replace(r"Neural", '')
-                }
-                for v in all_voices
-                if v['locale'].startswith(locale)
-            ],
-            key=lambda x: x['name']
-        )
+        if settings.voice_service == 'azure' and settings.azure_speech_key and settings.azure_speech_region:
+            from src.modules.azure_tts import AzureTTS
+            azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+            all_voices = azure.list_voices(locale_filter=locale)
+            filtered_voices = sorted(
+                [
+                    {
+                        'name': v['name'],
+                        'gender': v['gender'],
+                        'locale': v['locale'],
+                        'friendly_name': v['name'].split('-', 2)[-1].split(':')[0]
+                    }
+                    for v in all_voices
+                ],
+                key=lambda x: x['name']
+            )
+        else:
+            edge_tts = EdgeTTS()
+            all_voices = edge_tts.list_voices()
+            # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
+            filtered_voices = sorted(
+                [
+                    {
+                        'name': v['name'],
+                        'gender': v['gender'],
+                        'locale': v['locale'],
+                        'friendly_name': v['name'].split('-', 2)[-1]
+                                                  .replace('Multilingual', '')
+                                                  .replace('Expressive', '')
+                                                  .replace('Neural', '')
+                    }
+                    for v in all_voices
+                    if v['locale'].startswith(locale)
+                ],
+                key=lambda x: x['name']
+            )
         return jsonify({'voices': filtered_voices})
     except Exception as e:
         logger.error(f"Failed to fetch voices: {e}")

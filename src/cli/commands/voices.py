@@ -8,12 +8,13 @@ from ...config import get_settings
 from ..app import cli
 
 
+
 @cli.command()
 @click.option(
     '--provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
-    default='edge',
-    help='TTS provider to list voices for. Default: edge'
+    default=None,
+    help='TTS provider to list voices for. Default: VOICE_SERVICE env var'
 )
 @click.option(
     '--lang',
@@ -34,6 +35,9 @@ def voices(provider, lang):
 
     try:
         settings = get_settings()
+
+        if provider is None:
+            provider = settings.voice_service
 
         if provider == 'edge':
             # List Edge TTS voices

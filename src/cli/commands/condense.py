@@ -58,8 +58,8 @@ from ..app import cli  # noqa: E402
 @click.option(
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
-    default='edge',
-    help='TTS provider: elevenlabs (paid, high quality), edge (free, good quality), or azure (paid, SSML support). Default: edge'
+    default=None,
+    help='TTS provider: elevenlabs (paid, high quality), edge (free, good quality), or azure (paid, SSML support). Default: VOICE_SERVICE env var or edge'
 )
 @click.option(
     '--slideshow-frames',
@@ -172,6 +172,9 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         # Load settings first
         settings = get_settings()
+
+        if tts_provider is None:
+            tts_provider = settings.voice_service
 
         if resume is None:
             resume = settings.resume

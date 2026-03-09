@@ -49,8 +49,8 @@ from ..app import cli  # noqa: E402
 @click.option(
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
-    default='edge',
-    help='TTS provider for audio output. Default: edge'
+    default=None,
+    help='TTS provider for audio output. Default: VOICE_SERVICE env var or edge'
 )
 @click.option(
     '--speech-rate',
@@ -143,6 +143,12 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
 
         print(f"Output format: {format}")
 
+        # Check API keys
+        settings = get_settings()
+
+        if tts_provider is None:
+            tts_provider = settings.voice_service
+
         # Parse voice shortcut if provided (e.g., edge/ryan, azure/aria)
         if voice and '/' in voice:
             parts = voice.split('/', 1)
@@ -174,7 +180,6 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                         sys.exit(1)
                     print(f"Voice: {voice} -> {voice_id}")
                 elif tts_provider == 'azure':
-                    settings = get_settings()
                     if not settings.azure_speech_key or not settings.azure_speech_region:
                         click.echo(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set.{Style.RESET_ALL}")
                         sys.exit(1)
@@ -202,9 +207,6 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                     speech_rate = '+0%'
 
         print()
-
-        # Check API keys
-        settings = get_settings()
 
         if not settings.openai_api_key and not settings.anthropic_api_key:
             click.echo(f"{Fore.RED}Error: No API key set for condensation. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.{Style.RESET_ALL}")
