@@ -27,6 +27,7 @@ chrome-extension/build-info.js
 chrome-extension.crx
 dot-env
 yt-cookies.txt
+build-settings.json
 
 test_outputs/
 tts_samples/

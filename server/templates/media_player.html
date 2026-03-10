@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Output - Job {{ job_id }}</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #111827;
+            color: #f9fafb;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        .header {
+            margin-bottom: 24px;
+        }
+
+        .title {
+            margin: 0 0 8px;
+            font-size: 28px;
+        }
+
+        .meta {
+            color: #9ca3af;
+            font-size: 14px;
+        }
+
+        .player-shell {
+            background: #1f2937;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+        }
+
+        audio,
+        video {
+            width: 100%;
+            display: block;
+            border-radius: 12px;
+            background: #000;
+        }
+
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .button {
+            display: inline-block;
+            padding: 12px 16px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .button-primary {
+            background: #2563eb;
+            color: #fff;
+        }
+
+        .button-secondary {
+            background: #374151;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">{{ 'Audio Player' if media_kind == 'audio' else 'Video Player' }}</h1>
+            <div class="meta">Job ID: {{ job_id }} | File: {{ file_name }}</div>
+        </div>
+
+        <div class="player-shell">
+            {% if media_kind == 'audio' %}
+            <audio controls preload="metadata">
+                <source src="{{ media_url }}" type="audio/mpeg">
+                Your browser does not support audio playback.
+            </audio>
+            {% else %}
+            <video controls preload="metadata">
+                <source src="{{ media_url }}" type="video/mp4">
+                Your browser does not support video playback.
+            </video>
+            {% endif %}
+
+            <div class="actions">
+                <a class="button button-primary" href="{{ download_url }}">Download File</a>
+                <a class="button button-secondary" href="{{ media_url }}">Open Raw Media</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

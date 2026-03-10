@@ -32,3 +32,4 @@ from .commands import transcript as _transcript  # noqa: E402,F401
 from .commands import tts as _tts  # noqa: E402,F401
 from .commands import tts_samples as _tts_samples  # noqa: E402,F401
 from .commands import voices as _voices  # noqa: E402,F401
+from .commands import serve as _serve  # noqa: E402,F401

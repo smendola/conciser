@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Takeaways - Job {{ job_id }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='takeaways.css') }}">
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -17,15 +19,16 @@
             {{ html_content | safe }}
         </div>
 
-        <div class="download-section">
+        <!-- <div class="download-section">
             <a href="/api/download/{{ job_id }}?cid={{ client_id }}&download=1" class="download-btn">
                 📥 Download as Markdown
             </a>
         </div>
-
+ -->
         <div class="footer">
             <p><strong>NBJ Condenser</strong></p>
         </div>
     </div>
 </body>
+
 </html>

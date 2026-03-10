@@ -78,6 +78,58 @@ def is_mobile_user_agent(user_agent: str) -> bool:
     return bool(MOBILE_USER_AGENT_PATTERN.search(user_agent))
 
 
+def _get_authorized_completed_job(job_id, client_id):
+    job = job_service.get_job(job_id)
+    if not job:
+        return None, (jsonify({'error': 'Job not found'}), 404)
+
+    if job['client_id'] and job['client_id'] != client_id:
+        return None, (jsonify({'error': 'Job not found'}), 404)
+
+    if job['status'] != 'completed' or not job['output_file']:
+        return None, (jsonify({'error': 'Job not ready'}), 400)
+
+    return job, None
+
+
+def _resolve_output_path(output_file):
+    output_path = Path(output_file)
+    if not output_path.is_absolute():
+        output_path = Path(__file__).parent.parent / output_path
+    return output_path
+
+
+def _render_markdown_output(job_id, client_id, output_path):
+    import markdown
+
+    md_content = output_path.read_text(encoding='utf-8')
+
+    page_title = "Takeaways"
+    lines = md_content.strip().split('\n')
+    for line in lines:
+        if line.startswith('# '):
+            page_title = line[2:].strip()
+            break
+
+    md_content = md_content.strip()
+    if md_content.startswith('# '):
+        first_newline = md_content.find('\n')
+        if first_newline != -1:
+            md_content = md_content[first_newline + 1:].strip()
+        else:
+            md_content = ""
+
+    html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
+
+    return render_template(
+        'takeaways.html',
+        job_id=job_id,
+        page_title=page_title,
+        html_content=html_content,
+        client_id=client_id,
+    )
+
+
 @app.route('/start')
 def start_page():
     """Landing page for extension (desktop) or Android app (mobile)."""
@@ -264,9 +316,12 @@ def status(job_id):
 
     if job['status'] == 'completed' and job['output_file']:
         download_url = f"/api/download/{job['id']}"
+        open_url = f"/api/open/{job['id']}"
         if job['client_id']:
             download_url += f"?cid={quote_plus(job['client_id'])}"
+            open_url += f"?cid={quote_plus(job['client_id'])}"
         response['download_url'] = download_url
+        response['open_url'] = open_url
 
     if job['error']:
         response['error'] = job['error']
@@ -287,71 +342,88 @@ def download(job_id):
     if error_response:
         return error_response
 
-    # Query JobService
-    job = job_service.get_job(job_id)
-    if not job:
-        return jsonify({'error': 'Job not found'}), 404
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready for download' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
 
-    if job['client_id'] and job['client_id'] != client_id:
-        return jsonify({'error': 'Job not found'}), 404
-
-    if job['status'] != 'completed' or not job['output_file']:
-        return jsonify({'error': 'Job not ready for download'}), 400
-
-    output_path = Path(job['output_file'])
-    if not output_path.is_absolute():
-        output_path = Path(__file__).parent.parent / output_path
-    
+    output_path = _resolve_output_path(job['output_file'])
     if not output_path.exists():
         return jsonify({'error': 'Output file not found'}), 404
 
-    # Check if download is forced (for markdown files)
-    force_download = request.args.get('download') == '1'
-    
-    # If it's a markdown file and not forcing download, render as HTML
-    if output_path.suffix == '.md' and not force_download:
-        try:
-            import markdown
-            
-            # Read the markdown content
-            md_content = output_path.read_text(encoding='utf-8')
-            
-            # Extract title from markdown content
-            page_title = "Takeaways"
-            lines = md_content.strip().split('\n')
-            for line in lines:
-                if line.startswith('# '):
-                    page_title = line[2:].strip()
-                    break
-            
-            # Remove the title line from markdown content to prevent duplicate
-            md_content = md_content.strip()
-            if md_content.startswith('# '):
-                first_newline = md_content.find('\n')
-                if first_newline != -1:
-                    md_content = md_content[first_newline + 1:].strip()
-                else:
-                    md_content = ""  # Only title was in the file
-            
-            # Convert to HTML
-            html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
-            
-            # Render using the existing template
-            return render_template('takeaways.html', 
-                                 job_id=job_id, 
-                                 page_title=page_title,
-                                 html_content=html_content,
-                                 client_id=client_id)
-            
-        except Exception as e:
-            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
-    
-    # For non-markdown files (audio, video), serve as attachment
     return send_file(
         output_path,
         as_attachment=True,
         download_name=output_path.name
     )
+
+
+@app.route('/api/open/<job_id>', methods=['GET'])
+def open_output(job_id):
+    """Open the processed output in a browser-friendly viewer."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    suffix = output_path.suffix.lower()
+
+    if suffix == '.md':
+        try:
+            return _render_markdown_output(job_id, client_id, output_path)
+        except Exception as e:
+            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
+
+    media_kind = 'audio' if suffix == '.mp3' else 'video'
+    media_url = url_for('open_output_content', job_id=job_id, cid=client_id)
+    download_url = url_for('download', job_id=job_id, cid=client_id)
+
+    return render_template(
+        'media_player.html',
+        job_id=job_id,
+        media_kind=media_kind,
+        media_url=media_url,
+        download_url=download_url,
+        file_name=output_path.name,
+    )
+
+
+@app.route('/api/open/<job_id>/content', methods=['GET'])
+def open_output_content(job_id):
+    """Serve processed media inline for the browser player."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    suffix = output_path.suffix.lower()
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
+
+    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    return send_file(output_path, as_attachment=False, mimetype=mimetype, download_name=output_path.name)
 
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
@@ -480,6 +552,7 @@ def _print_startup_banner():
     print("  POST   /api/takeaways    - Extract key takeaways from video")
     print("  GET    /api/status/<id>  - Check job status")
     print("  GET    /api/download/<id>- Download output file")
+    print("  GET    /api/open/<id>    - Open output in browser")
     print("  GET    /api/strategies   - Get aggressiveness strategies")
     print("  GET    /api/voices       - Get Edge TTS voices")
     print("  GET    /api/jobs         - List all jobs")
