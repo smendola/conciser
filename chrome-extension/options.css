@@ -1,0 +1,133 @@
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  margin: 0;
+  padding: 24px;
+  background: #f8f9fa;
+  color: #222;
+}
+
+.card {
+  max-width: 720px;
+  margin: 0 auto;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+h1 {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  color: #1a73e8;
+}
+
+.field {
+  margin-top: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+input[type="url"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+  background-color: white;
+  cursor: pointer;
+}
+
+.url-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+button {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #1a73e8;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+button.secondary {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+button.danger {
+  background: #dc3545;
+  width: 100%;
+}
+
+.status {
+  margin-top: 12px;
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.status.info {
+  color: #444;
+}
+
+.status.ok {
+  color: #0f9d58;
+  font-weight: 600;
+}
+
+.status.pending {
+  color: #e37400;
+  font-weight: 600;
+}
+
+.status.error {
+  color: #d93025;
+  font-weight: 600;
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #666;
+}
+
+.field.section-divider {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.hint.compact {
+  margin-top: 6px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}

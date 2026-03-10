@@ -1,0 +1,334 @@
+body {
+  width: 360px;
+  padding: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  margin: 0;
+}
+
+h2 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #1a73e8;
+}
+
+.video-info {
+  background: #f5f5f5;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.tab.active {
+  color: #1a73e8;
+  border-bottom-color: #1a73e8;
+  background: transparent;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  background: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:hover {
+  background: #1765cc;
+}
+
+button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.status {
+  margin-top: 12px;
+  padding: 12px;
+  background: #e8f0fe;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.status.processing {
+  background: #fff3cd;
+}
+
+.status.completed {
+  background: #d4edda;
+}
+
+.status.error {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status .progress {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 11px;
+  color: #555;
+  font-family: monospace;
+}
+
+.download-btn {
+  background: #28a745;
+  margin-top: 8px;
+}
+
+.download-btn:hover {
+  background: #218838;
+}
+
+.error {
+  color: #d32f2f;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.settings {
+  margin: 12px 0;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.setting-group {
+  margin-bottom: 12px;
+}
+
+.setting-group-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 8px;
+}
+
+.setting-group:last-child {
+  margin-bottom: 0;
+}
+
+.setting-label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: #333;
+}
+
+select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+}
+
+input[type="url"],
+input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  background: white;
+  box-sizing: border-box;
+}
+
+input[type="range"] {
+  width: 100%;
+  margin: 6px 0;
+}
+
+.slider-value {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.strategy-desc {
+  font-size: 10px;
+  color: #666;
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.radio-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.radio-option {
+  flex: 1;
+  min-width: 60px;
+}
+
+.radio-option input[type="radio"] {
+  display: none;
+}
+
+.radio-option label {
+  display: block;
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: center;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.radio-option label:hover {
+  border-color: #1a73e8;
+  background: #f0f7ff;
+}
+
+.radio-option input[type="radio"]:checked + label {
+  background: #1a73e8;
+  color: white;
+  border-color: #1a73e8;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.checkbox-label .setting-label {
+  margin: 0;
+}
+
+.recent-jobs {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.recent-jobs.hidden,
+.takeaways-voice-group.hidden {
+  display: none;
+}
+
+.recent-jobs h3 {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: #757575;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding-left: 6px;
+}
+
+.recent-job {
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.recent-job:hover {
+  background: #f0f0f0;
+}
+
+.recent-job-badge {
+  font-size: 9px;
+  font-weight: bold;
+  color: white;
+  padding: 2px 4px;
+  border-radius: 2px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.recent-job-badge.mp4 {
+  background-color: #1a73e8;
+}
+
+.recent-job-badge.mp3 {
+  background-color: #28a745;
+}
+
+.recent-job-badge.txt {
+  background-color: #212121;
+}
+
+.recent-job-details {
+  flex: 1;
+  overflow: hidden;
+}
+
+.recent-job-title {
+  font-size: 12px;
+  color: #212121;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-job-timestamp {
+  font-size: 10px;
+  color: #757575;
+}
+
+.recent-job-divider {
+  height: 1px;
+  background-color: #eeeeee;
+  margin: 0;
+}
+
+.build-info {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 9px;
+  color: #999;
+  text-align: center;
+}

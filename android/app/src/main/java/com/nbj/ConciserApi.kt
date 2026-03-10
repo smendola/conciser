@@ -4,9 +4,11 @@ import android.net.Uri
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Interceptor
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -55,7 +57,8 @@ data class StatusResponse(
 data class VoiceItem(
     val name: String,
     val locale: String,
-    val friendly_name: String
+    val friendly_name: String,
+    val gender: String? = null
 )
 
 data class VoicesResponse(
@@ -187,5 +190,20 @@ object ConciserApi {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
         return "${base}api/open/$jobId$cidParam"
+    }
+
+    suspend fun postDebugLog(baseUrl: String, clientId: String?, payload: Map<String, Any?>) = withContext(Dispatchers.IO) {
+        try {
+            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+            val requestJson = Gson().toJson(payload)
+            val requestBuilder = Request.Builder()
+                .url("${base}api/log")
+                .post(requestJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            if (!clientId.isNullOrBlank()) {
+                requestBuilder.header("X-User-Id", clientId)
+            }
+            httpClient.newCall(requestBuilder.build()).execute().use { }
+        } catch (e: Exception) {
+        }
     }
 }

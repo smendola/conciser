@@ -99,6 +99,15 @@ def _resolve_output_path(output_file):
     return output_path
 
 
+@app.route('/api/log', methods=['POST'])
+def api_log():
+    payload = request.get_json(silent=True)
+    if payload is None:
+        payload = request.get_data(as_text=True)
+    print(f"[API LOG] {payload}", flush=True)
+    return jsonify({'ok': True})
+
+
 def _render_markdown_output(job_id, client_id, output_path):
     import markdown
 
