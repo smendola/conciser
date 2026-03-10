@@ -204,12 +204,8 @@ class CondenserPipeline:
             frame_extraction_future = None
             if video_gen_mode == "slideshow":
                 import concurrent.futures
-                import threading
-
                 frames_dir = video_folder / "frames"
                 frames_dir.mkdir(exist_ok=True)
-
-                # Check if frames already exist (check both formats)
                 existing_frames = list(frames_dir.glob("scene_*.jpg"))
                 if not existing_frames:
                     existing_frames = list(frames_dir.glob("slideshow_frame_*.jpg"))
@@ -217,77 +213,44 @@ class CondenserPipeline:
                 if not existing_frames:
                     update_progress("FRAME_EXTRACT", "Detecting scenes and extracting frames (parallel)...")
                     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                    frame_extraction_future = executor.submit(
-                        self._extract_frames_early,
-                        video_path,
-                        frames_dir,
-                        slideshow_max_frames
-                    )
+                    frame_extraction_future = executor.submit(self._extract_frames_early, video_path, frames_dir, slideshow_max_frames)
                 else:
                     logger.info(f"Found {len(existing_frames)} existing frames, skipping extraction")
 
             # Stage 2: Extract and transcribe audio
             _t = time.time()
             if resume:
-                # Check for existing transcript (only if we have a video path)
-                existing_transcript = None
-                if video_path:
-                    existing_transcript = self._find_existing_transcript(video_path)
-
+                existing_transcript = self._find_existing_transcript(video_path)
                 if existing_transcript:
                     update_progress("TRANSCRIBE", f"Resuming from step TRANSCRIBE - found existing transcript")
                     transcript_result = existing_transcript
-                    transcript = transcript_result['text']
-                    segments = transcript_result['segments']
-                    duration_minutes = metadata['duration'] / 60.0
                 else:
                     update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
                     transcript_result = self._transcribe_video(video_path, video_folder, video_id, video_url, quality)
-                    transcript = transcript_result['text']
-                    segments = transcript_result['segments']
-                    duration_minutes = metadata['duration'] / 60.0
             else:
                 update_progress("TRANSCRIBE", "Extracting and transcribing audio...")
                 transcript_result = self._transcribe_video(video_path, video_folder, video_id, video_url, quality)
-                transcript = transcript_result['text']
-                segments = transcript_result['segments']
-                duration_minutes = metadata['duration'] / 60.0
-
+            
+            transcript = transcript_result['text']
+            segments = transcript_result['segments']
+            duration_minutes = metadata['duration'] / 60.0
             logger.info(f"TRANSCRIBE: {time.time() - _t:.1f} sec")
 
             # Stage 3: Condense content
             _t = time.time()
             if resume:
-                # Check for existing condensed script
                 existing_condensed = self._find_existing_condensed_script(video_folder, aggressiveness)
-
                 if existing_condensed:
                     update_progress("CONDENSE", f"Resuming from step CONDENSE - found existing condensed script")
                     condensed_result = existing_condensed
-                    condensed_script = condensed_result['condensed_script']
                 else:
                     update_progress("CONDENSE", f"Condensing content; aggressiveness {aggressiveness}/10...")
-                    condensed_result = self._condense_transcript(
-                        transcript,
-                        duration_minutes,
-                        aggressiveness,
-                        video_folder,
-                        llm_progress=llm_progress,
-                        word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated..."))
-                    )
-                    condensed_script = condensed_result['condensed_script']
+                    condensed_result = self._condense_transcript(transcript, duration_minutes, aggressiveness, video_folder, llm_progress=llm_progress, word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated...")))
             else:
                 update_progress("CONDENSE", f"Condensing content; aggressiveness {aggressiveness}/10...")
-                condensed_result = self._condense_transcript(
-                    transcript,
-                    duration_minutes,
-                    aggressiveness,
-                    video_folder,
-                    llm_progress=llm_progress,
-                    word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated..."))
-                )
-                condensed_script = condensed_result['condensed_script']
-
+                condensed_result = self._condense_transcript(transcript, duration_minutes, aggressiveness, video_folder, llm_progress=llm_progress, word_count_callback=word_count_callback or (lambda n: update_progress("CONDENSE", f"{n} words generated...")))
+            
+            condensed_script = condensed_result['condensed_script']
             logger.info(f"CONDENSE: {time.time() - _t:.1f} sec")
 
             if prepend_intro:
@@ -297,12 +260,11 @@ class CondenserPipeline:
                     intro = f"The key take-aways from this video are:\n\n{numbered}\n\n"
                     condensed_script = intro + condensed_script
 
-            # Optional Stage 3.5: Rewrite for TTS SSML (Azure only, aggressiveness >= 4)
+            # Optional Stage 3.5: Rewrite for TTS SSML
             tts_script = condensed_script
             tts_mode = _tts_input_mode(tts_provider, aggressiveness)
             if tts_provider == "azure" and aggressiveness >= 4:
                 from colorama import Fore, Style
-
                 provider_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.provider).lower().replace('-', '_'))
                 model_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.model).lower().replace('-', '_'))
                 intro_flag = "pi1" if prepend_intro else "pi0"
@@ -311,7 +273,6 @@ class CondenserPipeline:
                 ssml_text = None
                 if resume and ssml_path.exists():
                     update_progress("SSML", f"Resuming from step SSML - found existing SSML: {ssml_path.name}")
-                    logger.info(f"SSML (resume) loaded from: {ssml_path}")
                     ssml_text = ssml_path.read_text(encoding="utf-8")
                 else:
                     update_progress("SSML", "Refining condensed script for TTS...")
@@ -319,17 +280,10 @@ class CondenserPipeline:
                         if self.condenser.provider == "openai":
                             previous_response_id = condensed_result.get('_openai_previous_response_id')
                             if not previous_response_id:
-                                logger.warning(
-                                    "SSML regeneration requested but OpenAI conversation pointer is missing "
-                                    "(_openai_previous_response_id). This commonly happens when resuming from a saved "
-                                    "condensed script. Falling back to plain text TTS."
-                                )
+                                logger.warning("SSML regeneration requested but OpenAI conversation pointer is missing. Falling back to plain text TTS.")
                                 ssml_text = None
                             else:
-                                ssml_text = self.condenser.rewrite_for_tts_ssml(
-                                    "",
-                                    previous_response_id=previous_response_id,
-                                )
+                                ssml_text = self.condenser.rewrite_for_tts_ssml("", previous_response_id=previous_response_id)
                         else:
                             ssml_text = self.condenser.rewrite_for_tts_ssml(tts_script)
                     except Exception as e:
@@ -339,10 +293,8 @@ class CondenserPipeline:
                 if ssml_text and _is_valid_ssml(ssml_text) and not (resume and ssml_path.exists()):
                     ssml_path.write_text(ssml_text, encoding="utf-8")
                     logger.info(f"SSML written to: {ssml_path}")
-                elif ssml_text and not _is_valid_ssml(ssml_text):
-                    logger.warning("SSML rewrite produced invalid SSML; skipping SSML file write and falling back to plain text TTS")
-                elif not ssml_text:
-                    logger.warning("SSML rewrite returned empty output; skipping SSML file write and falling back to plain text TTS")
+                elif not ssml_text or not _is_valid_ssml(ssml_text):
+                    logger.warning("SSML rewrite failed or produced invalid SSML; falling back to plain text TTS")
 
                 if ssml_text and _is_valid_ssml(ssml_text):
                     tts_script = ssml_text
@@ -350,10 +302,9 @@ class CondenserPipeline:
                 else:
                     tts_mode = "text"
 
-            # Stage 4: Clone voice (or use premade voice)
+            # Stage 4: Clone voice or select premade
             _t = time.time()
             if tts_provider == 'edge':
-                # Edge TTS doesn't need voice cloning
                 update_progress("VOICE_SELECT", f"Using Edge TTS; voice {voice_id}...")
                 used_voice_id = voice_id
                 cleanup_voice = False
@@ -365,12 +316,11 @@ class CondenserPipeline:
                 update_progress("VOICE_CLONE", "Cloning speaker's voice...")
                 used_voice_id = self._clone_voice(video_path, segments, metadata['title'], video_folder)
                 cleanup_voice = True
-
             logger.info(f"VOICE_CLONE: {time.time() - _t:.1f} sec")
 
             # Stage 5: Generate speech
             _t = time.time()
-            _tts_last = [0.0, -1]  # [last_time, last_pct]
+            _tts_last = [0.0, -1]
             def _tts_progress(pct):
                 now = time.time()
                 if pct == _tts_last[1] or (pct != 100 and now - _tts_last[0] < 1.0):
@@ -378,10 +328,9 @@ class CondenserPipeline:
                 _tts_last[0] = now
                 _tts_last[1] = pct
                 update_progress("VOICE_GENERATE", f"{pct}%")
+            
             if resume:
-                # Check for existing generated speech
                 existing_speech = self._find_existing_generated_speech(video_folder, tts_provider, used_voice_id, aggressiveness, tts_rate, tts_mode)
-
                 if existing_speech:
                     update_progress("VOICE_GENERATE", f"Resuming from step VOICE_GENERATE - found existing speech: {existing_speech.name}")
                     generated_audio_path = existing_speech
@@ -409,120 +358,74 @@ class CondenserPipeline:
                         generated_audio_path = self._generate_speech(tts_script, used_voice_id, video_folder, tts_provider, tts_rate, aggressiveness, tts_mode, progress_callback=_tts_progress)
                     else:
                         raise
-
             logger.info(f"VOICE_GENERATE: {time.time() - _t:.1f} sec")
 
-            # Stage 6: Generate video (or skip for audio-only)
+            # --- Final Path Prediction and Resume Check ---
+            if output_path is None:
+                voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
+                rate_str = _encode_rate(tts_rate)
+                base_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}"
+                extension = "mp3" if video_gen_mode == "audio_only" else "mp4"
+                final_path = self.settings.output_dir / f"{base_filename}.{extension}"
+            else:
+                final_path = output_path
+
+            if resume and final_path.exists():
+                update_progress("COMPLETE", f"Final output already exists: {final_path.name}")
+                stats = { 'original_duration_minutes': duration_minutes, 'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'], 'reduction_percentage': condensed_result['reduction_percentage'], 'aggressiveness': aggressiveness, 'quality': quality, }
+                return { 'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result }
+
+            # Stage 6: Generate video or finalize audio
             _t = time.time()
             if video_gen_mode == "audio_only":
-                update_progress("AUDIO_ONLY", "Skipping video generation; audio-only mode...")
-                logger.info("Audio-only mode: skipping video generation")
-
-                # Generate output filename for MP3
-                if output_path is None:
-                    voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
-                    rate_str = _encode_rate(tts_rate)
-                    output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}.mp3"
-                    output_path = self.settings.output_dir / output_filename
-
-                # Copy the generated audio as the final output
+                update_progress("AUDIO_ONLY", "Finalizing audio file...")
                 import shutil
-                shutil.copy(generated_audio_path, output_path)
-                logger.info(f"Audio-only output saved to: {output_path}")
-
-                # Embed cover art from downloaded thumbnail (if available)
+                shutil.copy(generated_audio_path, final_path)
+                logger.info(f"Audio-only output saved to: {final_path}")
                 try:
                     from .utils.audio_utils import embed_cover_art_mp3
-                    thumb_candidates = [
-                        video_folder / "source_video.jpg",
-                        video_folder / "source_video.jpeg",
-                        video_folder / "source_video.png",
-                        video_folder / "source_video.webp",
-                    ]
-                    thumb_path = next((p for p in thumb_candidates if p.exists()), None)
-                    if thumb_path is not None:
-                        embed_cover_art_mp3(output_path, thumb_path)
-                        logger.info(f"Embedded cover art into MP3 from: {thumb_path}")
+                    thumb_candidates = [p for p in video_folder.glob("source_video.*") if p.suffix in ['.jpg', '.jpeg', '.png', '.webp']]
+                    if thumb_candidates:
+                        embed_cover_art_mp3(final_path, thumb_candidates[0])
+                        logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")
                 except Exception as e:
                     logger.warning(f"Failed to embed cover art into MP3: {e}")
+                stats = { 'original_duration_minutes': duration_minutes, 'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'], 'reduction_percentage': condensed_result['reduction_percentage'], 'aggressiveness': aggressiveness, 'quality': quality, }
+                update_progress("COMPLETE", f"Audio condensed successfully: {final_path}")
+                return { 'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result }
 
-                # Build stats structure to match normal return
-                stats = {
-                    'original_duration_minutes': duration_minutes,
-                    'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'],
-                    'reduction_percentage': condensed_result['reduction_percentage'],
-                    'aggressiveness': aggressiveness,
-                    'quality': quality,
-                }
-
-                logger.info(f"VIDEO_GENERATE (audio_only): {time.time() - _t:.1f} sec")
-                update_progress("COMPLETE", f"Audio condensed successfully: {output_path}")
-
-                return {
-                    'output_video': output_path,
-                    'metadata': metadata,
-                    'stats': stats,
-                    'condensed_result': condensed_result
-                }
-
+            # --- Video Generation (for non-audio-only modes) ---
+            existing_generated_video = self._find_existing_generated_video(video_folder, video_gen_mode) if resume else None
+            if existing_generated_video:
+                update_progress("VIDEO_GENERATE", f"Resuming from step VIDEO_GENERATE - found existing generated video: {existing_generated_video.name}")
+                generated_video_path = existing_generated_video
             elif video_gen_mode == "avatar":
                 update_progress("VIDEO_GENERATE", "Generating talking head video with D-ID...")
                 generated_video_path = self._generate_video_avatar(video_path, generated_audio_path, video_folder)
             elif video_gen_mode == "slideshow":
-                # Wait for frame extraction if it's still running
                 if frame_extraction_future:
                     update_progress("VIDEO_GENERATE", "Waiting for frame extraction to complete...")
                     try:
-                        frame_extraction_future.result(timeout=300)  # 5 minute timeout
+                        frame_extraction_future.result(timeout=300)
                         logger.info("Frame extraction completed in parallel")
                     except Exception as e:
                         logger.warning(f"Parallel frame extraction failed: {e}, will retry during video generation")
-
                 update_progress("VIDEO_GENERATE", "Creating slideshow video...")
                 generated_video_path = self._generate_video_slideshow(video_path, generated_audio_path, video_folder, slideshow_max_frames)
             else:  # static
                 update_progress("VIDEO_GENERATE", "Creating static image video...")
                 generated_video_path = self._generate_video_static(video_path, generated_audio_path, video_folder)
-
             logger.info(f"VIDEO_GENERATE: {time.time() - _t:.1f} sec")
-
-            # Generate output filename if not provided
-            if output_path is None:
-                # Normalize voice_id to snake_case
-                voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
-                # Format: {video_id}_{title_snake_60}_a{N}_{tts_provider}_{voice_snake}_{rate}.mp4
-                rate_str = _encode_rate(tts_rate)
-                output_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}.mp4"
-                output_path = self.settings.output_dir / output_filename
 
             # Stage 7: Compose final video
             _t = time.time()
             update_progress("COMPOSE", "Composing final video...")
-            final_video_path = self._compose_final_video(
-                generated_video_path,
-                generated_audio_path,
-                output_path,
-                quality
-            )
+            composed_video_path = self._compose_final_video(generated_video_path, generated_audio_path, final_path, quality)
             logger.info(f"COMPOSE: {time.time() - _t:.1f} sec")
 
-            # Generate statistics
-            stats = {
-                'original_duration_minutes': duration_minutes,
-                'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'],
-                'reduction_percentage': condensed_result['reduction_percentage'],
-                'aggressiveness': aggressiveness,
-                'quality': quality,
-            }
-
-            update_progress("COMPLETE", f"Video condensed successfully: {final_video_path}")
-
-            return {
-                'output_video': final_video_path,
-                'metadata': metadata,
-                'stats': stats,
-                'condensed_result': condensed_result
-            }
+            stats = { 'original_duration_minutes': duration_minutes, 'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'], 'reduction_percentage': condensed_result['reduction_percentage'], 'aggressiveness': aggressiveness, 'quality': quality, }
+            update_progress("COMPLETE", f"Video condensed successfully: {composed_video_path}")
+            return { 'output_video': composed_video_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result }
 
         except Exception as e:
             from .utils.exceptions import ApiError
@@ -1285,7 +1188,15 @@ class CondenserPipeline:
 
         return None
 
-    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str, aggressiveness: int = 5, tts_rate: str = "+0%", tts_mode: str = "text") -> Optional[Path]:
+    def _find_existing_generated_video(self, video_folder: Path, video_gen_mode: str) -> Optional[Path]:
+        """Find existing generated video file based on mode."""
+        # All modes (static, slideshow, avatar) produce a 'generated_video.mp4'
+        # The avatar mode is resumable if the file exists.
+        filename = "generated_video.mp4"
+        path = video_folder / filename
+        return path if path.exists() else None
+
+    def _find_existing_generated_speech(self, video_folder: Path, tts_provider: str, voice_id: str, aggressiveness: int, tts_rate: str, tts_mode: str) -> Optional[Path]:
         """Find existing generated speech file matching all generation params."""
         voice_normalized = re.sub(r'[^a-z0-9_]', '', voice_id.lower().replace('-', '_'))
         rate_str = _encode_rate(tts_rate)

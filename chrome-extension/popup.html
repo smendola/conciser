@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <style>
@@ -106,10 +107,12 @@
       color: #721c24;
     }
 
-    .progress {
+    .status .progress {
       margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
       font-size: 11px;
-      color: #666;
+      color: #555;
       font-family: monospace;
     }
 
@@ -138,6 +141,12 @@
 
     .setting-group {
       margin-bottom: 12px;
+    }
+
+    .setting-group-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 8px;
     }
 
     .setting-group:last-child {
@@ -223,7 +232,7 @@
       background: #f0f7ff;
     }
 
-    .radio-option input[type="radio"]:checked + label {
+    .radio-option input[type="radio"]:checked+label {
       background: #1a73e8;
       color: white;
       border-color: #1a73e8;
@@ -292,9 +301,9 @@
       color: #999;
       text-align: center;
     }
-
   </style>
 </head>
+
 <body>
   <h2>🎬 NBJ Condenser</h2>
 
@@ -310,46 +319,54 @@
   <!-- Condense Tab -->
   <div class="tab-content active" id="condense-tab">
     <div class="settings" id="settings">
-    <div class="setting-group">
-      <label class="setting-label" for="videoModeSelect">Output Mode</label>
-      <select id="videoModeSelect">
-        <option value="slideshow">Slideshow</option>
-        <option value="audio_only">Audio Only (MP3)</option>
-      </select>
-    </div>
-
-    <div class="setting-group">
-      <label class="setting-label" for="voiceSelect">Voice</label>
-      <select id="voiceSelect">
-        <option value="">Loading voices...</option>
-      </select>
-    </div>
-
-    <div class="setting-group">
-      <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
-      <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
-      <div class="slider-value">
-        <span id="aggressivenessValue">5</span>
+      <div class="setting-group">
+        <label class="setting-label" for="videoModeSelect">Output Mode</label>
+        <select id="videoModeSelect">
+          <option value="slideshow">Slideshow</option>
+          <option value="audio_only">Audio Only (MP3)</option>
+        </select>
       </div>
-      <div id="strategyDesc" class="strategy-desc">Loading...</div>
-    </div>
 
-    <div class="setting-group">
-      <label class="setting-label" for="speedSlider">Speech Speed</label>
-      <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.01">
-      <div class="slider-value">
-        <span id="speedValue">1.10x</span>
-        <span></span>
+      <div class="setting-group-grid">
+        <div class="setting-group">
+          <label class="setting-label" for="localeSelect">Language</label>
+          <select id="localeSelect">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" for="voiceSelect">Voice</label>
+          <select id="voiceSelect">
+            <option value="">Select language</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
+        <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
+        <div class="slider-value">
+          <span id="aggressivenessValue">5</span>
+        </div>
+        <div id="strategyDesc" class="strategy-desc">Loading...</div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label" for="speedSlider">Speech Speed</label>
+        <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.01">
+        <div class="slider-value">
+          <span id="speedValue">1.10x</span>
+          <span></span>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="prependIntroCheck">
+          <span class="setting-label" style="margin:0;">Prepend key take-aways intro</span>
+        </label>
       </div>
     </div>
-
-    <div class="setting-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="prependIntroCheck">
-        <span class="setting-label" style="margin:0;">Prepend key take-aways intro</span>
-      </label>
-    </div>
-  </div>
 
     <button id="condenseBtn" disabled>Condense Video</button>
 
@@ -401,10 +418,20 @@
       </div>
 
       <div class="setting-group" id="takeawaysVoiceGroup" style="display:none;">
-        <label class="setting-label" for="takeawaysVoiceSelect">Voice</label>
-        <select id="takeawaysVoiceSelect">
-          <option value="">Loading voices...</option>
-        </select>
+        <div class="setting-group-grid">
+          <div class="setting-group">
+            <label class="setting-label" for="takeawaysLocaleSelect">Language</label>
+            <select id="takeawaysLocaleSelect">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="takeawaysVoiceSelect">Voice</label>
+            <select id="takeawaysVoiceSelect">
+              <option value="">Select language</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -423,4 +450,5 @@
   <script src="build-info.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>

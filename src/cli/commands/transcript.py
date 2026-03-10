@@ -53,11 +53,15 @@ def _extract_video_id(url: str) -> str | None:
 )
 @click.option(
     '--resume/--no-resume',
-    default=True,
-    help='Use existing transcript file if present (default: resume)'
+    default=None,
+    help='Use existing transcript file if present (default: enabled, or RESUME env var)'
 )
 def transcript(url, no_transcribe, output, resume):
     """Get transcript text from a video URL or videos.txt index."""
+    # If resume is not specified via command line, use the setting from .env
+    if resume is None:
+        resume = settings.resume
+
     _suppress_httpx_info_logs()
 
     import logging

@@ -5,7 +5,7 @@ let currentJobId = null;
 let currentTakeawaysJobId = null;
 let pollInterval = null;
 let takeawaysPollInterval = null;
-const DEFAULT_SERVER_URL = 'http://conciser.603apps.net'
+// DEFAULT_SERVER_URL is injected at build time via build-info.js
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
@@ -78,7 +78,7 @@ async function initializePopup() {
           videoInfo.innerHTML = `Video: ${videoId}<br><span style="font-weight:700;color:#555;">${data.title}</span>`;
         }
       })
-      .catch(() => {}); // silently ignore — title is decorative
+      .catch(() => { }); // silently ignore — title is decorative
   } else {
     videoInfo.textContent = '⚠️ Not a YouTube video page';
     condenseBtn.disabled = true;
@@ -316,39 +316,95 @@ async function fetchVoices() {
       await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
     }
 
-    // Populate both voice selects
-    const voiceSelects = [
-      document.getElementById('voiceSelect'),
-      document.getElementById('takeawaysVoiceSelect')
-    ];
+    populateLocaleSelects();
+    updateVoiceSelects();
 
-    voiceSelects.forEach(voiceSelect => {
-      voiceSelect.innerHTML = '';
-
-      if (voices.length === 0) {
-        voiceSelect.innerHTML = '<option value="">No voices available</option>';
-        return;
+    // Restore saved voice
+    if (storage.settings && storage.settings.voice) {
+      const savedVoice = voices.find(v => v.name === storage.settings.voice);
+      if (savedVoice) {
+        const locale = savedVoice.locale;
+        document.getElementById('localeSelect').value = locale;
+        document.getElementById('takeawaysLocaleSelect').value = locale;
+        updateVoiceSelects(locale);
+        document.getElementById('voiceSelect').value = savedVoice.name;
+        document.getElementById('takeawaysVoiceSelect').value = savedVoice.name;
       }
+    }
 
-      voices.forEach(voice => {
-        const option = document.createElement('option');
-        option.value = voice.name;
-        option.textContent = `${voice.locale} - ${voice.friendly_name}`;
-        voiceSelect.appendChild(option);
-      });
-
-      // Restore saved voice
-      if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
-        voiceSelect.value = storage.settings.voice;
-      } else if (voices.length > 0) {
-        voiceSelect.value = voices[0].name;
-      }
-    });
   } catch (error) {
     console.error('Failed to fetch voices:', error);
-    document.getElementById('voiceSelect').innerHTML = '<option value="">Error loading voices</option>';
-    document.getElementById('takeawaysVoiceSelect').innerHTML = '<option value="">Error loading voices</option>';
+    const selects = ['localeSelect', 'voiceSelect', 'takeawaysLocaleSelect', 'takeawaysVoiceSelect'];
+    selects.forEach(id => {
+      document.getElementById(id).innerHTML = '<option value="">Error</option>';
+    });
   }
+}
+
+function populateLocaleSelects() {
+  const locales = [...new Set(voices.map(v => v.locale))].sort();
+  const localeSelects = [
+    document.getElementById('localeSelect'),
+    document.getElementById('takeawaysLocaleSelect')
+  ];
+
+  const userLocale = navigator.language.split('-')[0];
+  const userLocaleLong = navigator.language;
+
+  localeSelects.forEach(select => {
+    select.innerHTML = '';
+    locales.forEach(locale => {
+      const option = document.createElement('option');
+      option.value = locale;
+      option.textContent = locale;
+      select.appendChild(option);
+    });
+
+    // Set default locale
+    if (locales.includes(userLocaleLong)) {
+      select.value = userLocaleLong;
+    } else if (locales.find(l => l.startsWith(userLocale))) {
+      select.value = locales.find(l => l.startsWith(userLocale));
+    }
+  });
+}
+
+function updateVoiceSelects(locale) {
+  const voiceSelects = [
+    document.getElementById('voiceSelect'),
+    document.getElementById('takeawaysVoiceSelect')
+  ];
+
+  if (!locale) {
+    locale = document.getElementById('localeSelect').value;
+  }
+
+  const filteredVoices = voices.filter(v => v.locale === locale);
+
+  voiceSelects.forEach(select => {
+    const currentVal = select.value;
+    select.innerHTML = '';
+
+    if (filteredVoices.length === 0) {
+      select.innerHTML = '<option value="">No voices</option>';
+      return;
+    }
+
+    filteredVoices.forEach(voice => {
+      const option = document.createElement('option');
+      option.value = voice.name;
+      option.textContent = `${voice.friendly_name} (${voice.gender})`;
+      select.appendChild(option);
+    });
+
+    // Try to restore previous selection if it exists in the new list
+    if (filteredVoices.some(v => v.name === currentVal)) {
+      select.value = currentVal;
+    } else if (filteredVoices.length > 0) {
+      select.value = filteredVoices[0].name;
+    }
+  });
+  handleSettingChange();
 }
 
 // Load settings from storage
@@ -365,7 +421,7 @@ async function loadSettings() {
   }, saved);
 
   serverUrl = normalizeServerUrl(settings.serverUrl);
-  
+
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
   document.getElementById('speedSlider').value = settings.speechSpeed;
@@ -464,7 +520,24 @@ document.getElementById('speedSlider').addEventListener('input', (e) => {
   handleSettingChange();
 });
 
+document.getElementById('localeSelect').addEventListener('change', (e) => {
+  updateVoiceSelects(e.target.value);
+});
+
+document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
+  // Keep both voice dropdowns in sync with locale for simplicity
+  document.getElementById('localeSelect').value = e.target.value;
+  updateVoiceSelects(e.target.value);
+});
+
 document.getElementById('voiceSelect').addEventListener('change', () => {
+  // Keep takeaways voice in sync for simplicity
+  const voice = document.getElementById('voiceSelect').value;
+  document.getElementById('takeawaysVoiceSelect').value = voice;
+  handleSettingChange();
+});
+
+document.getElementById('takeawaysVoiceSelect').addEventListener('change', () => {
   handleSettingChange();
 });
 
@@ -560,13 +633,11 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
 function showStatus(type, message, progress = '') {
   const container = document.getElementById('statusContainer');
 
-  let html = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}</div>`;
-
+  let progressHtml = '';
   if (progress) {
-    html += `<div class="progress">${progress}</div>`;
+    progressHtml = `<div class="progress">${progress}</div>`;
   }
-
-  container.innerHTML = html;
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
 }
 
 function startPolling() {
@@ -578,7 +649,7 @@ function startPolling() {
 async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentJobId}`);
-    
+
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
       clearInterval(pollInterval);
@@ -593,7 +664,7 @@ async function checkStatus() {
       resetButton();
       return;
     }
-    
+
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -740,13 +811,11 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
 function showTakeawaysStatus(type, message, progress = '') {
   const container = document.getElementById('takeawaysStatusContainer');
 
-  let html = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}</div>`;
-
+  let progressHtml = '';
   if (progress) {
-    html += `<div class="progress">${progress}</div>`;
+    progressHtml = `<div class="progress">${progress}</div>`;
   }
-
-  container.innerHTML = html;
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
 }
 
 function startTakeawaysPolling() {
@@ -758,7 +827,7 @@ function startTakeawaysPolling() {
 async function checkTakeawaysStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
-    
+
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
       clearInterval(takeawaysPollInterval);
@@ -773,7 +842,7 @@ async function checkTakeawaysStatus() {
       resetTakeawaysButton();
       return;
     }
-    
+
     const data = await response.json();
 
     if (data.status === 'completed') {

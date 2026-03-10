@@ -205,8 +205,8 @@ class AzureTTS:
                     if locale_filter and not voice.locale.startswith(locale_filter):
                         continue
 
-                    # Only include DragonHD voices
-                    if 'DragonHD' not in voice.short_name:
+                    # Exclude HD voices because they are much slower to generate
+                    if 'DragonHD' in voice.short_name:
                         continue
 
                     voices.append({

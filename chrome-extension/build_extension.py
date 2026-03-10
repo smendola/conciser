@@ -36,11 +36,20 @@ def build_extension():
         output_zip.unlink()
         print(f"Removed old build: {output_zip}")
 
+    # Read build settings
+    build_settings_file = project_root / 'build-settings.json'
+    with open(build_settings_file, 'r') as f:
+        build_settings = json.load(f)
+    default_server_url = build_settings['default_server_url']
+
     # Generate build info file
     build_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     build_info_file = extension_dir / 'build-info.js'
-    build_info_file.write_text(f'const BUILD_TIMESTAMP = "{build_timestamp}";\n')
-    print(f"Generated build-info.js: {build_timestamp}")
+    build_info_file.write_text(
+        f'const BUILD_TIMESTAMP = "{build_timestamp}";\n'
+        f'const DEFAULT_SERVER_URL = "{default_server_url}";\n'
+    )
+    print(f"Generated build-info.js: timestamp={build_timestamp} server={default_server_url}")
 
     # Files/folders to include
     include_patterns = [

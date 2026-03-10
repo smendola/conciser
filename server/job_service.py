@@ -170,7 +170,7 @@ class JobService:
             tts_rate=params.get("speech_rate", "+0%"),
             skip_voice_clone=True,
             progress_callback=lambda s, m: self.update_progress(job_id, s, m),
-            resume=False,
+            resume=self.settings.resume,
             prepend_intro=params.get("prepend_intro", False),
         )
 
@@ -214,6 +214,12 @@ class JobService:
 
         if params.get("voice"):
             cmd.extend(["--voice", params["voice"]])
+
+        # Add resume flag based on settings
+        if self.settings.resume:
+            cmd.append("--resume")
+        else:
+            cmd.append("--no-resume")
 
         self.update_progress(job_id, "FETCH", "Starting takeaways job")
         logger.info(f"[{job_id}] Running: {' '.join(cmd)}")

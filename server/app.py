@@ -430,7 +430,11 @@ def get_voices():
                         'name': v['name'],
                         'gender': v['gender'],
                         'locale': v['locale'],
-                        'friendly_name': v['name'].split('-', 2)[-1].split(':')[0]
+                        'friendly_name': v['name'].split('-', 2)[-1]
+                                                  .replace('Multilingual', '')
+                                                  .replace('Expressive', '')
+                                                  .replace('Turbo', '')
+                                                  .replace('Neural', '')
                     }
                     for v in all_voices
                 ],

@@ -66,8 +66,8 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--resume/--no-resume',
-    default=True,
-    help='Resume from cached intermediate files (default: resume)'
+    default=None,
+    help='Resume from cached intermediate files (default: enabled, or RESUME env var)'
 )
 @click.option(
     '--xdg-open', '-O',
@@ -102,6 +102,9 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         # Auto-determine optimal number of points
         nbj takeaways https://youtube.com/watch?v=... --top=auto
     """
+    # If resume is not specified via command line, use the setting from .env
+    if resume is None:
+        resume = settings.resume
     _suppress_httpx_info_logs()
 
     import logging
