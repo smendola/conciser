@@ -1173,6 +1173,37 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(badge)
             row.addView(textCol)
+
+            val deleteBtn = TextView(this).apply {
+                text = "×"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                setTextColor(0xFF999999.toInt())
+                setPadding((8 * dp).toInt(), (0 * dp).toInt(), (8 * dp).toInt(), (0 * dp).toInt())
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Delete"
+                setOnClickListener {
+                    lifecycleScope.launch {
+                        try {
+                            val clientId = ClientIdentity.getOrCreate(this@MainActivity)
+                            val service = ConciserApi.createService(job.serverUrl, clientId)
+                            service.deleteJob(job.jobId)
+                        } catch (e: Exception) {
+                            // ignore
+                        }
+
+                        val updated = loadRecentJobs().filterNot { it.jobId == job.jobId }
+                        saveRecentJobs(updated)
+                        refreshRecentJobsUI()
+                    }
+                }
+                setOnTouchListener { v, event ->
+                    v.onTouchEvent(event)
+                    true
+                }
+            }
+
+            row.addView(deleteBtn)
             container.addView(row)
 
             // Divider (except after last row)

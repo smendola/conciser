@@ -93,6 +93,9 @@ interface ConciserApiService {
 
     @GET("api/jobs")
     suspend fun getJobs(): JobsResponse
+
+    @DELETE("api/jobs/{jobId}")
+    suspend fun deleteJob(@Path("jobId") jobId: String): retrofit2.Response<okhttp3.ResponseBody>
 }
 
 data class JobsResponse(
@@ -186,10 +189,12 @@ object ConciserApi {
         return "${base}api/download/$jobId$cidParam"
     }
 
-    fun getFullOpenUrl(baseUrl: String, jobId: String, clientId: String? = null): String {
-        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
-        return "${base}api/open/$jobId$cidParam"
+    fun getFullOpenUrl(baseUrl: String, jobId: String, clientId: String): String {
+        return "$baseUrl/api/open/$jobId?cid=${java.net.URLEncoder.encode(clientId, "UTF-8")}";
+    }
+
+    fun getFullDeleteUrl(baseUrl: String, jobId: String): String {
+        return "$baseUrl/api/jobs/$jobId"
     }
 
     suspend fun postDebugLog(baseUrl: String, clientId: String?, payload: Map<String, Any?>) = withContext(Dispatchers.IO) {

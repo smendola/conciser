@@ -305,6 +305,26 @@ input[type="range"] {
   overflow: hidden;
 }
 
+.recent-job-delete {
+  border: 0;
+  background: transparent;
+  color: #999;
+  font-size: 14px;
+  line-height: 14px;
+  padding: 2px 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.recent-job-delete:hover {
+  color: #333;
+}
+
+.recent-job-delete:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .recent-job-title {
   font-size: 12px;
   color: #212121;

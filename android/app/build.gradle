@@ -11,8 +11,8 @@ android {
         applicationId "com.nbj"
         minSdk 24
         targetSdk 34
-        versionCode 24
-        versionName "1.0.24"
+        versionCode 5
+        versionName "1.0.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

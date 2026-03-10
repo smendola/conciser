@@ -477,6 +477,27 @@ def list_jobs():
     })
 
 
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+def delete_job(job_id):
+    """Soft-delete a job. This does not delete any files."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job['client_id'] and job['client_id'] != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    ok = job_service.store.mark_deleted(job_id)
+    if not ok:
+        return jsonify({'error': 'Job not found'}), 404
+
+    return jsonify({'ok': True, 'job_id': job_id, 'status': 'deleted'})
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint."""
@@ -574,6 +595,7 @@ def _print_startup_banner():
     print("  GET    /api/strategies   - Get aggressiveness strategies")
     print("  GET    /api/voices       - Get Edge TTS voices")
     print("  GET    /api/jobs         - List all jobs")
+    print("  DELETE /api/jobs/<id>    - Soft-delete a job (no file deletion)")
     print("  GET    /health           - Health check")
     # print("\n👉 Share this link: http://conciser.603apps.net/start")
     print("\n" + "=" * 60 + "\n")

@@ -51,7 +51,7 @@ class JobStore:
                     url TEXT NOT NULL,
                     title TEXT,
                     job_type TEXT NOT NULL,  -- 'condense' or 'takeaways'
-                    status TEXT NOT NULL DEFAULT 'queued',  -- queued, processing, completed, error
+                    status TEXT NOT NULL DEFAULT 'queued',  -- queued, processing, completed, error, deleted
                     progress TEXT,
                     output_file TEXT,
                     error TEXT,
@@ -82,6 +82,10 @@ class JobStore:
                 CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id);
             """)
             conn.commit()
+
+            # Best-effort migration for older DBs: ensure status column can hold 'deleted'
+            # (SQLite doesn't enforce enum-like constraints here; this exists just to keep
+            # the in-code comment/schema up to date without requiring manual migrations.)
 
     def create_job(
         self,
@@ -205,6 +209,8 @@ class JobStore:
             if status:
                 query += " AND status = ?"
                 args.append(status)
+            else:
+                query += " AND status != 'deleted'"
             query += " ORDER BY created_at DESC"
             if limit:
                 query += " LIMIT ?"
@@ -258,6 +264,16 @@ class JobStore:
         """Delete a job and all its data."""
         with self._conn() as conn:
             cursor = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_deleted(self, job_id: str) -> bool:
+        """Soft-delete a job (do not remove DB rows or files)."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE jobs SET status = 'deleted' WHERE id = ?",
+                (job_id,),
+            )
             conn.commit()
             return cursor.rowcount > 0
 

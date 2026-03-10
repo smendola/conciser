@@ -56,6 +56,21 @@ function buildOpenUrl(jobId) {
   return url;
 }
 
+async function deleteJob(jobId) {
+  const response = await fetchWithAuth(`${serverUrl}/api/jobs/${jobId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    let message = `Failed to delete job ${jobId}`;
+    try {
+      const data = await response.json();
+      if (data && data.error) message = data.error;
+    } catch (_) {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return response.json().catch(() => ({}));
+}
+
 function getRecentJobBadge(outputFormat, jobType) {
   const normalizedFormat = (outputFormat || '').toString().trim().toLowerCase();
 
@@ -207,6 +222,7 @@ async function loadRecentJobs() {
                 <div class="recent-job-title">${displayTitle}</div>
                 <div class="recent-job-timestamp">${dateStr}</div>
               </div>
+              <button class="recent-job-delete" data-job-id="${job.job_id}" aria-label="Delete">×</button>
             </div>
           `;
           const dividerHtml = index < jobs.length - 1 ? '<div class="recent-job-divider"></div>' : '';
@@ -220,6 +236,22 @@ async function loadRecentJobs() {
           el.addEventListener('click', () => {
             const jobId = el.getAttribute('data-job-id');
             chrome.tabs.create({ url: buildOpenUrl(jobId) });
+          });
+        });
+
+        list.querySelectorAll('.recent-job-delete').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const jobId = btn.getAttribute('data-job-id');
+            btn.disabled = true;
+            try {
+              await deleteJob(jobId);
+              await loadRecentJobs();
+            } catch (err) {
+              console.error(err);
+              btn.disabled = false;
+            }
           });
         });
       } else {

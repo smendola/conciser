@@ -1029,7 +1029,7 @@ class CondenserPipeline:
             '-f', 'concat',
             '-safe', '0',
             '-i', str(concat_file),
-            '-fps_mode', 'vfr',
+            '-vsync', 'vfr',
             '-map', '0:v:0',
             '-an',
             '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
