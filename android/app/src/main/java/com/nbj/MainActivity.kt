@@ -881,9 +881,9 @@ class MainActivity : AppCompatActivity() {
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFFFFFFFF.toInt())
                 val bg = when (job.outputFormat) {
-                    "text" -> 0xFF28a745.toInt()  // Green for text
-                    "audio" -> 0xFF6c757d.toInt()  // Gray for audio
-                    else -> 0xFF1a73e8.toInt()     // Blue for video
+                    "text" -> 0xFF212121.toInt()
+                    "audio" -> 0xFF28a745.toInt()
+                    else -> 0xFF1a73e8.toInt()
                 }
                 setBackgroundColor(bg)
                 setPadding((4 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
