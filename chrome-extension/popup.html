@@ -248,49 +248,69 @@
     }
 
     .recent-jobs h3 {
-      margin: 0 0 8px 0;
+      margin: 0 0 4px 0;
       font-size: 11px;
-      font-weight: 600;
-      color: #555;
+      font-weight: normal;
+      color: #757575;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
     }
 
     .recent-job {
-      padding: 6px 8px;
-      margin-bottom: 4px;
-      background: white;
-      border-radius: 3px;
-      font-size: 11px;
+      padding: 10px 0;
       cursor: pointer;
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      transition: all 0.2s;
     }
 
     .recent-job:hover {
-      background: #e8f0fe;
-      transform: translateX(2px);
+      background: #f0f0f0;
     }
 
-    .recent-job:last-child {
-      margin-bottom: 0;
+    .recent-job-badge {
+      font-size: 9px;
+      font-weight: bold;
+      color: white;
+      padding: 2px 4px;
+      border-radius: 2px;
+      margin-right: 8px;
+      flex-shrink: 0;
     }
 
-    .recent-job-info {
+    .recent-job-badge.mp4 {
+      background-color: #1a73e8;
+    }
+
+    .recent-job-badge.mp3 {
+      background-color: #6c757d;
+    }
+
+    .recent-job-badge.txt {
+      background-color: #28a745;
+    }
+
+    .recent-job-details {
       flex: 1;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: 500;
     }
 
-    .recent-job-date {
+    .recent-job-title {
+      font-size: 12px;
+      color: #212121;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .recent-job-timestamp {
       font-size: 10px;
-      color: #999;
-      margin-left: 8px;
-      flex-shrink: 0;
+      color: #757575;
+    }
+
+    .recent-job-divider {
+      height: 1px;
+      background-color: #eeeeee;
+      margin: 0;
     }
 
     .build-info {

@@ -436,11 +436,19 @@ def list_jobs():
     for job in job_service.list_jobs(client_id=client_id):
         # Check if output file exists
         file_exists = False
+        output_format = None
         if job['output_file']:
             file_path = Path(job['output_file'])
             if not file_path.is_absolute():
                 file_path = Path(__file__).parent.parent / file_path
             file_exists = file_path.exists()
+            suffix = file_path.suffix.lower()
+            if suffix == '.mp3':
+                output_format = 'mp3'
+            elif suffix == '.mp4':
+                output_format = 'mp4'
+            elif suffix in {'.md', '.txt'}:
+                output_format = 'txt'
 
         jobs_list.append({
             'job_id': job['id'],
@@ -449,7 +457,8 @@ def list_jobs():
             'status': job['status'],
             'job_type': job['job_type'],
             'file_exists': file_exists,
-            'created_at': job['created_at']
+            'created_at': job['created_at'],
+            'output_format': output_format,
         })
 
     running_jobs = job_service.get_running_jobs()

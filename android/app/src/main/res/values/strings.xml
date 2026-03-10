@@ -35,4 +35,5 @@
     <string name="waiting_for_video">Share a YouTube video to start</string>
     <string name="recent_jobs">Recent</string>
     <string name="prepend_intro">Prepend key take-aways intro</string>
+    <string name="language">Language</string>
 </resources>

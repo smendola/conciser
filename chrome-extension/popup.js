@@ -12,6 +12,7 @@ let voices = [];
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let currentTab = 'condense';
 let clientId = null;
+const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
 
 async function ensureClientId() {
   if (clientId) return clientId;
@@ -45,6 +46,48 @@ function buildDownloadUrl(jobId) {
     url += `?cid=${encodeURIComponent(clientId)}`;
   }
   return url;
+}
+
+function buildOpenUrl(jobId) {
+  let url = `${serverUrl}/api/open/${jobId}`;
+  if (clientId) {
+    url += `?cid=${encodeURIComponent(clientId)}`;
+  }
+  return url;
+}
+
+function getRecentJobBadge(outputFormat, jobType) {
+  const normalizedFormat = (outputFormat || '').toString().trim().toLowerCase();
+
+  if (normalizedFormat === 'audio' || normalizedFormat === 'mp3') {
+    return { badgeClass: 'mp3', badgeText: 'MP3' };
+  }
+
+  if (normalizedFormat === 'text' || normalizedFormat === 'txt' || normalizedFormat === 'markdown' || normalizedFormat === 'md') {
+    return { badgeClass: 'txt', badgeText: 'TXT' };
+  }
+
+  if (normalizedFormat === 'video' || normalizedFormat === 'mp4') {
+    return { badgeClass: 'mp4', badgeText: 'MP4' };
+  }
+
+  if (jobType === 'takeaways') {
+    return { badgeClass: 'txt', badgeText: 'TXT' };
+  }
+
+  return { badgeClass: 'mp4', badgeText: 'MP4' };
+}
+
+function toServerAbsoluteUrl(url) {
+  if (!url) {
+    return url;
+  }
+
+  try {
+    return new URL(url, serverUrl).toString();
+  } catch (_) {
+    return url;
+  }
 }
 
 // Initialize popup
@@ -91,7 +134,7 @@ async function initializePopup() {
   await fetchVoices();
 
   // Setup tabs
-  setupTabs();
+  await setupTabs();
 
   // Check for existing job in storage
   const storage = await chrome.storage.local.get(['activeJob', 'completedJobs', 'activeTakeawaysJob', 'completedTakeawaysJobs']);
@@ -145,73 +188,54 @@ async function loadRecentJobs() {
       job.status === 'completed' && job.file_exists && job.job_type === 'takeaways'
     ).slice(0, 5);
 
+    const renderJobs = (container, list, jobs) => {
+      if (jobs.length > 0) {
+        list.innerHTML = jobs.map((job, index) => {
+          const date = new Date(job.created_at);
+          const dateStr = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+          const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+          const displayTitle = job.title || videoId;
+
+          const format = job.output_format || (job.job_type === 'condense' ? 'mp4' : 'txt');
+          const { badgeClass, badgeText } = getRecentJobBadge(format, job.job_type);
+
+          const jobHtml = `
+            <div class="recent-job" data-job-id="${job.job_id}">
+              <div class="recent-job-badge ${badgeClass}">${badgeText}</div>
+              <div class="recent-job-details">
+                <div class="recent-job-title">${displayTitle}</div>
+                <div class="recent-job-timestamp">${dateStr}</div>
+              </div>
+            </div>
+          `;
+          const dividerHtml = index < jobs.length - 1 ? '<div class="recent-job-divider"></div>' : '';
+
+          return jobHtml + dividerHtml;
+        }).join('');
+
+        container.style.display = 'block';
+
+        list.querySelectorAll('.recent-job').forEach(el => {
+          el.addEventListener('click', () => {
+            const jobId = el.getAttribute('data-job-id');
+            chrome.tabs.create({ url: buildOpenUrl(jobId) });
+          });
+        });
+      } else {
+        container.style.display = 'none';
+      }
+    };
+
     // Display condense jobs
     const condenseContainer = document.getElementById('recentCondenseJobs');
     const condenseList = document.getElementById('recentCondenseJobsList');
-
-    if (condenseJobs.length > 0) {
-      condenseList.innerHTML = condenseJobs.map(job => {
-        const date = new Date(job.created_at);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-        // Use title if available, otherwise extract video ID as fallback
-        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
-        const displayTitle = job.title || videoId;
-
-        return `
-          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
-            <div class="recent-job-info">${displayTitle}</div>
-            <div class="recent-job-date">${dateStr}</div>
-          </div>
-        `;
-      }).join('');
-
-      condenseContainer.style.display = 'block';
-
-      // Add click handlers
-      condenseList.querySelectorAll('.recent-job').forEach(el => {
-        el.addEventListener('click', () => {
-          const jobId = el.getAttribute('data-job-id');
-          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
-        });
-      });
-    } else {
-      condenseContainer.style.display = 'none';
-    }
+    renderJobs(condenseContainer, condenseList, condenseJobs);
 
     // Display takeaways jobs
     const takeawaysContainer = document.getElementById('recentTakeawaysJobs');
     const takeawaysList = document.getElementById('recentTakeawaysJobsList');
-
-    if (takeawaysJobs.length > 0) {
-      takeawaysList.innerHTML = takeawaysJobs.map(job => {
-        const date = new Date(job.created_at);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-        // Use title if available, otherwise extract video ID as fallback
-        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
-        const displayTitle = job.title || videoId;
-
-        return `
-          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
-            <div class="recent-job-info">${displayTitle}</div>
-            <div class="recent-job-date">${dateStr}</div>
-          </div>
-        `;
-      }).join('');
-
-      takeawaysContainer.style.display = 'block';
-
-      // Add click handlers
-      takeawaysList.querySelectorAll('.recent-job').forEach(el => {
-        el.addEventListener('click', () => {
-          const jobId = el.getAttribute('data-job-id');
-          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
-        });
-      });
-    } else {
-      takeawaysContainer.style.display = 'none';
-    }
+    renderJobs(takeawaysContainer, takeawaysList, takeawaysJobs);
 
   } catch (error) {
     console.error('Failed to load recent jobs:', error);
@@ -238,24 +262,36 @@ async function fetchStrategies() {
   }
 }
 
-// Setup tab switching
-function setupTabs() {
+function setActiveTab(targetTab) {
   const tabButtons = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
+  if (!['condense', 'takeaways'].includes(targetTab)) {
+    targetTab = 'condense';
+  }
+
+  tabButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === targetTab);
+  });
+
+  tabContents.forEach(content => {
+    content.classList.toggle('active', content.id === `${targetTab}-tab`);
+  });
+
+  currentTab = targetTab;
+}
+
+// Setup tab switching
+async function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab');
+  const storedTabState = await chrome.storage.local.get([POPUP_TAB_STORAGE_KEY]);
+  setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
+
   tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const targetTab = button.getAttribute('data-tab');
-
-      // Update active tab button
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-
-      // Update active tab content
-      tabContents.forEach(content => content.classList.remove('active'));
-      document.getElementById(`${targetTab}-tab`).classList.add('active');
-
-      currentTab = targetTab;
+      setActiveTab(targetTab);
+      await chrome.storage.local.set({ [POPUP_TAB_STORAGE_KEY]: targetTab });
     });
   });
 
@@ -265,39 +301,17 @@ function setupTabs() {
     radio.addEventListener('change', () => {
       const voiceGroup = document.getElementById('takeawaysVoiceGroup');
       voiceGroup.style.display = radio.value === 'audio' ? 'block' : 'none';
-      resetTakeawaysIfCompleted();
+      handleSettingChange();
     });
   });
 
   // Top radio buttons - reset completed state on change
   const topRadios = document.querySelectorAll('input[name="top"]');
   topRadios.forEach(radio => {
-    radio.addEventListener('change', resetTakeawaysIfCompleted);
+    radio.addEventListener('change', () => {
+      handleSettingChange();
+    });
   });
-
-  // Voice select - reset completed state on change
-  const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
-  if (takeawaysVoiceSelect) {
-    takeawaysVoiceSelect.addEventListener('change', resetTakeawaysIfCompleted);
-  }
-}
-
-// Reset takeaways UI if settings changed after completion
-async function resetTakeawaysIfCompleted() {
-  const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
-  if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
-    // Clear the completed job for this URL
-    delete storage.completedTakeawaysJobs[currentUrl];
-    await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
-
-    // Reset UI to extract mode
-    document.getElementById('takeawaysStatusContainer').innerHTML = '';
-    const takeawaysBtn = document.getElementById('takeawaysBtn');
-    takeawaysBtn.style.display = '';
-    takeawaysBtn.disabled = false;
-    takeawaysBtn.textContent = 'Extract Takeaways';
-    currentTakeawaysJobId = null;
-  }
 }
 
 // Fetch voices from API (cached 1 hour)
@@ -404,7 +418,6 @@ function updateVoiceSelects(locale) {
       select.value = filteredVoices[0].name;
     }
   });
-  handleSettingChange();
 }
 
 // Load settings from storage
@@ -472,24 +485,30 @@ function convertSpeedToRate(speed) {
   return percentage >= 0 ? `+${percentage}%` : `${percentage}%`;
 }
 
-// Check if settings changed after video was watched
+// Unified settings handler
 async function handleSettingChange() {
-  saveSettings();
+  await saveSettings();
 
-  // Check if this video has been watched
-  const storage = await chrome.storage.local.get(['watchedVideos', 'completedJobs']);
-  const watchedVideos = storage.watchedVideos || {};
-
-  if (watchedVideos[currentUrl] && storage.completedJobs && storage.completedJobs[currentUrl]) {
-    // Video was watched and settings changed - allow re-condensing
-    console.log('Settings changed after watching - resetting to condense mode');
-
-    // Clear the completed job for this video
-    delete storage.completedJobs[currentUrl];
-    await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-
-    // Reset UI to condense mode
-    resetToCondenseMode();
+  if (currentTab === 'condense') {
+    const storage = await chrome.storage.local.get(['completedJobs']);
+    if (storage.completedJobs && storage.completedJobs[currentUrl]) {
+      console.log('Settings changed on a completed job - resetting to condense mode');
+      delete storage.completedJobs[currentUrl];
+      await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+      resetToCondenseMode();
+      await loadRecentJobs();
+    }
+  } else if (currentTab === 'takeaways') {
+    const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+    if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+      console.log('Settings changed on a completed takeaways job - resetting');
+      delete storage.completedTakeawaysJobs[currentUrl];
+      await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+      resetTakeawaysButton();
+      document.getElementById('takeawaysStatusContainer').innerHTML = '';
+      currentTakeawaysJobId = null;
+      await loadRecentJobs();
+    }
   }
 }
 
@@ -522,32 +541,23 @@ document.getElementById('speedSlider').addEventListener('input', (e) => {
 
 document.getElementById('localeSelect').addEventListener('change', (e) => {
   updateVoiceSelects(e.target.value);
+  handleSettingChange();
 });
 
 document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
-  // Keep both voice dropdowns in sync with locale for simplicity
-  document.getElementById('localeSelect').value = e.target.value;
   updateVoiceSelects(e.target.value);
+  handleSettingChange();
 });
 
 document.getElementById('voiceSelect').addEventListener('change', () => {
-  // Keep takeaways voice in sync for simplicity
-  const voice = document.getElementById('voiceSelect').value;
-  document.getElementById('takeawaysVoiceSelect').value = voice;
   handleSettingChange();
 });
 
-document.getElementById('takeawaysVoiceSelect').addEventListener('change', () => {
-  handleSettingChange();
-});
+document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
 
-document.getElementById('videoModeSelect').addEventListener('change', () => {
-  handleSettingChange();
-});
+document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
 
-document.getElementById('prependIntroCheck').addEventListener('change', () => {
-  handleSettingChange();
-});
+document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
 
 // Display build timestamp
 if (typeof BUILD_TIMESTAMP !== 'undefined') {
@@ -595,16 +605,10 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
       currentJobId = data.job_id;
 
       // Clear any previous completed job for this URL
-      const storage = await chrome.storage.local.get(['completedJobs', 'watchedVideos']);
+      const storage = await chrome.storage.local.get(['completedJobs']);
       if (storage.completedJobs && storage.completedJobs[currentUrl]) {
         delete storage.completedJobs[currentUrl];
         await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-      }
-
-      // Clear watched status for this URL (starting fresh)
-      if (storage.watchedVideos && storage.watchedVideos[currentUrl]) {
-        delete storage.watchedVideos[currentUrl];
-        await chrome.storage.local.set({ watchedVideos: storage.watchedVideos });
       }
 
       // Save job to storage for persistence
@@ -718,16 +722,8 @@ function showCompleted(data) {
     </button>
   `;
 
-  document.getElementById('downloadBtn').addEventListener('click', async () => {
-    chrome.tabs.create({ url: buildDownloadUrl(currentJobId) });
-
-    // Mark this video as watched
-    const storage = await chrome.storage.local.get(['watchedVideos']);
-    const watchedVideos = storage.watchedVideos || {};
-    watchedVideos[currentUrl] = true;
-    await chrome.storage.local.set({ watchedVideos });
-
-    console.log('Video marked as watched - settings changes will now allow re-condensing');
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentJobId)) });
   });
 }
 
@@ -897,7 +893,7 @@ function showTakeawaysCompleted(data) {
   `;
 
   document.getElementById('downloadTakeawaysBtn').addEventListener('click', async () => {
-    chrome.tabs.create({ url: buildDownloadUrl(currentTakeawaysJobId) });
+    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentTakeawaysJobId)) });
   });
 }
 
