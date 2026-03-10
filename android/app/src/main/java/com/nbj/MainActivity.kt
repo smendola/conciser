@@ -495,15 +495,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun openCurrentResult(jobId: String) {
         val clientId = ClientIdentity.getOrCreate(this)
-        val videoUrl = ConciserApi.getFullDownloadUrl(getServerUrl(), jobId, clientId)
-        val mimeType = when (currentOutputFormat) {
-            "text" -> "text/html"
-            "audio" -> "audio/mpeg"
-            else -> "video/mp4"
-        }
+        val videoUrl = ConciserApi.getFullOpenUrl(getServerUrl(), jobId, clientId)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(videoUrl), mimeType)
+            data = Uri.parse(videoUrl)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
 
@@ -945,14 +940,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun openRecentJob(job: RecentJob) {
         val clientId = ClientIdentity.getOrCreate(this)
-        val videoUrl = ConciserApi.getFullDownloadUrl(job.serverUrl, job.jobId, clientId)
-        val mimeType = when (job.outputFormat) {
-            "text" -> "text/html"  // Server renders markdown as HTML
-            "audio" -> "audio/mpeg"
-            else -> "video/mp4"
-        }
+        val videoUrl = ConciserApi.getFullOpenUrl(job.serverUrl, job.jobId, clientId)
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(Uri.parse(videoUrl), mimeType)
+            data = Uri.parse(videoUrl)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         try {

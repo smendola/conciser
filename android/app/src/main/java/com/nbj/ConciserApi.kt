@@ -45,6 +45,7 @@ data class StatusResponse(
     val job_id: String,
     val status: String,
     val progress: String? = null,
+    val open_url: String? = null,
     val download_url: String? = null,
     val error: String? = null,
     val created_at: String? = null,
@@ -180,5 +181,11 @@ object ConciserApi {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
         return "${base}api/download/$jobId$cidParam"
+    }
+
+    fun getFullOpenUrl(baseUrl: String, jobId: String, clientId: String? = null): String {
+        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
+        val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
+        return "${base}api/open/$jobId$cidParam"
     }
 }
