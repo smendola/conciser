@@ -269,7 +269,7 @@ class CondenserPipeline:
             # Optional Stage 3.5: Rewrite for TTS SSML
             tts_script = condensed_script
             tts_mode = _tts_input_mode(tts_provider, aggressiveness)
-            if tts_provider == "azure" and aggressiveness >= 4:
+            if tts_provider == "azure" and aggressiveness >= 4 and self.settings.text_to_ssml_processing:
                 from colorama import Fore, Style
                 provider_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.provider).lower().replace('-', '_'))
                 model_norm = re.sub(r'[^a-z0-9_]', '', str(self.condenser.model).lower().replace('-', '_'))
@@ -307,6 +307,9 @@ class CondenserPipeline:
                     tts_mode = "ssml"
                 else:
                     tts_mode = "text"
+
+            if tts_provider == "azure" and aggressiveness >= 4 and not self.settings.text_to_ssml_processing:
+                logger.info("TEXT_TO_SSML_PROCESSING is disabled; skipping Azure SSML rewrite and using plain text TTS")
 
             # Stage 4: Clone voice or select premade
             _t = time.time()
@@ -396,7 +399,11 @@ class CondenserPipeline:
                 logger.info(f"Audio-only output saved to: {final_path}")
                 try:
                     from .utils.audio_utils import embed_cover_art_mp3
-                    thumb_candidates = [p for p in video_folder.glob("source_video.*") if p.suffix in ['.jpg', '.jpeg', '.png', '.webp']]
+                    thumb_candidates = [
+                        p
+                        for p in video_folder.glob("source_video.*")
+                        if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
+                    ]
                     if thumb_candidates:
                         embed_cover_art_mp3(final_path, thumb_candidates[0])
                         logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")

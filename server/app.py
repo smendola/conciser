@@ -118,6 +118,65 @@ def _resolve_output_path(output_file):
     return output_path
 
 
+def _youtube_thumbnail_url(youtube_url: str) -> str | None:
+    try:
+        video_id = CondenserPipeline._extract_video_id(youtube_url)
+    except Exception:
+        return None
+    if not video_id:
+        return None
+    return url_for('youtube_thumbnail', video_id=video_id, v=str(uuid.uuid4())[:8])
+
+
+@app.route('/api/yt_thumb/<video_id>')
+def youtube_thumbnail(video_id: str):
+    """Proxy a YouTube thumbnail image so the player reliably shows a real thumbnail."""
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{11}', video_id or ''):
+        return jsonify({'error': 'Invalid video id'}), 400
+
+    quality = (request.args.get('q') or 'hq').strip().lower()
+    if quality not in {'max', 'hq', 'mq', 'sd', 'default'}:
+        quality = 'hq'
+
+    quality_to_file = {
+        'max': 'maxresdefault.jpg',
+        'hq': 'hqdefault.jpg',
+        'mq': 'mqdefault.jpg',
+        'sd': 'sddefault.jpg',
+        'default': 'default.jpg',
+    }
+
+    import urllib.request
+
+    last_err = None
+    for q in (quality, 'hq', 'mq', 'default'):
+        remote_url = f"https://i.ytimg.com/vi/{video_id}/{quality_to_file[q]}"
+        try:
+            req = urllib.request.Request(
+                remote_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0',
+                    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                },
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                body = resp.read()
+
+            # Some missing thumbnails return HTML or very small placeholder-like responses.
+            if not body or len(body) < 200:
+                continue
+            ct = resp.headers.get('Content-Type', '')
+            if ct and not ct.startswith('image/'):
+                continue
+
+            return app.response_class(body, mimetype=ct or 'image/jpeg')
+        except Exception as e:
+            last_err = e
+            continue
+
+    return jsonify({'error': f'Failed to fetch thumbnail: {last_err}'}), 502
+
+
 @app.route('/api/log', methods=['POST'])
 def api_log():
     payload = request.get_json(silent=True)
@@ -430,9 +489,19 @@ def open_output(job_id):
     media_url = url_for('open_output_content', job_id=job_id, cid=client_id)
     download_url = url_for('download', job_id=job_id, cid=client_id)
 
+    params = job.get('params') or {}
+    aggressiveness = params.get('aggressiveness')
+    voice = params.get('voice')
+    thumbnail_url = _youtube_thumbnail_url(job.get('url') or '')
+
     return render_template(
         'media_player.html',
         job_id=job_id,
+        video_title=job.get('title') or None,
+        channel_name=job.get('channel_name') or None,
+        aggressiveness=aggressiveness,
+        voice=voice,
+        thumbnail_url=thumbnail_url,
         media_kind=media_kind,
         media_url=media_url,
         download_url=download_url,

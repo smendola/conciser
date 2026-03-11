@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Output - Job {{ job_id }}</title>
+    <title>{{ video_title if video_title else ('Output - Job ' ~ job_id) }}</title>
     <style>
         body {
             margin: 0;
@@ -37,6 +37,21 @@
             border-radius: 16px;
             padding: 20px;
             box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
+        }
+
+        .cover-art {
+            width: min(420px, 100%);
+            margin: 0 auto 16px;
+            border-radius: 14px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 18px 30px rgba(0, 0, 0, 0.35);
+        }
+
+        .cover-art img {
+            display: block;
+            width: 100%;
+            height: auto;
         }
 
         audio,
@@ -76,12 +91,27 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1 class="title">{{ 'Audio Player' if media_kind == 'audio' else 'Video Player' }}</h1>
-            <div class="meta">Job ID: {{ job_id }} | File: {{ file_name }}</div>
+            <h1 class="title">{{ video_title if video_title else ('Output - Job ' ~ job_id) }}</h1>
+            <div class="meta">
+                {% if channel_name %}
+                {{ channel_name }}
+                {% endif %}
+                {% if aggressiveness is not none %}
+                | Aggressiveness: {{ aggressiveness }}/10
+                {% endif %}
+                {% if voice %}
+                | Voice: {{ voice }}
+                {% endif %}
+            </div>
         </div>
 
         <div class="player-shell">
             {% if media_kind == 'audio' %}
+            {% if thumbnail_url %}
+            <div class="cover-art">
+                <img src="{{ thumbnail_url }}" alt="Video thumbnail" loading="lazy">
+            </div>
+            {% endif %}
             <audio controls preload="metadata">
                 <source src="{{ media_url }}" type="audio/mpeg">
                 Your browser does not support audio playback.

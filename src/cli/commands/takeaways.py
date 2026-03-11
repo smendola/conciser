@@ -7,6 +7,8 @@ import time
 import click
 from colorama import Fore, Style
 
+from ...utils.audio_utils import embed_cover_art_mp3
+
 from ...config import get_settings
 from ..common import _load_videos_txt, _resolve_voice
 from ..progress import ProgressDisplay
@@ -387,6 +389,18 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                     output_path=audio_path,
                     chunk_size=5000
                 )
+
+            try:
+                thumb_candidates = [
+                    p
+                    for p in video_folder.glob("source_video.*")
+                    if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+                ]
+                if thumb_candidates:
+                    embed_cover_art_mp3(audio_path, thumb_candidates[0])
+                    logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")
+            except Exception as e:
+                logger.warning(f"Failed to embed cover art into MP3: {e}")
 
             print(f"  Audio saved: {audio_path}\n")
         else:

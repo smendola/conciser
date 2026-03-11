@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # Pipeline behavior
     resume: bool = Field(default=True, description="Resume from existing intermediate files (use cached results)")
 
+    # TTS behavior
+    text_to_ssml_processing: bool = Field(
+        default=True,
+        description="If true, perform Azure SSML rewrite processing; if false, skip SSML processing and keep plain text",
+    )
+
     # Processing options
     target_reduction_percentage: Optional[int] = Field(default=None, ge=10, le=90)
     preserve_intro_outro: bool = Field(default=True)

@@ -6,6 +6,8 @@ from src.cli.commands import condense as condense_module
 from src.cli.commands import takeaways as takeaways_module
 from src.cli.commands import transcript as transcript_module
 
+from mutagen.id3 import ID3
+
 
 class _FakePipeline:
     def __init__(self, settings, result):
@@ -16,6 +18,35 @@ class _FakePipeline:
     def run(self, **kwargs):
         self.calls.append(kwargs)
         return self.result
+
+
+def _assert_mp3_has_cover_art_matching_thumbnail(mp3_path: Path, thumbnail_path: Path) -> None:
+    assert mp3_path.exists(), f"MP3 not found: {mp3_path}"
+    assert thumbnail_path.exists(), f"Thumbnail not found: {thumbnail_path}"
+
+    tags = ID3(str(mp3_path))
+    apic_frames = tags.getall("APIC")
+    assert apic_frames, "No embedded cover art found (missing ID3 APIC frame)"
+
+    embedded = apic_frames[0].data
+    expected = thumbnail_path.read_bytes()
+
+    # embed_cover_art_mp3 converts WebP thumbnails to JPEG for compatibility; match that behavior.
+    if thumbnail_path.suffix.lower() == ".webp":
+        import subprocess
+        tmp_jpg = thumbnail_path.with_name(thumbnail_path.stem + ".expected.jpg")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-i", str(thumbnail_path), "-frames:v", "1", "-q:v", "2", "-y", str(tmp_jpg)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            expected = tmp_jpg.read_bytes()
+        finally:
+            tmp_jpg.unlink(missing_ok=True)
+
+    assert embedded == expected, "Embedded cover art bytes did not match expected thumbnail bytes"
 
 
 def test_condense_happy_path_defaults(runner, monkeypatch, settings_factory, fake_condense_result):
@@ -294,3 +325,104 @@ def test_transcript_resume_uses_cached_output(runner, monkeypatch, settings_fact
     assert result.exit_code == 0
     assert "Loading cached transcript" in result.output
     transcriber.fetch_youtube_transcript.assert_not_called()
+
+
+def test_condense_audio_only_embeds_thumbnail_cover_art(runner, monkeypatch, settings_factory, tmp_path):
+    settings = settings_factory(output_dir=tmp_path / "output", temp_dir=tmp_path / "temp")
+    video_id = "ABCDEFGHIJK"
+    video_folder = settings.temp_dir / video_id
+    video_folder.mkdir(parents=True, exist_ok=True)
+
+    # Create a valid JPEG cover image file that the pipeline will embed.
+    # (The pipeline looks for source_video.* with image suffixes.)
+    thumbnail_path = video_folder / "source_video.jpg"
+    import subprocess
+    subprocess.run(
+        ["ffmpeg", "-f", "lavfi", "-i", "color=c=blue:s=320x240", "-frames:v", "1", "-q:v", "2", "-y", str(thumbnail_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    # Create a valid MP3 file and embed the thumbnail using the same helper the pipeline uses.
+    mp3_path = settings.output_dir / "out.mp3"
+    subprocess.run(
+        ["ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", "-q:a", "9", "-acodec", "libmp3lame", "-y", str(mp3_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    from src.utils.audio_utils import embed_cover_art_mp3
+    embed_cover_art_mp3(mp3_path, thumbnail_path)
+
+    fake_result = {"output_video": str(mp3_path), "stats": {"original_duration_minutes": 1.0, "condensed_duration_minutes": 1.0, "reduction_percentage": 0.0}, "condensed_result": {"key_points_preserved": []}}
+    pipeline = _FakePipeline(settings, fake_result)
+
+    monkeypatch.setattr(condense_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(condense_module, "CondenserPipeline", lambda s: pipeline)
+
+    result = runner.invoke(cli, ["condense", f"https://youtube.com/watch?v={video_id}", "--video-gen-mode=audio_only", "--voice=edge/ryan"])
+    assert result.exit_code == 0
+    _assert_mp3_has_cover_art_matching_thumbnail(mp3_path, thumbnail_path)
+
+
+def test_takeaways_audio_embeds_thumbnail_cover_art(runner, monkeypatch, settings_factory, tmp_path):
+    settings = settings_factory(output_dir=tmp_path / "output", temp_dir=tmp_path / "temp")
+    video_id = "ABCDEFGHIJK"
+    video_folder = settings.temp_dir / video_id
+    video_folder.mkdir(parents=True, exist_ok=True)
+
+    thumbnail_path = video_folder / "source_video.jpg"
+    import subprocess
+    subprocess.run(
+        ["ffmpeg", "-f", "lavfi", "-i", "color=c=blue:s=320x240", "-frames:v", "1", "-q:v", "2", "-y", str(thumbnail_path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    downloader = Mock()
+    downloader.download.return_value = {
+        "video_folder": video_folder,
+        "metadata": {"video_id": video_id, "title": "A video"},
+    }
+
+    transcriber = Mock()
+    transcriber.fetch_youtube_transcript.return_value = {"text": "transcript text"}
+
+    condenser = Mock()
+    condenser.extract_takeaways.return_value = "- One\n- Two"
+
+    # Edge TTS mock creates a real MP3 so cover art embedding can be verified.
+    class _Edge:
+        def resolve_voice_name(self, name):
+            return "en-GB-RyanNeural"
+
+        def generate_speech(self, text, output_path, voice, rate):
+            import subprocess
+            subprocess.run(
+                ["ffmpeg", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-t", "1", "-q:a", "9", "-acodec", "libmp3lame", "-y", str(output_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+    monkeypatch.setattr(takeaways_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(takeaways_module, "VideoDownloader", lambda *a, **k: downloader)
+    monkeypatch.setattr(takeaways_module, "Transcriber", lambda *a, **k: transcriber)
+    monkeypatch.setattr(takeaways_module, "ContentCondenser", lambda *a, **k: condenser)
+    monkeypatch.setattr(takeaways_module, "EdgeTTS", lambda *a, **k: _Edge())
+
+    result = runner.invoke(
+        cli,
+        [
+            "takeaways",
+            f"https://youtube.com/watch?v={video_id}",
+            "--format=audio",
+            "--voice=ryan",
+        ],
+    )
+    assert result.exit_code == 0
+
+    mp3_path = video_folder / f"takeaways_{video_id}_topauto_edge.mp3"
+    _assert_mp3_has_cover_art_matching_thumbnail(mp3_path, thumbnail_path)

@@ -605,7 +605,7 @@ initializePopup();
 document.getElementById('condenseBtn').addEventListener('click', async () => {
   const condenseBtn = document.getElementById('condenseBtn');
   condenseBtn.disabled = true;
-  condenseBtn.textContent = 'Submitting...';
+  condenseBtn.textContent = 'Processing...';
 
   try {
     // Get current settings
