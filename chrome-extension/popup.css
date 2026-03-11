@@ -71,8 +71,20 @@ button {
   font-weight: 500;
 }
 
+.recent-job-delete {
+  width: auto;
+  min-width: 20px;
+  padding: 2px 6px;
+  background: transparent;
+  color: #999;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 14px;
+}
+
 button:hover {
   background: #1765cc;
+  border: 1px solid white;
 }
 
 button:disabled {
@@ -226,7 +238,7 @@ input[type="range"] {
   background: #f0f7ff;
 }
 
-.radio-option input[type="radio"]:checked + label {
+.radio-option input[type="radio"]:checked+label {
   background: #1a73e8;
   color: white;
   border-color: #1a73e8;
@@ -317,7 +329,8 @@ input[type="range"] {
 }
 
 .recent-job-delete:hover {
-  color: #333;
+  background: #d32f2f;
+  color: #fff;
 }
 
 .recent-job-delete:disabled {
