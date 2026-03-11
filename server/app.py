@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 os.environ.setdefault('NBJ_LOG_STREAM', '0')
 from src.cli import logging as _logging  # noqa: F401
 
+logger = _logging.logger
+
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
@@ -187,7 +189,7 @@ def api_log():
     payload = request.get_json(silent=True)
     if payload is None:
         payload = request.get_data(as_text=True)
-    print(f"[API LOG] {payload}", flush=True)
+    logger.info(f"[API_LOG] {payload}")
     return jsonify({'ok': True})
 
 
