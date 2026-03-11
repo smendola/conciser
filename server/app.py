@@ -749,4 +749,5 @@ if __name__ == '__main__':
     worker_thread.start()
     print("Concurrent mode enabled with JobService")
 
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)
+    use_reloader = os.environ.get('NBJ_NO_RELOADER') not in {'1', 'true', 'yes'}
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=use_reloader)

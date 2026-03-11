@@ -408,6 +408,7 @@ class CondenserPipeline:
 
                     # Write standalone cover regardless of whether MP3 embedding succeeds.
                     try:
+                        import subprocess
                         if thumb_path.suffix.lower() == '.webp':
                             cmd_img = [
                                 'ffmpeg',
