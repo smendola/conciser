@@ -100,7 +100,7 @@ dmypy.json
 temp/
 output/
 *.log
-conciser.log
+nbj.pid
 dist/
 
 # API keys and secrets
