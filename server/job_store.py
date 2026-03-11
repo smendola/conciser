@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from contextlib import contextmanager
+import shutil
 
 from src.config import get_settings
 
@@ -19,10 +20,28 @@ class JobStore:
 
     def __init__(self, db_path: Optional[Path] = None):
         self.settings = get_settings()
-        self.db_path = db_path or (self.settings.output_dir / "jobs.db")
+        self.db_path = db_path or (self.settings.data_dir / "jobs.db")
+        if db_path is None:
+            self._best_effort_migrate_default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._init_schema()
+
+    def _best_effort_migrate_default_db_path(self) -> None:
+        """If an older DB exists in output_dir, copy it into data_dir on first run."""
+        try:
+            new_path = self.settings.data_dir / "jobs.db"
+            old_path = self.settings.output_dir / "jobs.db"
+
+            if new_path.exists():
+                return
+            if not old_path.exists():
+                return
+
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_path, new_path)
+        except Exception:
+            return
 
     @contextmanager
     def _conn(self):
@@ -50,8 +69,9 @@ class JobStore:
                     id TEXT PRIMARY KEY,
                     url TEXT NOT NULL,
                     title TEXT,
+                    channel_name TEXT,
                     job_type TEXT NOT NULL,  -- 'condense' or 'takeaways'
-                    status TEXT NOT NULL DEFAULT 'queued',  -- queued, processing, completed, error
+                    status TEXT NOT NULL DEFAULT 'queued',  -- queued, processing, completed, error, deleted
                     progress TEXT,
                     output_file TEXT,
                     error TEXT,
@@ -83,11 +103,16 @@ class JobStore:
             """)
             conn.commit()
 
+            # Best-effort migration for older DBs: ensure status column can hold 'deleted'
+            # (SQLite doesn't enforce enum-like constraints here; this exists just to keep
+            # the in-code comment/schema up to date without requiring manual migrations.)
+
     def create_job(
         self,
         job_id: str,
         url: str,
         title: Optional[str],
+        channel_name: Optional[str],
         job_type: str,
         client_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
@@ -96,10 +121,10 @@ class JobStore:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO jobs (id, url, title, job_type, client_id)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO jobs (id, url, title, channel_name, job_type, client_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, url, title or "", job_type, client_id),
+                (job_id, url, title or "", channel_name or "", job_type, client_id),
             )
             if params:
                 conn.executemany(
@@ -205,6 +230,8 @@ class JobStore:
             if status:
                 query += " AND status = ?"
                 args.append(status)
+            else:
+                query += " AND status != 'deleted'"
             query += " ORDER BY created_at DESC"
             if limit:
                 query += " LIMIT ?"
@@ -258,6 +285,16 @@ class JobStore:
         """Delete a job and all its data."""
         with self._conn() as conn:
             cursor = conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_deleted(self, job_id: str) -> bool:
+        """Soft-delete a job (do not remove DB rows or files)."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE jobs SET status = 'deleted' WHERE id = ?",
+                (job_id,),
+            )
             conn.commit()
             return cursor.rowcount > 0
 

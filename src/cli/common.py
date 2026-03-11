@@ -1,7 +1,31 @@
 import logging
+import re
+from datetime import timedelta
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+_AGE_RE = re.compile(r"^\\?(?P<value>\d+)(?P<unit>[hd])$")
+
+
+def parse_age_to_timedelta(age: str) -> timedelta:
+    m = _AGE_RE.match((age or "").strip())
+    if not m:
+        raise ValueError("age must be in the form 3h or 2d (e.g. 6h, 2d)")
+
+    value = int(m.group("value"))
+    unit = m.group("unit")
+
+    if value <= 0:
+        raise ValueError("age value must be > 0")
+
+    if unit == "h":
+        return timedelta(hours=value)
+    if unit == "d":
+        return timedelta(days=value)
+
+    raise ValueError("unsupported age unit")
 
 def _resolve_voice(voice: str, api_key: str) -> str:
     """

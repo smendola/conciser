@@ -4,9 +4,11 @@ import android.net.Uri
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import okhttp3.Interceptor
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -45,6 +47,7 @@ data class StatusResponse(
     val job_id: String,
     val status: String,
     val progress: String? = null,
+    val open_url: String? = null,
     val download_url: String? = null,
     val error: String? = null,
     val created_at: String? = null,
@@ -54,7 +57,8 @@ data class StatusResponse(
 data class VoiceItem(
     val name: String,
     val locale: String,
-    val friendly_name: String
+    val friendly_name: String,
+    val gender: String? = null
 )
 
 data class VoicesResponse(
@@ -89,6 +93,9 @@ interface ConciserApiService {
 
     @GET("api/jobs")
     suspend fun getJobs(): JobsResponse
+
+    @DELETE("api/jobs/{jobId}")
+    suspend fun deleteJob(@Path("jobId") jobId: String): retrofit2.Response<okhttp3.ResponseBody>
 }
 
 data class JobsResponse(
@@ -119,7 +126,7 @@ data class RecentJob(
 )
 
 object ConciserApi {
-    const val DEFAULT_URL = "http://conciser.603apps.net"
+    val DEFAULT_URL = BuildConfig.DEFAULT_SERVER_URL
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -180,5 +187,13 @@ object ConciserApi {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
         val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
         return "${base}api/download/$jobId$cidParam"
+    }
+
+    fun getFullOpenUrl(baseUrl: String, jobId: String, clientId: String): String {
+        return "$baseUrl/api/open/$jobId?cid=${java.net.URLEncoder.encode(clientId, "UTF-8")}";
+    }
+
+    fun getFullDeleteUrl(baseUrl: String, jobId: String): String {
+        return "$baseUrl/api/jobs/$jobId"
     }
 }

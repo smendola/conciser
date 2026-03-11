@@ -20,8 +20,8 @@ function isYouTubeVideoPage(url) {
     const urlObj = new URL(url);
     // Check if it's YouTube and has a video ID (watch?v=...)
     return (urlObj.hostname === 'www.youtube.com' || urlObj.hostname === 'youtube.com') &&
-           urlObj.pathname === '/watch' &&
-           urlObj.searchParams.has('v');
+      urlObj.pathname === '/watch' &&
+      urlObj.searchParams.has('v');
   } catch (e) {
     return false;
   }

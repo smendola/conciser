@@ -1,17 +1,223 @@
 // NBJ Condenser - Chrome Extension
 
+console.log('POPUP_BOOT: popup.js loaded');
+
 let currentUrl = null;
 let currentJobId = null;
 let currentTakeawaysJobId = null;
 let pollInterval = null;
 let takeawaysPollInterval = null;
-const DEFAULT_SERVER_URL = 'http://conciser.603apps.net'
+// DEFAULT_SERVER_URL is injected at build time via build-info.js
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let currentTab = 'condense';
 let clientId = null;
+const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
+
+function getServerCacheKeyPrefix() {
+  return `serverCache:${serverUrl}`;
+}
+
+async function clearAllStateOnServerSwitchIfNeeded() {
+  const storage = await chrome.storage.local.get(['lastServerUrl', 'settings']);
+  const lastServerUrl = storage.lastServerUrl;
+  const settings = storage.settings || {};
+  const selectedServerUrl = normalizeServerUrl(settings.serverUrl || serverUrl);
+
+  console.log('METADATA_CACHE: server_switch_check', {
+    lastServerUrl,
+    selectedServerUrl
+  });
+  await apiLog('server_switch_check', { lastServerUrl, selectedServerUrl });
+
+  if (lastServerUrl && normalizeServerUrl(lastServerUrl) !== selectedServerUrl) {
+    console.log('METADATA_CACHE: server_switch_wipe', {
+      from: lastServerUrl,
+      to: selectedServerUrl
+    });
+    await apiLog('server_switch_wipe', { from: lastServerUrl, to: selectedServerUrl });
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({
+      settings: { serverUrl: selectedServerUrl },
+      lastServerUrl: selectedServerUrl
+    });
+  }
+}
+
+function getStrategiesCacheKey() {
+  return `${getServerCacheKeyPrefix()}:strategies`;
+}
+
+function getVoicesCacheKey(locale) {
+  return `${getServerCacheKeyPrefix()}:voices:${locale}`;
+}
+
+function getLanguageOnlyLocale() {
+  return (navigator.language || 'en').split('-')[0];
+}
+
+async function loadCachedStrategiesForCurrentServer() {
+  const key = getStrategiesCacheKey();
+  const storage = await chrome.storage.local.get([key]);
+  const cache = storage[key];
+  console.log('METADATA_CACHE: strategies_cache_read', {
+    serverUrl,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  await apiLog('strategies_cache_read', {
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  if (cache && Array.isArray(cache.data)) {
+    strategies = cache.data;
+    updateStrategyDescription();
+    return true;
+  }
+  return false;
+}
+
+async function loadCachedVoicesForCurrentServer(locale) {
+  const key = getVoicesCacheKey(locale);
+  const storage = await chrome.storage.local.get([key]);
+  const cache = storage[key];
+  console.log('METADATA_CACHE: voices_cache_read', {
+    serverUrl,
+    locale,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  await apiLog('voices_cache_read', {
+    locale,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  if (cache && Array.isArray(cache.data)) {
+    voices = cache.data;
+    return true;
+  }
+  return false;
+}
+
+async function fetchAndCacheStrategiesForCurrentServer() {
+  console.log('METADATA_CACHE: strategies_fetch_start', { serverUrl });
+  await apiLog('strategies_fetch_start', {});
+  const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
+  if (!response.ok) throw new Error(`Failed to fetch strategies (${response.status})`);
+  const data = await response.json();
+  strategies = data.strategies || [];
+  const key = getStrategiesCacheKey();
+  await chrome.storage.local.set({ [key]: { data: strategies, timestamp: Date.now() } });
+  console.log('METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
+  await apiLog('strategies_cache_write', { key, count: strategies.length });
+  updateStrategyDescription();
+}
+
+async function fetchAndCacheVoicesForCurrentServer(locale) {
+  console.log('METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
+  await apiLog('voices_fetch_start', { locale });
+  const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
+  if (!response.ok) throw new Error(`Failed to fetch voices (${response.status})`);
+  const data = await response.json();
+  voices = data.voices || [];
+  const key = getVoicesCacheKey(locale);
+  await chrome.storage.local.set({ [key]: { data: voices, locale, timestamp: Date.now() } });
+  console.log('METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
+  await apiLog('voices_cache_write', { locale, key, count: voices.length });
+}
+
+async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
+  const locale = getLanguageOnlyLocale();
+  console.log('METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
+  await apiLog('ensure_metadata_start', { locale, allowNetwork });
+  const haveStrategies = await loadCachedStrategiesForCurrentServer();
+  const haveVoices = await loadCachedVoicesForCurrentServer(locale);
+
+  if (haveVoices) {
+    populateLocaleSelect('localeSelect');
+    populateLocaleSelect('takeawaysLocaleSelect');
+    updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
+    updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
+    const storage = await chrome.storage.local.get(['settings']);
+    const settings = storage.settings || {};
+
+    console.log('METADATA_CACHE: restore_settings', {
+      condenseLocale: settings.condenseLocale,
+      condenseVoice: settings.condenseVoice,
+      takeawaysLocale: settings.takeawaysLocale,
+      takeawaysVoice: settings.takeawaysVoice
+    });
+    await apiLog('restore_settings', {
+      condenseLocale: settings.condenseLocale,
+      condenseVoice: settings.condenseVoice,
+      takeawaysLocale: settings.takeawaysLocale,
+      takeawaysVoice: settings.takeawaysVoice
+    });
+
+    const applySelection = (localeSelectId, voiceSelectId, savedLocaleKey, savedVoiceKey) => {
+      const localeSelectEl = document.getElementById(localeSelectId);
+      const voiceSelectEl = document.getElementById(voiceSelectId);
+      const savedLocale = settings[savedLocaleKey];
+      const savedVoice = settings[savedVoiceKey];
+
+      let localeToUse = savedLocale;
+      if (!localeToUse && savedVoice) {
+        const voiceItem = voices.find(v => v.name === savedVoice);
+        if (voiceItem) localeToUse = voiceItem.locale;
+      }
+
+      if (localeToUse) {
+        localeSelectEl.value = localeToUse;
+        updateVoiceSelectForLocale(voiceSelectId, localeToUse);
+      }
+
+      if (savedVoice) {
+        voiceSelectEl.value = savedVoice;
+      }
+
+      console.log('METADATA_CACHE: applied_selection', {
+        localeSelectId,
+        voiceSelectId,
+        savedLocaleKey,
+        savedVoiceKey,
+        appliedLocale: localeSelectEl.value,
+        appliedVoice: voiceSelectEl.value
+      });
+      apiLog('applied_selection', {
+        localeSelectId,
+        voiceSelectId,
+        savedLocaleKey,
+        savedVoiceKey,
+        appliedLocale: localeSelectEl.value,
+        appliedVoice: voiceSelectEl.value
+      });
+    };
+
+    applySelection('localeSelect', 'voiceSelect', 'condenseLocale', 'condenseVoice');
+    applySelection('takeawaysLocaleSelect', 'takeawaysVoiceSelect', 'takeawaysLocale', 'takeawaysVoice');
+  }
+
+  if (allowNetwork) {
+    const tasks = [];
+    if (!haveStrategies) tasks.push(fetchAndCacheStrategiesForCurrentServer());
+    if (!haveVoices) tasks.push(fetchAndCacheVoicesForCurrentServer(locale).then(() => {
+      populateLocaleSelect('localeSelect');
+      populateLocaleSelect('takeawaysLocaleSelect');
+      updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
+      updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
+    }));
+    if (tasks.length) {
+      await Promise.allSettled(tasks);
+    }
+  }
+
+  return { haveStrategies, haveVoices };
+}
 
 async function ensureClientId() {
   if (clientId) return clientId;
@@ -36,7 +242,21 @@ function withAuthHeaders(options = {}) {
 
 async function fetchWithAuth(url, options = {}) {
   await ensureClientId();
-  return fetch(url, withAuthHeaders(options));
+  const method = (options && options.method) ? options.method : 'GET';
+  console.log(`API_CALL: ${method} ${url}`);
+  try {
+    const response = await fetch(url, withAuthHeaders(options));
+    console.log(`API_CALL_RESULT: ${method} ${url} -> ${response.status} ok=${response.ok}`);
+    return response;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    console.log(`API_CALL_ERROR: ${method} ${url} -> ${message}`);
+    throw error;
+  }
+}
+
+async function apiLog(event, data = {}) {
+  return;
 }
 
 function buildDownloadUrl(jobId) {
@@ -47,8 +267,66 @@ function buildDownloadUrl(jobId) {
   return url;
 }
 
+function buildOpenUrl(jobId) {
+  let url = `${serverUrl}/api/open/${jobId}`;
+  if (clientId) {
+    url += `?cid=${encodeURIComponent(clientId)}`;
+  }
+  return url;
+}
+
+async function deleteJob(jobId) {
+  const response = await fetchWithAuth(`${serverUrl}/api/jobs/${jobId}`, { method: 'DELETE' });
+  if (!response.ok) {
+    let message = `Failed to delete job ${jobId}`;
+    try {
+      const data = await response.json();
+      if (data && data.error) message = data.error;
+    } catch (_) {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return response.json().catch(() => ({}));
+}
+
+function getRecentJobBadge(outputFormat, jobType) {
+  const normalizedFormat = (outputFormat || '').toString().trim().toLowerCase();
+
+  if (normalizedFormat === 'audio' || normalizedFormat === 'mp3') {
+    return { badgeClass: 'mp3', badgeText: 'MP3' };
+  }
+
+  if (normalizedFormat === 'text' || normalizedFormat === 'txt' || normalizedFormat === 'markdown' || normalizedFormat === 'md') {
+    return { badgeClass: 'txt', badgeText: 'TXT' };
+  }
+
+  if (normalizedFormat === 'video' || normalizedFormat === 'mp4') {
+    return { badgeClass: 'mp4', badgeText: 'MP4' };
+  }
+
+  if (jobType === 'takeaways') {
+    return { badgeClass: 'txt', badgeText: 'TXT' };
+  }
+
+  return { badgeClass: 'mp4', badgeText: 'MP4' };
+}
+
+function toServerAbsoluteUrl(url) {
+  if (!url) {
+    return url;
+  }
+
+  try {
+    return new URL(url, serverUrl).toString();
+  } catch (_) {
+    return url;
+  }
+}
+
 // Initialize popup
 async function initializePopup() {
+  console.log('POPUP_BOOT: initializePopup start');
   clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -78,7 +356,7 @@ async function initializePopup() {
           videoInfo.innerHTML = `Video: ${videoId}<br><span style="font-weight:700;color:#555;">${data.title}</span>`;
         }
       })
-      .catch(() => {}); // silently ignore — title is decorative
+      .catch(() => { }); // silently ignore — title is decorative
   } else {
     videoInfo.textContent = '⚠️ Not a YouTube video page';
     condenseBtn.disabled = true;
@@ -86,12 +364,13 @@ async function initializePopup() {
   }
 
   // Load settings and populate controls
+  await clearAllStateOnServerSwitchIfNeeded();
   await loadSettings();
-  await fetchStrategies();
-  await fetchVoices();
+  await ensureServerMetadataLoaded({ allowNetwork: false });
+  await ensureServerMetadataLoaded({ allowNetwork: true });
 
   // Setup tabs
-  setupTabs();
+  await setupTabs();
 
   // Check for existing job in storage
   const storage = await chrome.storage.local.get(['activeJob', 'completedJobs', 'activeTakeawaysJob', 'completedTakeawaysJobs']);
@@ -134,6 +413,9 @@ async function initializePopup() {
 async function loadRecentJobs() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    if (response.ok) {
+      await ensureServerMetadataLoaded({ allowNetwork: true });
+    }
     const data = await response.json();
 
     // Filter completed jobs that have files
@@ -145,117 +427,109 @@ async function loadRecentJobs() {
       job.status === 'completed' && job.file_exists && job.job_type === 'takeaways'
     ).slice(0, 5);
 
+    const renderJobs = (container, list, jobs) => {
+      if (jobs.length > 0) {
+        list.innerHTML = jobs.map((job, index) => {
+          const date = new Date(job.created_at);
+          const dateStr = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+          const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+          const displayTitle = job.title || videoId;
+
+          const format = job.output_format || (job.job_type === 'condense' ? 'mp4' : 'txt');
+          const { badgeClass, badgeText } = getRecentJobBadge(format, job.job_type);
+
+          const jobHtml = `
+            <div class="recent-job" data-job-id="${job.job_id}">
+              <div class="recent-job-badge ${badgeClass}">${badgeText}</div>
+              <div class="recent-job-details">
+                <div class="recent-job-title">${displayTitle}</div>
+                <div class="recent-job-timestamp">${dateStr}</div>
+              </div>
+              <button class="recent-job-delete" data-job-id="${job.job_id}" aria-label="Delete">×</button>
+            </div>
+          `;
+          const dividerHtml = index < jobs.length - 1 ? '<div class="recent-job-divider"></div>' : '';
+
+          return jobHtml + dividerHtml;
+        }).join('');
+
+        container.style.display = 'block';
+
+        list.querySelectorAll('.recent-job').forEach(el => {
+          el.addEventListener('click', () => {
+            const jobId = el.getAttribute('data-job-id');
+            chrome.tabs.create({ url: buildOpenUrl(jobId) });
+          });
+        });
+
+        list.querySelectorAll('.recent-job-delete').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const jobId = btn.getAttribute('data-job-id');
+            btn.disabled = true;
+            try {
+              await deleteJob(jobId);
+              await loadRecentJobs();
+            } catch (err) {
+              console.error(err);
+              btn.disabled = false;
+            }
+          });
+        });
+      } else {
+        container.style.display = 'none';
+      }
+    };
+
     // Display condense jobs
     const condenseContainer = document.getElementById('recentCondenseJobs');
     const condenseList = document.getElementById('recentCondenseJobsList');
-
-    if (condenseJobs.length > 0) {
-      condenseList.innerHTML = condenseJobs.map(job => {
-        const date = new Date(job.created_at);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-        // Use title if available, otherwise extract video ID as fallback
-        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
-        const displayTitle = job.title || videoId;
-
-        return `
-          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
-            <div class="recent-job-info">${displayTitle}</div>
-            <div class="recent-job-date">${dateStr}</div>
-          </div>
-        `;
-      }).join('');
-
-      condenseContainer.style.display = 'block';
-
-      // Add click handlers
-      condenseList.querySelectorAll('.recent-job').forEach(el => {
-        el.addEventListener('click', () => {
-          const jobId = el.getAttribute('data-job-id');
-          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
-        });
-      });
-    } else {
-      condenseContainer.style.display = 'none';
-    }
+    renderJobs(condenseContainer, condenseList, condenseJobs);
 
     // Display takeaways jobs
     const takeawaysContainer = document.getElementById('recentTakeawaysJobs');
     const takeawaysList = document.getElementById('recentTakeawaysJobsList');
-
-    if (takeawaysJobs.length > 0) {
-      takeawaysList.innerHTML = takeawaysJobs.map(job => {
-        const date = new Date(job.created_at);
-        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-        // Use title if available, otherwise extract video ID as fallback
-        const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
-        const displayTitle = job.title || videoId;
-
-        return `
-          <div class="recent-job" data-job-id="${job.job_id}" data-url="${job.url}" data-video-id="${videoId}">
-            <div class="recent-job-info">${displayTitle}</div>
-            <div class="recent-job-date">${dateStr}</div>
-          </div>
-        `;
-      }).join('');
-
-      takeawaysContainer.style.display = 'block';
-
-      // Add click handlers
-      takeawaysList.querySelectorAll('.recent-job').forEach(el => {
-        el.addEventListener('click', () => {
-          const jobId = el.getAttribute('data-job-id');
-          chrome.tabs.create({ url: buildDownloadUrl(jobId) });
-        });
-      });
-    } else {
-      takeawaysContainer.style.display = 'none';
-    }
+    renderJobs(takeawaysContainer, takeawaysList, takeawaysJobs);
 
   } catch (error) {
     console.error('Failed to load recent jobs:', error);
   }
 }
 
-// Fetch strategies from API (cached 1 hour)
-async function fetchStrategies() {
-  try {
-    const storage = await chrome.storage.local.get(['strategiesCache']);
-    const cache = storage.strategiesCache;
-    if (cache && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
-      strategies = cache.data;
-      updateStrategyDescription();
-      return;
-    }
-    const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
-    const data = await response.json();
-    strategies = data.strategies;
-    await chrome.storage.local.set({ strategiesCache: { data: strategies, timestamp: Date.now() } });
-    updateStrategyDescription();
-  } catch (error) {
-    console.error('Failed to fetch strategies:', error);
-  }
-}
+// Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
 
-// Setup tab switching
-function setupTabs() {
+function setActiveTab(targetTab) {
   const tabButtons = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
+  if (!['condense', 'takeaways'].includes(targetTab)) {
+    targetTab = 'condense';
+  }
+
+  tabButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-tab') === targetTab);
+  });
+
+  tabContents.forEach(content => {
+    content.classList.toggle('active', content.id === `${targetTab}-tab`);
+  });
+
+  currentTab = targetTab;
+}
+
+// Setup tab switching
+async function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab');
+  const storedTabState = await chrome.storage.local.get([POPUP_TAB_STORAGE_KEY]);
+  setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
+
   tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const targetTab = button.getAttribute('data-tab');
-
-      // Update active tab button
-      tabButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-
-      // Update active tab content
-      tabContents.forEach(content => content.classList.remove('active'));
-      document.getElementById(`${targetTab}-tab`).classList.add('active');
-
-      currentTab = targetTab;
+      setActiveTab(targetTab);
+      await chrome.storage.local.set({ [POPUP_TAB_STORAGE_KEY]: targetTab });
     });
   });
 
@@ -265,89 +539,74 @@ function setupTabs() {
     radio.addEventListener('change', () => {
       const voiceGroup = document.getElementById('takeawaysVoiceGroup');
       voiceGroup.style.display = radio.value === 'audio' ? 'block' : 'none';
-      resetTakeawaysIfCompleted();
+      handleSettingChange();
     });
   });
 
   // Top radio buttons - reset completed state on change
   const topRadios = document.querySelectorAll('input[name="top"]');
   topRadios.forEach(radio => {
-    radio.addEventListener('change', resetTakeawaysIfCompleted);
+    radio.addEventListener('change', () => {
+      handleSettingChange();
+    });
+  });
+}
+
+// Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
+
+function populateLocaleSelect(localeSelectId) {
+  const select = document.getElementById(localeSelectId);
+  if (!select) return;
+
+  const locales = [...new Set(voices.map(v => v.locale))].sort();
+  const userLocale = navigator.language.split('-')[0];
+  const userLocaleLong = navigator.language;
+
+  const previousValue = select.value;
+  select.innerHTML = '';
+  locales.forEach(locale => {
+    const option = document.createElement('option');
+    option.value = locale;
+    option.textContent = locale;
+    select.appendChild(option);
   });
 
-  // Voice select - reset completed state on change
-  const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
-  if (takeawaysVoiceSelect) {
-    takeawaysVoiceSelect.addEventListener('change', resetTakeawaysIfCompleted);
+  if (previousValue && locales.includes(previousValue)) {
+    select.value = previousValue;
+    return;
+  }
+
+  if (locales.includes(userLocaleLong)) {
+    select.value = userLocaleLong;
+  } else if (locales.find(l => l.startsWith(userLocale))) {
+    select.value = locales.find(l => l.startsWith(userLocale));
   }
 }
 
-// Reset takeaways UI if settings changed after completion
-async function resetTakeawaysIfCompleted() {
-  const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
-  if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
-    // Clear the completed job for this URL
-    delete storage.completedTakeawaysJobs[currentUrl];
-    await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+function updateVoiceSelectForLocale(voiceSelectId, locale) {
+  const select = document.getElementById(voiceSelectId);
+  if (!select) return;
 
-    // Reset UI to extract mode
-    document.getElementById('takeawaysStatusContainer').innerHTML = '';
-    const takeawaysBtn = document.getElementById('takeawaysBtn');
-    takeawaysBtn.style.display = '';
-    takeawaysBtn.disabled = false;
-    takeawaysBtn.textContent = 'Extract Takeaways';
-    currentTakeawaysJobId = null;
+  const filteredVoices = voices.filter(v => v.locale === locale);
+  const currentVal = select.value;
+  select.innerHTML = '';
+
+  if (filteredVoices.length === 0) {
+    select.innerHTML = '<option value="">No voices</option>';
+    return;
   }
-}
 
-// Fetch voices from API (cached 1 hour)
-async function fetchVoices() {
-  try {
-    const locale = navigator.language.split('-')[0];
-    const storage = await chrome.storage.local.get(['voicesCache', 'settings']);
-    const cache = storage.voicesCache;
+  filteredVoices.forEach(voice => {
+    const option = document.createElement('option');
+    option.value = voice.name;
+    option.textContent = `${voice.friendly_name} (${voice.gender})`;
+    select.appendChild(option);
+  });
 
-    if (cache && cache.locale === locale && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
-      voices = cache.data;
-    } else {
-      const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
-      const data = await response.json();
-      voices = data.voices || [];
-      await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
-    }
-
-    // Populate both voice selects
-    const voiceSelects = [
-      document.getElementById('voiceSelect'),
-      document.getElementById('takeawaysVoiceSelect')
-    ];
-
-    voiceSelects.forEach(voiceSelect => {
-      voiceSelect.innerHTML = '';
-
-      if (voices.length === 0) {
-        voiceSelect.innerHTML = '<option value="">No voices available</option>';
-        return;
-      }
-
-      voices.forEach(voice => {
-        const option = document.createElement('option');
-        option.value = voice.name;
-        option.textContent = `${voice.locale} - ${voice.friendly_name}`;
-        voiceSelect.appendChild(option);
-      });
-
-      // Restore saved voice
-      if (storage.settings && storage.settings.voice && voices.some(v => v.name === storage.settings.voice)) {
-        voiceSelect.value = storage.settings.voice;
-      } else if (voices.length > 0) {
-        voiceSelect.value = voices[0].name;
-      }
-    });
-  } catch (error) {
-    console.error('Failed to fetch voices:', error);
-    document.getElementById('voiceSelect').innerHTML = '<option value="">Error loading voices</option>';
-    document.getElementById('takeawaysVoiceSelect').innerHTML = '<option value="">Error loading voices</option>';
+  if (filteredVoices.some(v => v.name === currentVal)) {
+    select.value = currentVal;
+  } else {
+    select.value = filteredVoices[0].name;
   }
 }
 
@@ -358,20 +617,40 @@ async function loadSettings() {
   const settings = Object.assign({
     serverUrl: DEFAULT_SERVER_URL,
     aggressiveness: 5,
-    voice: null,
+    condenseLocale: null,
+    condenseVoice: null,
+    takeawaysLocale: null,
+    takeawaysVoice: null,
+    takeawaysFormat: 'text',
     speechSpeed: 1.0,
     videoMode: 'slideshow',
     prependIntro: false
   }, saved);
 
+  const previousServerUrl = serverUrl;
   serverUrl = normalizeServerUrl(settings.serverUrl);
-  
+  if (previousServerUrl !== serverUrl) {
+    await chrome.storage.local.set({ lastServerUrl: serverUrl });
+  }
+
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
   document.getElementById('speedSlider').value = settings.speechSpeed;
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
   document.getElementById('videoModeSelect').value = settings.videoMode;
   document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
+
+  const normalizedTakeawaysFormat = (settings.takeawaysFormat || 'text').toString().trim().toLowerCase();
+  const takeawaysFormatValue = normalizedTakeawaysFormat === 'audio' ? 'audio' : 'text';
+  const formatTextEl = document.getElementById('formatText');
+  const formatAudioEl = document.getElementById('formatAudio');
+  if (takeawaysFormatValue === 'audio') {
+    if (formatAudioEl) formatAudioEl.checked = true;
+  } else {
+    if (formatTextEl) formatTextEl.checked = true;
+  }
+  const voiceGroup = document.getElementById('takeawaysVoiceGroup');
+  if (voiceGroup) voiceGroup.style.display = takeawaysFormatValue === 'audio' ? 'block' : 'none';
 }
 
 // Save settings to storage
@@ -379,10 +658,20 @@ async function saveSettings() {
   const storage = await chrome.storage.local.get(['settings']);
   const existing = storage.settings || {};
 
+  const condenseLocale = document.getElementById('localeSelect').value;
+  const takeawaysLocale = document.getElementById('takeawaysLocaleSelect').value;
+  const selectedFormat = document.querySelector('input[name="format"]:checked');
+  const takeawaysFormat = selectedFormat ? selectedFormat.value : 'text';
+
   const settings = {
     ...existing,
+    serverUrl: normalizeServerUrl(existing.serverUrl || serverUrl),
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
-    voice: document.getElementById('voiceSelect').value,
+    condenseLocale,
+    condenseVoice: document.getElementById('voiceSelect').value,
+    takeawaysLocale,
+    takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
+    takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
     videoMode: document.getElementById('videoModeSelect').value,
     prependIntro: document.getElementById('prependIntroCheck').checked
@@ -416,24 +705,30 @@ function convertSpeedToRate(speed) {
   return percentage >= 0 ? `+${percentage}%` : `${percentage}%`;
 }
 
-// Check if settings changed after video was watched
+// Unified settings handler
 async function handleSettingChange() {
-  saveSettings();
+  await saveSettings();
 
-  // Check if this video has been watched
-  const storage = await chrome.storage.local.get(['watchedVideos', 'completedJobs']);
-  const watchedVideos = storage.watchedVideos || {};
-
-  if (watchedVideos[currentUrl] && storage.completedJobs && storage.completedJobs[currentUrl]) {
-    // Video was watched and settings changed - allow re-condensing
-    console.log('Settings changed after watching - resetting to condense mode');
-
-    // Clear the completed job for this video
-    delete storage.completedJobs[currentUrl];
-    await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-
-    // Reset UI to condense mode
-    resetToCondenseMode();
+  if (currentTab === 'condense') {
+    const storage = await chrome.storage.local.get(['completedJobs']);
+    if (storage.completedJobs && storage.completedJobs[currentUrl]) {
+      console.log('Settings changed on a completed job - resetting to condense mode');
+      delete storage.completedJobs[currentUrl];
+      await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+      resetToCondenseMode();
+      await loadRecentJobs();
+    }
+  } else if (currentTab === 'takeaways') {
+    const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+    if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+      console.log('Settings changed on a completed takeaways job - resetting');
+      delete storage.completedTakeawaysJobs[currentUrl];
+      await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+      resetTakeawaysButton();
+      document.getElementById('takeawaysStatusContainer').innerHTML = '';
+      currentTakeawaysJobId = null;
+      await loadRecentJobs();
+    }
   }
 }
 
@@ -464,21 +759,30 @@ document.getElementById('speedSlider').addEventListener('input', (e) => {
   handleSettingChange();
 });
 
+document.getElementById('localeSelect').addEventListener('change', (e) => {
+  updateVoiceSelectForLocale('voiceSelect', e.target.value);
+  handleSettingChange();
+});
+
+document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
+  updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
+  handleSettingChange();
+});
+
 document.getElementById('voiceSelect').addEventListener('change', () => {
   handleSettingChange();
 });
 
-document.getElementById('videoModeSelect').addEventListener('change', () => {
-  handleSettingChange();
-});
+document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
 
-document.getElementById('prependIntroCheck').addEventListener('change', () => {
-  handleSettingChange();
-});
 
-// Display build timestamp
-if (typeof BUILD_TIMESTAMP !== 'undefined') {
-  document.getElementById('buildInfo').textContent = `Build: ${BUILD_TIMESTAMP}`;
+document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
+
+document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
+
+// Display build version
+if (typeof BUILD_VERSION !== 'undefined') {
+  document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
 } else {
   document.getElementById('buildInfo').textContent = 'Build: Unknown';
 }
@@ -490,7 +794,7 @@ initializePopup();
 document.getElementById('condenseBtn').addEventListener('click', async () => {
   const condenseBtn = document.getElementById('condenseBtn');
   condenseBtn.disabled = true;
-  condenseBtn.textContent = 'Submitting...';
+  condenseBtn.textContent = 'Processing...';
 
   try {
     // Get current settings
@@ -522,16 +826,10 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
       currentJobId = data.job_id;
 
       // Clear any previous completed job for this URL
-      const storage = await chrome.storage.local.get(['completedJobs', 'watchedVideos']);
+      const storage = await chrome.storage.local.get(['completedJobs']);
       if (storage.completedJobs && storage.completedJobs[currentUrl]) {
         delete storage.completedJobs[currentUrl];
         await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-      }
-
-      // Clear watched status for this URL (starting fresh)
-      if (storage.watchedVideos && storage.watchedVideos[currentUrl]) {
-        delete storage.watchedVideos[currentUrl];
-        await chrome.storage.local.set({ watchedVideos: storage.watchedVideos });
       }
 
       // Save job to storage for persistence
@@ -560,13 +858,11 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
 function showStatus(type, message, progress = '') {
   const container = document.getElementById('statusContainer');
 
-  let html = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}</div>`;
-
+  let progressHtml = '';
   if (progress) {
-    html += `<div class="progress">${progress}</div>`;
+    progressHtml = `<div class="progress">${progress}</div>`;
   }
-
-  container.innerHTML = html;
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
 }
 
 function startPolling() {
@@ -578,7 +874,7 @@ function startPolling() {
 async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentJobId}`);
-    
+
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
       clearInterval(pollInterval);
@@ -593,7 +889,7 @@ async function checkStatus() {
       resetButton();
       return;
     }
-    
+
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -647,16 +943,8 @@ function showCompleted(data) {
     </button>
   `;
 
-  document.getElementById('downloadBtn').addEventListener('click', async () => {
-    chrome.tabs.create({ url: buildDownloadUrl(currentJobId) });
-
-    // Mark this video as watched
-    const storage = await chrome.storage.local.get(['watchedVideos']);
-    const watchedVideos = storage.watchedVideos || {};
-    watchedVideos[currentUrl] = true;
-    await chrome.storage.local.set({ watchedVideos });
-
-    console.log('Video marked as watched - settings changes will now allow re-condensing');
+  document.getElementById('downloadBtn').addEventListener('click', () => {
+    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentJobId)) });
   });
 }
 
@@ -740,13 +1028,11 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
 function showTakeawaysStatus(type, message, progress = '') {
   const container = document.getElementById('takeawaysStatusContainer');
 
-  let html = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}</div>`;
-
+  let progressHtml = '';
   if (progress) {
-    html += `<div class="progress">${progress}</div>`;
+    progressHtml = `<div class="progress">${progress}</div>`;
   }
-
-  container.innerHTML = html;
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
 }
 
 function startTakeawaysPolling() {
@@ -758,7 +1044,7 @@ function startTakeawaysPolling() {
 async function checkTakeawaysStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
-    
+
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
       clearInterval(takeawaysPollInterval);
@@ -773,7 +1059,7 @@ async function checkTakeawaysStatus() {
       resetTakeawaysButton();
       return;
     }
-    
+
     const data = await response.json();
 
     if (data.status === 'completed') {
@@ -828,7 +1114,7 @@ function showTakeawaysCompleted(data) {
   `;
 
   document.getElementById('downloadTakeawaysBtn').addEventListener('click', async () => {
-    chrome.tabs.create({ url: buildDownloadUrl(currentTakeawaysJobId) });
+    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentTakeawaysJobId)) });
   });
 }
 

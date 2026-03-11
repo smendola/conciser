@@ -19,6 +19,12 @@ from flask_cors import CORS
 # Add parent directory to path to import nbj modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Initialize CLI logging for server output
+os.environ.setdefault('NBJ_LOG_STREAM', '0')
+from src.cli import logging as _logging  # noqa: F401
+
+logger = _logging.logger
+
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
@@ -71,11 +77,151 @@ def fetch_video_title(youtube_url):
         return None
 
 
+def fetch_channel_name(youtube_url):
+    """Fetch channel name (author_name) from YouTube oEmbed API."""
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(youtube_url)}&format=json"
+        with urllib.request.urlopen(oembed_url, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            return data.get('author_name')
+    except Exception as e:
+        print(f"Failed to fetch channel name: {e}")
+        return None
+
+
 def is_mobile_user_agent(user_agent: str) -> bool:
     """Simple user-agent check to differentiate mobile visitors."""
     if not user_agent:
         return False
     return bool(MOBILE_USER_AGENT_PATTERN.search(user_agent))
+
+
+def _get_authorized_completed_job(job_id, client_id):
+    job = job_service.get_job(job_id)
+    if not job:
+        return None, (jsonify({'error': 'Job not found'}), 404)
+
+    if job['client_id'] and job['client_id'] != client_id:
+        return None, (jsonify({'error': 'Job not found'}), 404)
+
+    if job['status'] != 'completed' or not job['output_file']:
+        return None, (jsonify({'error': 'Job not ready'}), 400)
+
+    return job, None
+
+
+def _resolve_output_path(output_file):
+    output_path = Path(output_file)
+    if not output_path.is_absolute():
+        output_path = Path(__file__).parent.parent / output_path
+    return output_path
+
+
+def _youtube_thumbnail_url(youtube_url: str) -> str | None:
+    try:
+        video_id = CondenserPipeline._extract_video_id(youtube_url)
+    except Exception:
+        return None
+    if not video_id:
+        return None
+    return url_for('youtube_thumbnail', video_id=video_id, v=str(uuid.uuid4())[:8])
+
+
+def _cover_path_for_output(output_path: Path) -> Path:
+    return output_path.with_suffix('.jpg')
+
+
+@app.route('/api/yt_thumb/<video_id>')
+def youtube_thumbnail(video_id: str):
+    """Proxy a YouTube thumbnail image so the player reliably shows a real thumbnail."""
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{11}', video_id or ''):
+        return jsonify({'error': 'Invalid video id'}), 400
+
+    quality = (request.args.get('q') or 'hq').strip().lower()
+    if quality not in {'max', 'hq', 'mq', 'sd', 'default'}:
+        quality = 'hq'
+
+    quality_to_file = {
+        'max': 'maxresdefault.jpg',
+        'hq': 'hqdefault.jpg',
+        'mq': 'mqdefault.jpg',
+        'sd': 'sddefault.jpg',
+        'default': 'default.jpg',
+    }
+
+    import urllib.request
+
+    last_err = None
+    for q in (quality, 'hq', 'mq', 'default'):
+        remote_url = f"https://i.ytimg.com/vi/{video_id}/{quality_to_file[q]}"
+        try:
+            req = urllib.request.Request(
+                remote_url,
+                headers={
+                    'User-Agent': 'Mozilla/5.0',
+                    'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                },
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                body = resp.read()
+
+            # Some missing thumbnails return HTML or very small placeholder-like responses.
+            if not body or len(body) < 200:
+                continue
+            ct = resp.headers.get('Content-Type', '')
+            if ct and not ct.startswith('image/'):
+                continue
+
+            return app.response_class(body, mimetype=ct or 'image/jpeg')
+        except Exception as e:
+            last_err = e
+            continue
+
+    return jsonify({'error': f'Failed to fetch thumbnail: {last_err}'}), 502
+
+
+@app.route('/api/log', methods=['POST'])
+def api_log():
+    payload = request.get_json(silent=True)
+    if payload is None:
+        payload = request.get_data(as_text=True)
+    logger.info(f"[API_LOG] {payload}")
+    return jsonify({'ok': True})
+
+
+def _render_markdown_output(job_id, client_id, output_path):
+    import markdown
+
+    md_content = output_path.read_text(encoding='utf-8')
+
+    page_title = "Takeaways"
+    lines = md_content.strip().split('\n')
+    for line in lines:
+        if line.startswith('# '):
+            page_title = line[2:].strip()
+            break
+
+    md_content = md_content.strip()
+    if md_content.startswith('# '):
+        first_newline = md_content.find('\n')
+        if first_newline != -1:
+            md_content = md_content[first_newline + 1:].strip()
+        else:
+            md_content = ""
+
+    html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
+
+    return render_template(
+        'takeaways.html',
+        job_id=job_id,
+        page_title=page_title,
+        html_content=html_content,
+        client_id=client_id,
+    )
 
 
 @app.route('/start')
@@ -97,6 +243,11 @@ def download_extension():
     """Download the latest packaged Chrome extension."""
     dist_dir = Path(__file__).parent.parent / 'dist'
     files = list(dist_dir.glob('nbj-chrome-extension-*.zip'))
+
+    unversioned = dist_dir / 'nbj-chrome-extension.zip'
+    if unversioned.exists():
+        files.append(unversioned)
+
     if not files:
         return jsonify({'error': 'Extension package not found'}), 404
 
@@ -106,7 +257,7 @@ def download_extension():
         latest_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=latest_file.name
+        download_name='nbj-chrome-extension.zip'
     )
 
 
@@ -143,7 +294,13 @@ def condense():
 
     # Get optional parameters (with defaults)
     aggressiveness = data.get('aggressiveness', 5)
-    voice = data.get('voice', 'en-GB-RyanNeural')
+    settings = get_settings()
+    tts_provider = (data.get('tts_provider') or settings.tts_provider or 'edge').strip().lower()
+    voice = data.get('voice')
+    if not voice:
+        if tts_provider == 'elevenlabs':
+            return jsonify({'error': 'Missing voice parameter (required when tts_provider=elevenlabs)'}), 400
+        voice = 'en-GB-RyanNeural'
     speech_rate = data.get('speech_rate', '+0%')  # Default to 1.0x
     video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
     prepend_intro = bool(data.get('prepend_intro', False))
@@ -166,9 +323,11 @@ def condense():
 
     # Submit to JobService
     title = fetch_video_title(youtube_url)
+    channel_name = fetch_channel_name(youtube_url)
     params = {
         'aggressiveness': aggressiveness,
         'voice': voice,
+        'tts_provider': tts_provider,
         'speech_rate': speech_rate,
         'video_mode': video_mode,
         'prepend_intro': prepend_intro,
@@ -177,6 +336,7 @@ def condense():
         url=youtube_url,
         job_type='condense',
         title=title,
+        channel_name=channel_name,
         client_id=client_id,
         params=params,
     )
@@ -218,6 +378,7 @@ def takeaways():
 
     # Submit to JobService
     title = fetch_video_title(youtube_url)
+    channel_name = fetch_channel_name(youtube_url)
     params = {
         'top': top,
         'format_type': format_type,
@@ -227,6 +388,7 @@ def takeaways():
         url=youtube_url,
         job_type='takeaways',
         title=title,
+        channel_name=channel_name,
         client_id=client_id,
         params=params,
     )
@@ -264,9 +426,12 @@ def status(job_id):
 
     if job['status'] == 'completed' and job['output_file']:
         download_url = f"/api/download/{job['id']}"
+        open_url = f"/api/open/{job['id']}"
         if job['client_id']:
             download_url += f"?cid={quote_plus(job['client_id'])}"
+            open_url += f"?cid={quote_plus(job['client_id'])}"
         response['download_url'] = download_url
+        response['open_url'] = open_url
 
     if job['error']:
         response['error'] = job['error']
@@ -287,71 +452,131 @@ def download(job_id):
     if error_response:
         return error_response
 
-    # Query JobService
-    job = job_service.get_job(job_id)
-    if not job:
-        return jsonify({'error': 'Job not found'}), 404
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready for download' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
 
-    if job['client_id'] and job['client_id'] != client_id:
-        return jsonify({'error': 'Job not found'}), 404
-
-    if job['status'] != 'completed' or not job['output_file']:
-        return jsonify({'error': 'Job not ready for download'}), 400
-
-    output_path = Path(job['output_file'])
-    if not output_path.is_absolute():
-        output_path = Path(__file__).parent.parent / output_path
-    
+    output_path = _resolve_output_path(job['output_file'])
     if not output_path.exists():
         return jsonify({'error': 'Output file not found'}), 404
 
-    # Check if download is forced (for markdown files)
-    force_download = request.args.get('download') == '1'
-    
-    # If it's a markdown file and not forcing download, render as HTML
-    if output_path.suffix == '.md' and not force_download:
-        try:
-            import markdown
-            
-            # Read the markdown content
-            md_content = output_path.read_text(encoding='utf-8')
-            
-            # Extract title from markdown content
-            page_title = "Takeaways"
-            lines = md_content.strip().split('\n')
-            for line in lines:
-                if line.startswith('# '):
-                    page_title = line[2:].strip()
-                    break
-            
-            # Remove the title line from markdown content to prevent duplicate
-            md_content = md_content.strip()
-            if md_content.startswith('# '):
-                first_newline = md_content.find('\n')
-                if first_newline != -1:
-                    md_content = md_content[first_newline + 1:].strip()
-                else:
-                    md_content = ""  # Only title was in the file
-            
-            # Convert to HTML
-            html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
-            
-            # Render using the existing template
-            return render_template('takeaways.html', 
-                                 job_id=job_id, 
-                                 page_title=page_title,
-                                 html_content=html_content,
-                                 client_id=client_id)
-            
-        except Exception as e:
-            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
-    
-    # For non-markdown files (audio, video), serve as attachment
     return send_file(
         output_path,
         as_attachment=True,
         download_name=output_path.name
     )
+
+
+@app.route('/api/open/<job_id>', methods=['GET'])
+def open_output(job_id):
+    """Open the processed output in a browser-friendly viewer."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    suffix = output_path.suffix.lower()
+
+    if suffix == '.md':
+        try:
+            return _render_markdown_output(job_id, client_id, output_path)
+        except Exception as e:
+            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
+
+    media_kind = 'audio' if suffix == '.mp3' else 'video'
+    media_url = url_for('open_output_content', job_id=job_id, cid=client_id)
+    download_url = url_for('download', job_id=job_id, cid=client_id)
+
+    params = job.get('params') or {}
+    aggressiveness = params.get('aggressiveness')
+    voice = params.get('voice')
+    thumbnail_url = None
+    if media_kind == 'audio':
+        cover_path = _cover_path_for_output(output_path)
+        if cover_path.exists():
+            thumbnail_url = url_for('open_output_cover', job_id=job_id, cid=client_id, v=str(uuid.uuid4())[:8])
+        else:
+            thumbnail_url = _youtube_thumbnail_url(job.get('url') or '')
+
+    return render_template(
+        'media_player.html',
+        job_id=job_id,
+        video_title=job.get('title') or None,
+        channel_name=job.get('channel_name') or None,
+        aggressiveness=aggressiveness,
+        voice=voice,
+        thumbnail_url=thumbnail_url,
+        media_kind=media_kind,
+        media_url=media_url,
+        download_url=download_url,
+        file_name=output_path.name,
+    )
+
+
+@app.route('/api/open/<job_id>.jpg', methods=['GET'])
+def open_output_cover(job_id):
+    """Serve a standalone cover image alongside an MP3 output, if present."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    if output_path.suffix.lower() != '.mp3':
+        return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
+
+    cover_path = _cover_path_for_output(output_path)
+    if not cover_path.exists():
+        return jsonify({'error': 'Cover image not found'}), 404
+
+    return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
+
+
+@app.route('/api/open/<job_id>/content', methods=['GET'])
+def open_output_content(job_id):
+    """Serve processed media inline for the browser player."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    suffix = output_path.suffix.lower()
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
+
+    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    return send_file(output_path, as_attachment=False, mimetype=mimetype, download_name=output_path.name)
 
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
@@ -364,11 +589,19 @@ def list_jobs():
     for job in job_service.list_jobs(client_id=client_id):
         # Check if output file exists
         file_exists = False
+        output_format = None
         if job['output_file']:
             file_path = Path(job['output_file'])
             if not file_path.is_absolute():
                 file_path = Path(__file__).parent.parent / file_path
             file_exists = file_path.exists()
+            suffix = file_path.suffix.lower()
+            if suffix == '.mp3':
+                output_format = 'mp3'
+            elif suffix == '.mp4':
+                output_format = 'mp4'
+            elif suffix in {'.md', '.txt'}:
+                output_format = 'txt'
 
         jobs_list.append({
             'job_id': job['id'],
@@ -377,7 +610,8 @@ def list_jobs():
             'status': job['status'],
             'job_type': job['job_type'],
             'file_exists': file_exists,
-            'created_at': job['created_at']
+            'created_at': job['created_at'],
+            'output_format': output_format,
         })
 
     running_jobs = job_service.get_running_jobs()
@@ -385,6 +619,27 @@ def list_jobs():
         'jobs': jobs_list,
         'currently_processing': running_jobs
     })
+
+
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+def delete_job(job_id):
+    """Soft-delete a job. This does not delete any files."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job['client_id'] and job['client_id'] != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    ok = job_service.store.mark_deleted(job_id)
+    if not ok:
+        return jsonify({'error': 'Job not found'}), 404
+
+    return jsonify({'ok': True, 'job_id': job_id, 'status': 'deleted'})
 
 
 @app.route('/health', methods=['GET'])
@@ -415,30 +670,99 @@ def get_strategies():
 
 @app.route('/api/voices', methods=['GET'])
 def get_voices():
-    """Get available Edge TTS voices filtered by user locale."""
+    """Get available TTS voices filtered by locale, using the configured voice service."""
     locale = request.args.get('locale', 'en-US')
+    settings = get_settings()
+
+    def _friendly_voice_name(voice_name: str) -> str:
+        return (
+            voice_name.split('-', 2)[-1]
+            .replace('Multilingual', '')
+            .replace('Expressive', '')
+            .replace('Turbo', '')
+            .replace('Neural', '')
+            .strip()
+        )
+
+    def _is_voice_name_allowed(friendly_name: str) -> bool:
+        if not friendly_name:
+            return False
+
+        if 'AI' in friendly_name:
+            return False
+
+        if ':' in friendly_name:
+            return False
+
+        if any(ch.isdigit() for ch in friendly_name):
+            return False
+
+        return True
+
+    def _to_voice_repr(v: dict) -> dict:
+        friendly_name = _friendly_voice_name(v['name'])
+        return {
+            'name': v['name'],
+            'gender': v.get('gender', 'Unknown'),
+            'locale': v.get('locale', 'Unknown'),
+            'friendly_name': friendly_name,
+        }
+
+    def _to_elevenlabs_voice_repr(v: dict) -> dict:
+        name = v.get('name') or ''
+        return {
+            'name': v.get('voice_id') or name,
+            'gender': 'Unknown',
+            'locale': 'Unknown',
+            'friendly_name': name,
+        }
 
     try:
-        edge_tts = EdgeTTS()
-        all_voices = edge_tts.list_voices()
+        match settings.tts_provider:
+            case 'elevenlabs':
+                if not settings.elevenlabs_api_key:
+                    return jsonify({'voices': []})
 
-        # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
-        filtered_voices = sorted(
-            [
-                {
-                    'name': v['name'],
-                    'gender': v['gender'],
-                    'locale': v['locale'],
-                    'friendly_name': v['name'].split('-', 2)[-1]
-                                              .replace(r"Multilingual", "")
-                                              .replace(r"Expressive", "")
-                                              .replace(r"Neural", '')
-                }
-                for v in all_voices
-                if v['locale'].startswith(locale)
-            ],
-            key=lambda x: x['name']
-        )
+                from src.modules.tts import VoiceCloner
+                cloner = VoiceCloner(settings.elevenlabs_api_key)
+                all_voices = cloner.list_voices()
+                filtered_voices = sorted(
+                    [_to_elevenlabs_voice_repr(v) for v in all_voices],
+                    key=lambda x: (x.get('friendly_name') or x['name'])
+                )
+
+            case 'azure':
+                if not settings.azure_speech_key or not settings.azure_speech_region:
+                    return jsonify({
+                        'error': 'Azure TTS not configured (missing AZURE_SPEECH_KEY or AZURE_SPEECH_REGION)',
+                        'voices': []
+                    }), 400
+
+                from src.modules.azure_tts import AzureTTS
+                azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+                all_voices = azure.list_voices(locale_filter=locale)
+                filtered_voices = sorted(
+                    [
+                        _to_voice_repr(v)
+                        for v in all_voices
+                        if _is_voice_name_allowed(_friendly_voice_name(v['name']))
+                    ],
+                    key=lambda x: x['name']
+                )
+
+            case 'edge' | _:
+                edge_tts = EdgeTTS()
+                all_voices = edge_tts.list_voices()
+                # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
+                filtered_voices = sorted(
+                    [
+                        _to_voice_repr(v)
+                        for v in all_voices
+                        if v['locale'].startswith(locale)
+                        if _is_voice_name_allowed(_friendly_voice_name(v['name']))
+                    ],
+                    key=lambda x: x['name']
+                )
         return jsonify({'voices': filtered_voices})
     except Exception as e:
         logger.error(f"Failed to fetch voices: {e}")
@@ -459,24 +783,34 @@ def _print_startup_banner():
     print("  POST   /api/takeaways    - Extract key takeaways from video")
     print("  GET    /api/status/<id>  - Check job status")
     print("  GET    /api/download/<id>- Download output file")
+    print("  GET    /api/open/<id>    - Open output in browser")
     print("  GET    /api/strategies   - Get aggressiveness strategies")
     print("  GET    /api/voices       - Get Edge TTS voices")
     print("  GET    /api/jobs         - List all jobs")
+    print("  DELETE /api/jobs/<id>    - Soft-delete a job (no file deletion)")
     print("  GET    /health           - Health check")
     # print("\n👉 Share this link: http://conciser.603apps.net/start")
     print("\n" + "=" * 60 + "\n")
 
 
 if __name__ == '__main__':
-    # Avoid printing twice when Werkzeug reloads the dev server
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    use_reloader = os.environ.get('NBJ_NO_RELOADER') not in {'1', 'true', 'yes'}
+
+    # With the Werkzeug reloader, the parent process should NOT perform one-time startup.
+    # Only the reloader child (WERKZEUG_RUN_MAIN=true) should start workers and print banners.
+    is_reloader_child = (not use_reloader) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+
+    if is_reloader_child:
+        # Fail fast on invalid configuration before starting workers / serving requests.
+        get_settings()
+
         _print_startup_banner()
 
-    # Start job service worker loop
-    job_service.start()
-    import threading
-    worker_thread = threading.Thread(target=job_service.start_worker_loop, daemon=True)
-    worker_thread.start()
-    print("Concurrent mode enabled with JobService")
+        # Start job service worker loop
+        job_service.start()
+        import threading
+        worker_thread = threading.Thread(target=job_service.start_worker_loop, daemon=True)
+        worker_thread.start()
+        print("Concurrent mode enabled with JobService")
 
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=use_reloader)

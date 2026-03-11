@@ -30,13 +30,15 @@ def settings_factory(tmp_path):
             "youtube_proxy_url": "",
             "temp_dir": temp_dir,
             "output_dir": output_dir,
+            "resume": True,
             "transcription_service": "groq",
+            "transcription_method": "chained",
             "takeaways_extraction_provider": "openai",
             "condensation_model_openai": "gpt-test",
             "condensation_model_anthropic": "claude-test",
             "takeaways_model_openai": "gpt-test",
             "takeaways_model_anthropic": "claude-test",
-            "voice_service": "edge",
+            "tts_provider": "edge",
         }
         base.update(overrides)
         return SimpleNamespace(**base)

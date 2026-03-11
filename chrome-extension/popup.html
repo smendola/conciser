@@ -1,300 +1,11 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
-  <style>
-    body {
-      width: 360px;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      margin: 0;
-    }
-
-    h2 {
-      margin: 0 0 12px 0;
-      font-size: 16px;
-      color: #1a73e8;
-    }
-
-    .video-info {
-      background: #f5f5f5;
-      padding: 8px;
-      border-radius: 4px;
-      margin-bottom: 12px;
-      font-size: 12px;
-      word-break: break-all;
-    }
-
-    .tabs {
-      display: flex;
-      border-bottom: 2px solid #e0e0e0;
-      margin-bottom: 12px;
-    }
-
-    .tab {
-      flex: 1;
-      padding: 8px 12px;
-      background: transparent;
-      border: none;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #666;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .tab:hover {
-      background: #f5f5f5;
-      color: #333;
-    }
-
-    .tab.active {
-      color: #1a73e8;
-      border-bottom-color: #1a73e8;
-      background: transparent;
-    }
-
-    .tab-content {
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    button {
-      width: 100%;
-      padding: 10px;
-      background: #1a73e8;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      font-size: 14px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-
-    button:hover {
-      background: #1765cc;
-    }
-
-    button:disabled {
-      background: #ccc;
-      cursor: not-allowed;
-    }
-
-    .status {
-      margin-top: 12px;
-      padding: 12px;
-      background: #e8f0fe;
-      border-radius: 4px;
-      font-size: 13px;
-    }
-
-    .status.processing {
-      background: #fff3cd;
-    }
-
-    .status.completed {
-      background: #d4edda;
-    }
-
-    .status.error {
-      background: #f8d7da;
-      color: #721c24;
-    }
-
-    .progress {
-      margin-top: 8px;
-      font-size: 11px;
-      color: #666;
-      font-family: monospace;
-    }
-
-    .download-btn {
-      background: #28a745;
-      margin-top: 8px;
-    }
-
-    .download-btn:hover {
-      background: #218838;
-    }
-
-    .error {
-      color: #d32f2f;
-      margin-top: 8px;
-      font-size: 12px;
-    }
-
-    .settings {
-      margin: 12px 0;
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-
-    .setting-group {
-      margin-bottom: 12px;
-    }
-
-    .setting-group:last-child {
-      margin-bottom: 0;
-    }
-
-    .setting-label {
-      display: block;
-      margin-bottom: 4px;
-      font-weight: 500;
-      color: #333;
-    }
-
-    select {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 12px;
-      background: white;
-    }
-
-    input[type="url"],
-    input[type="text"] {
-      width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 12px;
-      background: white;
-      box-sizing: border-box;
-    }
-
-    input[type="range"] {
-      width: 100%;
-      margin: 6px 0;
-    }
-
-    .slider-value {
-      display: flex;
-      justify-content: space-between;
-      font-size: 11px;
-      color: #666;
-      margin-top: 2px;
-    }
-
-    .strategy-desc {
-      font-size: 10px;
-      color: #666;
-      font-style: italic;
-      margin-top: 4px;
-    }
-
-    .radio-group {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .radio-option {
-      flex: 1;
-      min-width: 60px;
-    }
-
-    .radio-option input[type="radio"] {
-      display: none;
-    }
-
-    .radio-option label {
-      display: block;
-      padding: 6px 12px;
-      background: white;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      text-align: center;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
-    }
-
-    .radio-option label:hover {
-      border-color: #1a73e8;
-      background: #f0f7ff;
-    }
-
-    .radio-option input[type="radio"]:checked + label {
-      background: #1a73e8;
-      color: white;
-      border-color: #1a73e8;
-    }
-
-    .recent-jobs {
-      margin-top: 16px;
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .recent-jobs h3 {
-      margin: 0 0 8px 0;
-      font-size: 11px;
-      font-weight: 600;
-      color: #555;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .recent-job {
-      padding: 6px 8px;
-      margin-bottom: 4px;
-      background: white;
-      border-radius: 3px;
-      font-size: 11px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: all 0.2s;
-    }
-
-    .recent-job:hover {
-      background: #e8f0fe;
-      transform: translateX(2px);
-    }
-
-    .recent-job:last-child {
-      margin-bottom: 0;
-    }
-
-    .recent-job-info {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: 500;
-    }
-
-    .recent-job-date {
-      font-size: 10px;
-      color: #999;
-      margin-left: 8px;
-      flex-shrink: 0;
-    }
-
-    .build-info {
-      margin-top: 12px;
-      padding-top: 8px;
-      border-top: 1px solid #e0e0e0;
-      font-size: 9px;
-      color: #999;
-      text-align: center;
-    }
-
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <h2>🎬 NBJ Condenser</h2>
 
@@ -310,52 +21,60 @@
   <!-- Condense Tab -->
   <div class="tab-content active" id="condense-tab">
     <div class="settings" id="settings">
-    <div class="setting-group">
-      <label class="setting-label" for="videoModeSelect">Output Mode</label>
-      <select id="videoModeSelect">
-        <option value="slideshow">Slideshow</option>
-        <option value="audio_only">Audio Only (MP3)</option>
-      </select>
-    </div>
-
-    <div class="setting-group">
-      <label class="setting-label" for="voiceSelect">Voice</label>
-      <select id="voiceSelect">
-        <option value="">Loading voices...</option>
-      </select>
-    </div>
-
-    <div class="setting-group">
-      <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
-      <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
-      <div class="slider-value">
-        <span id="aggressivenessValue">5</span>
+      <div class="setting-group">
+        <label class="setting-label" for="videoModeSelect">Output Mode</label>
+        <select id="videoModeSelect">
+          <option value="slideshow">Slideshow</option>
+          <option value="audio_only">Audio Only (MP3)</option>
+        </select>
       </div>
-      <div id="strategyDesc" class="strategy-desc">Loading...</div>
-    </div>
 
-    <div class="setting-group">
-      <label class="setting-label" for="speedSlider">Speech Speed</label>
-      <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.01">
-      <div class="slider-value">
-        <span id="speedValue">1.10x</span>
-        <span></span>
+      <div class="setting-group-grid">
+        <div class="setting-group">
+          <label class="setting-label" for="localeSelect">Language</label>
+          <select id="localeSelect">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" for="voiceSelect">Voice</label>
+          <select id="voiceSelect">
+            <option value="">Select language</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
+        <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
+        <div class="slider-value">
+          <span id="aggressivenessValue">5</span>
+        </div>
+        <div id="strategyDesc" class="strategy-desc">Loading...</div>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label" for="speedSlider">Speech Speed</label>
+        <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.01">
+        <div class="slider-value">
+          <span id="speedValue">1.10x</span>
+          <span></span>
+        </div>
+      </div>
+
+      <div class="setting-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="prependIntroCheck">
+          <span class="setting-label">Prepend key take-aways intro</span>
+        </label>
       </div>
     </div>
-
-    <div class="setting-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-        <input type="checkbox" id="prependIntroCheck">
-        <span class="setting-label" style="margin:0;">Prepend key take-aways intro</span>
-      </label>
-    </div>
-  </div>
 
     <button id="condenseBtn" disabled>Condense Video</button>
 
     <div id="statusContainer"></div>
 
-    <div class="recent-jobs" id="recentCondenseJobs" style="display:none;">
+    <div class="recent-jobs hidden" id="recentCondenseJobs">
       <h3>Recent</h3>
       <div id="recentCondenseJobsList"></div>
     </div>
@@ -400,11 +119,21 @@
         </div>
       </div>
 
-      <div class="setting-group" id="takeawaysVoiceGroup" style="display:none;">
-        <label class="setting-label" for="takeawaysVoiceSelect">Voice</label>
-        <select id="takeawaysVoiceSelect">
-          <option value="">Loading voices...</option>
-        </select>
+      <div class="setting-group takeaways-voice-group hidden" id="takeawaysVoiceGroup">
+        <div class="setting-group-grid">
+          <div class="setting-group">
+            <label class="setting-label" for="takeawaysLocaleSelect">Language</label>
+            <select id="takeawaysLocaleSelect">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" for="takeawaysVoiceSelect">Voice</label>
+            <select id="takeawaysVoiceSelect">
+              <option value="">Select language</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -412,7 +141,7 @@
 
     <div id="takeawaysStatusContainer"></div>
 
-    <div class="recent-jobs" id="recentTakeawaysJobs" style="display:none;">
+    <div class="recent-jobs hidden" id="recentTakeawaysJobs">
       <h3>Recent</h3>
       <div id="recentTakeawaysJobsList"></div>
     </div>
@@ -423,4 +152,5 @@
   <script src="build-info.js"></script>
   <script src="popup.js"></script>
 </body>
+
 </html>

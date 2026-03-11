@@ -6,6 +6,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
+data/
 dist/
 .build_number
 downloads/
@@ -27,6 +28,7 @@ chrome-extension/build-info.js
 chrome-extension.crx
 dot-env
 yt-cookies.txt
+build-settings.json
 
 test_outputs/
 tts_samples/
@@ -98,7 +100,7 @@ dmypy.json
 temp/
 output/
 *.log
-conciser.log
+nbj.pid
 dist/
 
 # API keys and secrets

@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8',
-        case_sensitive=False
+        case_sensitive=False,
+        extra='ignore'
     )
 
     # API Keys
@@ -42,17 +43,18 @@ class Settings(BaseSettings):
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
     default_output_quality: str = Field(default="1080p")
-
+    
     # Use absolute paths anchored to project root (not relative to cwd)
     # This ensures CLI and server use the same directories
     temp_dir: Path = Field(default=PROJECT_ROOT / "temp")
+    data_dir: Path = Field(default=PROJECT_ROOT / "data")
     output_dir: Path = Field(default=PROJECT_ROOT / "output")
 
     # Service preferences
     transcription_method: str = Field(default="chained", description="youtube (YouTube API only), whisper (Whisper only), or chained (try YouTube, fallback to Whisper)")
     transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
     condenser_service: str = Field(default="openai", description="openai or anthropic")
-    voice_service: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
+    tts_provider: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")
 
     # LLM provider and model selection
@@ -65,6 +67,15 @@ class Settings(BaseSettings):
     takeaways_model_openai: str = Field(default="gpt-5-nano", description="OpenAI model for takeaways extraction")
     takeaways_model_anthropic: str = Field(default="claude-haiku-4-5-20251001", description="Anthropic model for takeaways extraction")
 
+    # Pipeline behavior
+    resume: bool = Field(default=True, description="Resume from existing intermediate files (use cached results)")
+
+    # TTS behavior
+    text_to_ssml_processing: bool = Field(
+        default=True,
+        description="If true, perform Azure SSML rewrite processing; if false, skip SSML processing and keep plain text",
+    )
+
     # Processing options
     target_reduction_percentage: Optional[int] = Field(default=None, ge=10, le=90)
     preserve_intro_outro: bool = Field(default=True)
@@ -74,9 +85,45 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         # Create directories if they don't exist
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def settings_sanity(settings: Settings) -> None:
+    errors: list[str] = []
+
+    tts_provider = (settings.tts_provider or '').strip().lower()
+    if tts_provider == 'azure':
+        if not settings.azure_speech_key or not settings.azure_speech_region:
+            errors.append('TTS_PROVIDER=azure requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION')
+    elif tts_provider == 'elevenlabs':
+        if not settings.elevenlabs_api_key:
+            errors.append('TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY')
+
+    transcription_service = (settings.transcription_service or '').strip().lower()
+    if transcription_service == 'groq' and not settings.groq_api_key:
+        errors.append('TRANSCRIPTION_SERVICE=groq requires GROQ_API_KEY')
+    if transcription_service == 'openai' and not settings.openai_api_key:
+        errors.append('TRANSCRIPTION_SERVICE=openai requires OPENAI_API_KEY')
+
+    condensation_provider = (settings.condensation_provider or '').strip().lower()
+    if condensation_provider == 'openai' and not settings.openai_api_key:
+        errors.append('CONDENSATION_PROVIDER=openai requires OPENAI_API_KEY')
+    if condensation_provider == 'anthropic' and not settings.anthropic_api_key:
+        errors.append('CONDENSATION_PROVIDER=anthropic requires ANTHROPIC_API_KEY')
+
+    takeaways_provider = (settings.takeaways_extraction_provider or '').strip().lower()
+    if takeaways_provider == 'openai' and not settings.openai_api_key:
+        errors.append('TAKEAWAYS_EXTRACTION_PROVIDER=openai requires OPENAI_API_KEY')
+    if takeaways_provider == 'anthropic' and not settings.anthropic_api_key:
+        errors.append('TAKEAWAYS_EXTRACTION_PROVIDER=anthropic requires ANTHROPIC_API_KEY')
+
+    if errors:
+        raise ValueError('Invalid configuration:\n' + '\n'.join(f'- {e}' for e in errors))
 
 
 def get_settings() -> Settings:
     """Get application settings singleton."""
-    return Settings()
+    settings = Settings()
+    settings_sanity(settings)
+    return settings

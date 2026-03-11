@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NBJ Condenser - Android App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='start.css') }}">
+    <script defer src="{{ url_for('static', filename='start_mobile.js') }}"></script>
 </head>
 <body class="mobile-landing">
     <div class="container mobile-container">
@@ -85,15 +86,6 @@
                     <p class="question-followup">Follow the install checklist above to enable "Install unknown apps" for your browser.</p>
                 </div>
 
-                <!-- <div class="question-card" data-question="server">
-                    <p class="question-text">Do you know which server URL to use?</p>
-                    <div class="question-actions">
-                        <button type="button" data-answer="yes">Yes</button>
-                        <button type="button" data-answer="no">Tell me</button>
-                    </div>
-                    <p class="question-followup">Use the default <strong>http://conciser.603apps.net</strong> unless your admin gave you a different one.</p>
-                </div>
- -->
                 <div class="question-card" data-question="share">
                     <p class="question-text">Need a refresher on sharing from YouTube?</p>
                     <div class="question-actions">
@@ -110,29 +102,5 @@
             </section>
         </div>
     </div>
-
-    <script>
-        (function initQuestionCards() {
-            document.querySelectorAll('.question-card').forEach(card => {
-                const buttons = card.querySelectorAll('button[data-answer]');
-                const followup = card.querySelector('.question-followup');
-
-                buttons.forEach(button => {
-                    button.addEventListener('click', () => {
-                        buttons.forEach(btn => btn.classList.remove('selected'));
-                        button.classList.add('selected');
-
-                        if (followup) {
-                            if (button.dataset.answer === 'no') {
-                                followup.classList.add('visible');
-                            } else {
-                                followup.classList.remove('visible');
-                            }
-                        }
-                    });
-                });
-            });
-        })();
-    </script>
 </body>
 </html>

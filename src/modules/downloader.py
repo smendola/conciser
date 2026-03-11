@@ -334,8 +334,36 @@ class VideoDownloader:
                 video_folder.mkdir(parents=True, exist_ok=True)
                 logger.info(f"Using video folder: {video_folder}")
 
+            # Use generic filename or custom one (folder name already contains video title)
+            if output_filename is None:
+                output_filename = "source_video.%(ext)s"
+
+            output_template = str(video_folder / output_filename)
+
             # If metadata_only, return early without downloading
             if metadata_only:
+                # Ensure we have a thumbnail file saved in the folder for cover art embedding.
+                try:
+                    ydl_thumb_opts = {
+                        'quiet': True,
+                        'no_warnings': True,
+                        'ignoreconfig': True,
+                        'skip_download': True,
+                        'writethumbnail': True,
+                        'outtmpl': output_template,
+                        'extractor_args': {
+                            'youtube': {
+                                'player_client': ['web', 'android'],
+                            }
+                        },
+                    }
+                    ydl_thumb_opts = self._apply_youtube_auth(ydl_thumb_opts)
+                    ydl_thumb_opts = self._apply_youtube_proxy(ydl_thumb_opts)
+                    with yt_dlp.YoutubeDL(ydl_thumb_opts) as ydl:
+                        ydl.download([url])
+                except Exception as e:
+                    logger.warning(f"Failed to save thumbnail (metadata_only): {e}")
+
                 metadata = {
                     'video_id': video_id,
                     'title': title,
@@ -348,13 +376,6 @@ class VideoDownloader:
                     'metadata': metadata,
                     'video_folder': video_folder
                 }
-
-
-            # Use generic filename or custom one (folder name already contains video title)
-            if output_filename is None:
-                output_filename = "source_video.%(ext)s"
-
-            output_template = str(video_folder / output_filename)
 
             # Quality format selection
             format_string = self._get_format_string(quality)

@@ -59,12 +59,13 @@ class JobService:
         url: str,
         job_type: str,
         title: Optional[str] = None,
+        channel_name: Optional[str] = None,
         client_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new job and queue it for processing."""
         job_id = str(uuid.uuid4())[:8]
-        self.store.create_job(job_id, url, title, job_type, client_id, params)
+        self.store.create_job(job_id, url, title, channel_name, job_type, client_id, params)
         logger.info(f"Created job {job_id} ({job_type}) for client {client_id}")
         return job_id
 
@@ -131,7 +132,7 @@ class JobService:
                 raise ValueError(f"Unknown job type: {job['job_type']}")
 
         except Exception as e:
-            logger.error(f"Error processing job {job_id}: {e}")
+            logger.exception(f"Error processing job {job_id}: {e}")
             self.mark_error(job_id, str(e))
         finally:
             with self._workers_lock:
@@ -165,12 +166,12 @@ class JobService:
             output_path=output_path,
             quality="1080p",
             video_gen_mode=params.get("video_mode", "slideshow"),
-            tts_provider="edge",
-            voice_id=params.get("voice", "en-GB-RyanNeural"),
+            tts_provider=params.get("tts_provider", self.settings.tts_provider),
+            voice_id=params.get("voice", "en-US-AriaNeural"),
             tts_rate=params.get("speech_rate", "+0%"),
             skip_voice_clone=True,
             progress_callback=lambda s, m: self.update_progress(job_id, s, m),
-            resume=False,
+            resume=self.settings.resume,
             prepend_intro=params.get("prepend_intro", False),
         )
 
@@ -214,6 +215,12 @@ class JobService:
 
         if params.get("voice"):
             cmd.extend(["--voice", params["voice"]])
+
+        # Add resume flag based on settings
+        if self.settings.resume:
+            cmd.append("--resume")
+        else:
+            cmd.append("--no-resume")
 
         self.update_progress(job_id, "FETCH", "Starting takeaways job")
         logger.info(f"[{job_id}] Running: {' '.join(cmd)}")

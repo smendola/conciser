@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ video_title if video_title else ('Output - Job ' ~ job_id) }}</title>
+    <link rel="stylesheet" href="/static/media_player.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">{{ video_title if video_title else ('Output - Job ' ~ job_id) }}</h1>
+            <div class="meta">
+                {% if channel_name %}
+                {{ channel_name }}
+                {% endif %}
+                {% if aggressiveness is not none %}
+                | Aggressiveness: {{ aggressiveness }}/10
+                {% endif %}
+                {% if voice %}
+                | Voice: {{ voice }}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="player-shell">
+            {% if media_kind == 'audio' %}
+            {% if thumbnail_url %}
+            <div class="cover-art">
+                <img src="{{ thumbnail_url }}" alt="Video thumbnail" loading="lazy">
+            </div>
+            {% endif %}
+            <audio controls preload="metadata">
+                <source src="{{ media_url }}" type="audio/mpeg">
+                Your browser does not support audio playback.
+            </audio>
+            {% else %}
+            <video controls preload="metadata">
+                <source src="{{ media_url }}" type="video/mp4">
+                Your browser does not support video playback.
+            </video>
+            {% endif %}
+
+            <div class="actions">
+                <a class="button button-primary" href="{{ download_url }}">Download File</a>
+                <a class="button button-secondary" href="{{ media_url }}">Open Raw Media</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

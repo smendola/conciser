@@ -7,15 +7,17 @@ import time
 import click
 from colorama import Fore, Style
 
+from ...utils.audio_utils import embed_cover_art_mp3
+
 from ...config import get_settings
+from ..common import _load_videos_txt, _resolve_voice
+from ..progress import ProgressDisplay
+
 from ...modules.downloader import VideoDownloader
 from ...modules.transcriber import Transcriber
 from ...modules.condenser import ContentCondenser
 from ...modules.edge_tts import EdgeTTS
 from ...modules.azure_tts import AzureTTS
-from ...modules.tts import VoiceCloner
-from ..common import _load_videos_txt
-from ..progress import ProgressDisplay
 
 
 def _suppress_httpx_info_logs() -> None:
@@ -49,8 +51,8 @@ from ..app import cli  # noqa: E402
 @click.option(
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
-    default='edge',
-    help='TTS provider for audio output. Default: edge'
+    default=None,
+    help='TTS provider for audio output. Default: TTS_PROVIDER env var or edge'
 )
 @click.option(
     '--speech-rate',
@@ -66,8 +68,8 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--resume/--no-resume',
-    default=True,
-    help='Resume from cached intermediate files (default: resume)'
+    default=None,
+    help='Resume from cached intermediate files (default: enabled, or RESUME env var)'
 )
 @click.option(
     '--xdg-open', '-O',
@@ -102,6 +104,11 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         # Auto-determine optimal number of points
         nbj takeaways https://youtube.com/watch?v=... --top=auto
     """
+    settings = get_settings()
+
+    # If resume is not specified via command line, use the setting from .env
+    if resume is None:
+        resume = settings.resume
     _suppress_httpx_info_logs()
 
     import logging
@@ -143,6 +150,10 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
 
         print(f"Output format: {format}")
 
+        # Check API keys
+        if tts_provider is None:
+            tts_provider = settings.tts_provider
+
         # Parse voice shortcut if provided (e.g., edge/ryan, azure/aria)
         if voice and '/' in voice:
             parts = voice.split('/', 1)
@@ -174,7 +185,6 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                         sys.exit(1)
                     print(f"Voice: {voice} -> {voice_id}")
                 elif tts_provider == 'azure':
-                    settings = get_settings()
                     if not settings.azure_speech_key or not settings.azure_speech_region:
                         click.echo(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set.{Style.RESET_ALL}")
                         sys.exit(1)
@@ -186,11 +196,24 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                         sys.exit(1)
                     print(f"Voice: {voice} -> {voice_id}")
                 else:
-                    # ElevenLabs - use voice name directly for now
-                    voice_id = voice
-                    print(f"Voice: {voice}")
+                    # ElevenLabs - resolve voice name/ID to an ElevenLabs voice_id
+                    if not settings.elevenlabs_api_key:
+                        click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set.{Style.RESET_ALL}")
+                        sys.exit(1)
+                    voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
+                    if not voice_id:
+                        click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                        click.echo(f"{Fore.YELLOW}Run 'nbj voices --provider=elevenlabs' to see available voices.{Style.RESET_ALL}")
+                        sys.exit(1)
+                    print(f"Voice: {voice} (ID: {voice_id})")
             else:
                 # Default voice
+                if tts_provider == 'elevenlabs':
+                    click.echo(
+                        f"{Fore.RED}Error: Default voice is not defined for ElevenLabs. "
+                        f"Pass --voice (e.g. --voice=George or --voice=elevenlabs/George).{Style.RESET_ALL}"
+                    )
+                    sys.exit(1)
                 voice_id = "en-US-AriaNeural"
                 print(f"Voice: {voice_id} (default)")
 
@@ -202,9 +225,6 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                     speech_rate = '+0%'
 
         print()
-
-        # Check API keys
-        settings = get_settings()
 
         if not settings.openai_api_key and not settings.anthropic_api_key:
             click.echo(f"{Fore.RED}Error: No API key set for condensation. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.{Style.RESET_ALL}")
@@ -369,6 +389,18 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                     output_path=audio_path,
                     chunk_size=5000
                 )
+
+            try:
+                thumb_candidates = [
+                    p
+                    for p in video_folder.glob("source_video.*")
+                    if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+                ]
+                if thumb_candidates:
+                    embed_cover_art_mp3(audio_path, thumb_candidates[0])
+                    logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")
+            except Exception as e:
+                logger.warning(f"Failed to embed cover art into MP3: {e}")
 
             print(f"  Audio saved: {audio_path}\n")
         else:

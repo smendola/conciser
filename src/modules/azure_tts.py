@@ -33,6 +33,7 @@ class AzureTTS:
         voice: str = "en-US-AriaNeural",
         rate: str = "+0%",
         is_ssml: bool = False,
+        progress_callback=None,
     ) -> Path:
         """
         Generate speech from text or SSML using Azure TTS.
@@ -43,6 +44,7 @@ class AzureTTS:
             voice: Voice name (e.g., en-US-AriaNeural, en-GB-RyanNeural)
             rate: Speech speed adjustment (e.g., "+20%", "-10%", "+0%")
             is_ssml: Whether input is SSML format
+            progress_callback: Optional callable(pct: int) for progress updates
 
         Returns:
             Path to generated audio file
@@ -65,6 +67,18 @@ class AzureTTS:
                 audio_config=audio_config
             )
 
+            # Wire up word-boundary progress if requested
+            if progress_callback:
+                total_words = max(1, len(text.split()))
+                word_count = [0]
+
+                def _on_boundary(evt):
+                    if evt.boundary_type == speechsdk.SpeechSynthesisBoundaryType.Word:
+                        word_count[0] += 1
+                        progress_callback(min(99, int(word_count[0] / total_words * 100)))
+
+                synthesizer.synthesis_word_boundary.connect(_on_boundary)
+
             # Synthesize based on input type
             if is_ssml:
                 # Ensure SSML has voice set if not already specified
@@ -83,6 +97,8 @@ class AzureTTS:
             # Check result
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 logger.info(f"Speech generated and saved to: {output_path}")
+                if progress_callback:
+                    progress_callback(100)
                 return output_path
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation = result.cancellation_details
@@ -187,6 +203,10 @@ class AzureTTS:
                 for voice in result.voices:
                     # Apply locale filter if specified
                     if locale_filter and not voice.locale.startswith(locale_filter):
+                        continue
+
+                    # Exclude HD voices because they are much slower to generate
+                    if 'DragonHD' in voice.short_name:
                         continue
 
                     voices.append({

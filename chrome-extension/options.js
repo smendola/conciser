@@ -1,4 +1,4 @@
-const DEFAULT_SERVER_URL = 'https://conciser.603apps.net';
+// DEFAULT_SERVER_URL is injected at build time via build-info.js
 const PRESET_URLS = [
   'https://conciser.603apps.net',
   'https://x13.puma-garibaldi.ts.net',
@@ -6,6 +6,24 @@ const PRESET_URLS = [
 ];
 let pingTimeoutId = null;
 let currentPingController = null;
+
+async function apiLog(serverUrl, event, data = {}) {
+  try {
+    await fetch(`${serverUrl}/api/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'chrome-extension-options',
+        event,
+        serverUrl,
+        ts: Date.now(),
+        ...data
+      })
+    });
+  } catch (_) {
+    // ignore
+  }
+}
 
 function normalizeServerUrl(value) {
   const trimmed = (value || '').trim();
@@ -115,13 +133,28 @@ async function save(andPing = true) {
 
   const storage = await chrome.storage.local.get(['settings']);
   const existing = storage.settings || {};
+  const previousServerUrl = normalizeServerUrl(existing.serverUrl);
 
-  await chrome.storage.local.set({
-    settings: {
-      ...existing,
-      serverUrl
-    }
+  console.log('METADATA_CACHE: options_save', {
+    previousServerUrl,
+    serverUrl
   });
+  await apiLog(serverUrl, 'options_save', { previousServerUrl });
+
+  if (previousServerUrl && previousServerUrl !== serverUrl) {
+    console.log('METADATA_CACHE: options_server_switch_wipe', {
+      from: previousServerUrl,
+      to: serverUrl
+    });
+    await apiLog(serverUrl, 'options_server_switch_wipe', { from: previousServerUrl, to: serverUrl });
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({ settings: { serverUrl } });
+    setStatus('Saved', 'ok');
+    setTimeout(() => location.reload(), 200);
+    return;
+  }
+
+  await chrome.storage.local.set({ settings: { ...existing, serverUrl } });
 
   setStatus('Saved', 'ok');
 

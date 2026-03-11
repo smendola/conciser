@@ -142,6 +142,7 @@ class VoiceCloner:
         voice_id: str,
         output_path: Path,
         chunk_size: int = 5000,
+        progress_callback=None,
         **kwargs
     ) -> Path:
         """
@@ -196,6 +197,8 @@ class VoiceCloner:
                 chunk_path = output_path.with_stem(f"{output_path.stem}_chunk{i}")
                 self.generate_speech(chunk_text, voice_id, chunk_path, **kwargs)
                 chunk_paths.append(chunk_path)
+                if progress_callback:
+                    progress_callback(min(99, int((i + 1) / len(chunks) * 100)))
 
                 # Small delay to avoid rate limits
                 if i < len(chunks) - 1:
@@ -204,6 +207,8 @@ class VoiceCloner:
             # Combine all chunks using ffmpeg
             logger.info("Combining audio chunks")
             self._combine_audio_files(chunk_paths, output_path)
+            if progress_callback:
+                progress_callback(100)
 
             # Clean up chunk files
             for chunk_path in chunk_paths:
