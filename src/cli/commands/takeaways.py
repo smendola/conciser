@@ -8,14 +8,14 @@ import click
 from colorama import Fore, Style
 
 from ...config import get_settings
+from ..common import _load_videos_txt, _resolve_voice
+from ..progress import ProgressDisplay
+
 from ...modules.downloader import VideoDownloader
 from ...modules.transcriber import Transcriber
 from ...modules.condenser import ContentCondenser
 from ...modules.edge_tts import EdgeTTS
 from ...modules.azure_tts import AzureTTS
-from ...modules.tts import VoiceCloner
-from ..common import _load_videos_txt
-from ..progress import ProgressDisplay
 
 
 def _suppress_httpx_info_logs() -> None:
@@ -194,11 +194,24 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
                         sys.exit(1)
                     print(f"Voice: {voice} -> {voice_id}")
                 else:
-                    # ElevenLabs - use voice name directly for now
-                    voice_id = voice
-                    print(f"Voice: {voice}")
+                    # ElevenLabs - resolve voice name/ID to an ElevenLabs voice_id
+                    if not settings.elevenlabs_api_key:
+                        click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set.{Style.RESET_ALL}")
+                        sys.exit(1)
+                    voice_id = _resolve_voice(voice, settings.elevenlabs_api_key)
+                    if not voice_id:
+                        click.echo(f"{Fore.RED}Error: Voice '{voice}' not found.{Style.RESET_ALL}")
+                        click.echo(f"{Fore.YELLOW}Run 'nbj voices --provider=elevenlabs' to see available voices.{Style.RESET_ALL}")
+                        sys.exit(1)
+                    print(f"Voice: {voice} (ID: {voice_id})")
             else:
                 # Default voice
+                if tts_provider == 'elevenlabs':
+                    click.echo(
+                        f"{Fore.RED}Error: Default voice is not defined for ElevenLabs. "
+                        f"Pass --voice (e.g. --voice=George or --voice=elevenlabs/George).{Style.RESET_ALL}"
+                    )
+                    sys.exit(1)
                 voice_id = "en-US-AriaNeural"
                 print(f"Voice: {voice_id} (default)")
 

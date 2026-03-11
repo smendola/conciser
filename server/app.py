@@ -223,7 +223,13 @@ def condense():
 
     # Get optional parameters (with defaults)
     aggressiveness = data.get('aggressiveness', 5)
-    voice = data.get('voice', 'en-GB-RyanNeural')
+    settings = get_settings()
+    tts_provider = (data.get('tts_provider') or settings.tts_provider or 'edge').strip().lower()
+    voice = data.get('voice')
+    if not voice:
+        if tts_provider == 'elevenlabs':
+            return jsonify({'error': 'Missing voice parameter (required when tts_provider=elevenlabs)'}), 400
+        voice = 'en-GB-RyanNeural'
     speech_rate = data.get('speech_rate', '+0%')  # Default to 1.0x
     video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
     prepend_intro = bool(data.get('prepend_intro', False))
@@ -250,6 +256,7 @@ def condense():
     params = {
         'aggressiveness': aggressiveness,
         'voice': voice,
+        'tts_provider': tts_provider,
         'speech_rate': speech_rate,
         'video_mode': video_mode,
         'prepend_intro': prepend_intro,
