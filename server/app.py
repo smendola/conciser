@@ -20,6 +20,7 @@ from flask_cors import CORS
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Initialize CLI logging for server output
+os.environ.setdefault('NBJ_LOG_STREAM', '0')
 from src.cli import logging as _logging  # noqa: F401
 
 from src.config import get_settings

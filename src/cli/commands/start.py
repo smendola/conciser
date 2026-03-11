@@ -46,6 +46,8 @@ def start(ctx: click.Context, detach: bool, reload: bool) -> None:
             with log_path.open('ab', buffering=0) as log_f:
                 env = os.environ.copy()
                 env.setdefault('NBJ_NO_RELOADER', '1')
+                env.setdefault('NBJ_LOG_STREAM', '0')
+                env.setdefault('NBJ_LOG_COLORIZE_FILE', '1')
                 popen_kwargs: dict = {
                     'cwd': str(repo_root),
                     'env': env,
@@ -72,6 +74,7 @@ def start(ctx: click.Context, detach: bool, reload: bool) -> None:
             env = os.environ.copy()
             if not reload:
                 env.setdefault('NBJ_NO_RELOADER', '1')
+            env.setdefault('NBJ_LOG_STREAM', '0')
             subprocess.run(cmd, cwd=str(repo_root), env=env, check=False)
     except FileNotFoundError:
         print(f"{Fore.RED}Error: failed to execute Python interpreter: {python_exe}{Style.RESET_ALL}")
