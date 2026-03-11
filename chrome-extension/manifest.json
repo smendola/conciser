@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NBJ Condenser",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Send YouTube videos to NBJ Condenser for AI-powered condensation",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA451tO4yTaLZigNI20WcHr/hBgp0Qdhe/Cq0no196cO/NHtKhtd+fdSjkMLL3MFE77xbnnk7bRPec+cTBB2biOvqeID7rJWslmVpyDdNBlELbzAiXzuBK77XK/qoNHSRnJylHO3s9wngywf5BAbC8Kv8uY3LeYM0IBH/0SI726w5SJ28CCez6/Kq+izwcKPhUXQrqIX8u71QT2bkjFHR/Rtklt119uMGBUEyRbyCgoMhPHeWtSvLYxN+jGnic/5WXy0IvJSfotn7a4knH1ird4lm6XqJtjYZp+3YSk5nmuWYYxwU9NZqgCr+qFbrVVfbj9kiHSq6sK7tlOptFAaKZnwIDAQAB",
   "options_ui": {

@@ -790,6 +790,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun findSavedVoiceOptionIndex(
+        voiceOptions: List<VoiceOption>,
+        savedVoiceItem: VoiceItem
+    ): Int {
+        val savedId = savedVoiceItem.name
+        val exactIdIndex = voiceOptions.indexOfFirst { it.id == savedId }
+        if (exactIdIndex >= 0) return exactIdIndex
+
+        val savedDisplayName = buildVoiceDisplayName(savedVoiceItem)
+        return voiceOptions.indexOfFirst { it.displayName == savedDisplayName }
+    }
+
     private fun getSelectedVoiceOption(
         spinner: android.widget.Spinner,
         locale: String?
