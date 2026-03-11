@@ -11,14 +11,17 @@ android {
         applicationId "com.nbj"
         minSdk 24
         targetSdk 34
-        versionCode 102
-        versionName "1.0.102"
+        versionCode 110
+        versionName "1.0.110"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Inject build timestamp
         def buildTime = new Date().format('yyyy-MM-dd HH:mm:ss')
         buildConfigField "String", "BUILD_TIMESTAMP", "\"${buildTime}\""
+
+        // Expose build version for UI
+        buildConfigField "String", "BUILD_VERSION", "\"${versionName}\""
 
         // Inject default server URL from build-settings.json
         def buildSettings = new groovy.json.JsonSlurper().parse(rootProject.file('../build-settings.json'))

@@ -80,6 +80,41 @@ class Settings(BaseSettings):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
 
+def settings_sanity(settings: Settings) -> None:
+    errors: list[str] = []
+
+    tts_provider = (settings.tts_provider or '').strip().lower()
+    if tts_provider == 'azure':
+        if not settings.azure_speech_key or not settings.azure_speech_region:
+            errors.append('TTS_PROVIDER=azure requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION')
+    elif tts_provider == 'elevenlabs':
+        if not settings.elevenlabs_api_key:
+            errors.append('TTS_PROVIDER=elevenlabs requires ELEVENLABS_API_KEY')
+
+    transcription_service = (settings.transcription_service or '').strip().lower()
+    if transcription_service == 'groq' and not settings.groq_api_key:
+        errors.append('TRANSCRIPTION_SERVICE=groq requires GROQ_API_KEY')
+    if transcription_service == 'openai' and not settings.openai_api_key:
+        errors.append('TRANSCRIPTION_SERVICE=openai requires OPENAI_API_KEY')
+
+    condensation_provider = (settings.condensation_provider or '').strip().lower()
+    if condensation_provider == 'openai' and not settings.openai_api_key:
+        errors.append('CONDENSATION_PROVIDER=openai requires OPENAI_API_KEY')
+    if condensation_provider == 'anthropic' and not settings.anthropic_api_key:
+        errors.append('CONDENSATION_PROVIDER=anthropic requires ANTHROPIC_API_KEY')
+
+    takeaways_provider = (settings.takeaways_extraction_provider or '').strip().lower()
+    if takeaways_provider == 'openai' and not settings.openai_api_key:
+        errors.append('TAKEAWAYS_EXTRACTION_PROVIDER=openai requires OPENAI_API_KEY')
+    if takeaways_provider == 'anthropic' and not settings.anthropic_api_key:
+        errors.append('TAKEAWAYS_EXTRACTION_PROVIDER=anthropic requires ANTHROPIC_API_KEY')
+
+    if errors:
+        raise ValueError('Invalid configuration:\n' + '\n'.join(f'- {e}' for e in errors))
+
+
 def get_settings() -> Settings:
     """Get application settings singleton."""
-    return Settings()
+    settings = Settings()
+    settings_sanity(settings)
+    return settings

@@ -780,9 +780,9 @@ document.getElementById('videoModeSelect').addEventListener('change', handleSett
 
 document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
 
-// Display build timestamp
-if (typeof BUILD_TIMESTAMP !== 'undefined') {
-  document.getElementById('buildInfo').textContent = `Build: ${BUILD_TIMESTAMP}`;
+// Display build version
+if (typeof BUILD_VERSION !== 'undefined') {
+  document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
 } else {
   document.getElementById('buildInfo').textContent = 'Build: Unknown';
 }

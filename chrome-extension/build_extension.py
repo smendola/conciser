@@ -46,10 +46,10 @@ def build_extension():
     build_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     build_info_file = extension_dir / 'build-info.js'
     build_info_file.write_text(
-        f'const BUILD_TIMESTAMP = "{build_timestamp}";\n'
+        f'const BUILD_VERSION = "{version}";\n'
         f'const DEFAULT_SERVER_URL = "{default_server_url}";\n'
     )
-    print(f"Generated build-info.js: timestamp={build_timestamp} server={default_server_url}")
+    print(f"Generated build-info.js: version={version} timestamp={build_timestamp} server={default_server_url}")
 
     # Files/folders to include
     include_patterns = [

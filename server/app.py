@@ -674,47 +674,95 @@ def get_voices():
     locale = request.args.get('locale', 'en-US')
     settings = get_settings()
 
+    def _friendly_voice_name(voice_name: str) -> str:
+        return (
+            voice_name.split('-', 2)[-1]
+            .replace('Multilingual', '')
+            .replace('Expressive', '')
+            .replace('Turbo', '')
+            .replace('Neural', '')
+            .strip()
+        )
+
+    def _is_voice_name_allowed(friendly_name: str) -> bool:
+        if not friendly_name:
+            return False
+
+        if 'AI' in friendly_name:
+            return False
+
+        if ':' in friendly_name:
+            return False
+
+        if any(ch.isdigit() for ch in friendly_name):
+            return False
+
+        return True
+
+    def _to_voice_repr(v: dict) -> dict:
+        friendly_name = _friendly_voice_name(v['name'])
+        return {
+            'name': v['name'],
+            'gender': v.get('gender', 'Unknown'),
+            'locale': v.get('locale', 'Unknown'),
+            'friendly_name': friendly_name,
+        }
+
+    def _to_elevenlabs_voice_repr(v: dict) -> dict:
+        name = v.get('name') or ''
+        return {
+            'name': v.get('voice_id') or name,
+            'gender': 'Unknown',
+            'locale': 'Unknown',
+            'friendly_name': name,
+        }
+
     try:
-        if settings.tts_provider == 'azure' and settings.azure_speech_key and settings.azure_speech_region:
-            from src.modules.azure_tts import AzureTTS
-            azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
-            all_voices = azure.list_voices(locale_filter=locale)
-            filtered_voices = sorted(
-                [
-                    {
-                        'name': v['name'],
-                        'gender': v['gender'],
-                        'locale': v['locale'],
-                        'friendly_name': v['name'].split('-', 2)[-1]
-                                                  .replace('Multilingual', '')
-                                                  .replace('Expressive', '')
-                                                  .replace('Turbo', '')
-                                                  .replace('Neural', '')
-                    }
-                    for v in all_voices
-                ],
-                key=lambda x: x['name']
-            )
-        else:
-            edge_tts = EdgeTTS()
-            all_voices = edge_tts.list_voices()
-            # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
-            filtered_voices = sorted(
-                [
-                    {
-                        'name': v['name'],
-                        'gender': v['gender'],
-                        'locale': v['locale'],
-                        'friendly_name': v['name'].split('-', 2)[-1]
-                                                  .replace('Multilingual', '')
-                                                  .replace('Expressive', '')
-                                                  .replace('Neural', '')
-                    }
-                    for v in all_voices
-                    if v['locale'].startswith(locale)
-                ],
-                key=lambda x: x['name']
-            )
+        match settings.tts_provider:
+            case 'elevenlabs':
+                if not settings.elevenlabs_api_key:
+                    return jsonify({'voices': []})
+
+                from src.modules.tts import VoiceCloner
+                cloner = VoiceCloner(settings.elevenlabs_api_key)
+                all_voices = cloner.list_voices()
+                filtered_voices = sorted(
+                    [_to_elevenlabs_voice_repr(v) for v in all_voices],
+                    key=lambda x: (x.get('friendly_name') or x['name'])
+                )
+
+            case 'azure':
+                if not settings.azure_speech_key or not settings.azure_speech_region:
+                    return jsonify({
+                        'error': 'Azure TTS not configured (missing AZURE_SPEECH_KEY or AZURE_SPEECH_REGION)',
+                        'voices': []
+                    }), 400
+
+                from src.modules.azure_tts import AzureTTS
+                azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+                all_voices = azure.list_voices(locale_filter=locale)
+                filtered_voices = sorted(
+                    [
+                        _to_voice_repr(v)
+                        for v in all_voices
+                        if _is_voice_name_allowed(_friendly_voice_name(v['name']))
+                    ],
+                    key=lambda x: x['name']
+                )
+
+            case 'edge' | _:
+                edge_tts = EdgeTTS()
+                all_voices = edge_tts.list_voices()
+                # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
+                filtered_voices = sorted(
+                    [
+                        _to_voice_repr(v)
+                        for v in all_voices
+                        if v['locale'].startswith(locale)
+                        if _is_voice_name_allowed(_friendly_voice_name(v['name']))
+                    ],
+                    key=lambda x: x['name']
+                )
         return jsonify({'voices': filtered_voices})
     except Exception as e:
         logger.error(f"Failed to fetch voices: {e}")
@@ -753,6 +801,9 @@ if __name__ == '__main__':
     is_reloader_child = (not use_reloader) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
 
     if is_reloader_child:
+        # Fail fast on invalid configuration before starting workers / serving requests.
+        get_settings()
+
         _print_startup_banner()
 
         # Start job service worker loop
