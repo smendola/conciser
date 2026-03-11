@@ -11,15 +11,65 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 
+
+def _read_json_file(path: Path) -> dict:
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _write_json_file(path: Path, data: dict) -> None:
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding='utf-8')
+
+
+def _read_int_file(path: Path, default: int = 0) -> int:
+    if not path.exists():
+        return default
+    try:
+        return int(path.read_text(encoding='utf-8').strip())
+    except Exception:
+        return default
+
+
+def _write_int_file(path: Path, value: int) -> None:
+    path.write_text(str(value) + "\n", encoding='utf-8')
+
+
+def _bump_chrome_build_number(extension_dir: Path) -> int:
+    build_number_file = extension_dir / '.build_number'
+    current = _read_int_file(build_number_file, default=0)
+    next_value = current + 1
+    _write_int_file(build_number_file, next_value)
+    print(f"Incremented Chrome build number: {current} -> {next_value}")
+    return next_value
+
+
+def _generate_manifest(extension_dir: Path, version: str) -> None:
+    template_path = extension_dir / 'manifest.template.json'
+    if not template_path.exists():
+        raise FileNotFoundError(f"Missing manifest template: {template_path}")
+
+    manifest = _read_json_file(template_path)
+    manifest['version'] = version
+
+    key_path = extension_dir / 'manifest.key.json'
+    if key_path.exists():
+        key_data = _read_json_file(key_path)
+        if isinstance(key_data, dict) and 'key' in key_data and key_data['key']:
+            manifest['key'] = key_data['key']
+
+    manifest_path = extension_dir / 'manifest.json'
+    _write_json_file(manifest_path, manifest)
+
 def build_extension():
     """Package the chrome extension into a zip file."""
     # Paths
     extension_dir = Path(__file__).parent  # chrome-extension/
     project_root = extension_dir.parent    # project root
     dist_dir = project_root / 'dist'
-    with open(extension_dir / 'manifest.json', 'r') as f:
-        manifest = json.load(f)
-        version = manifest.get('version', '0.0.0')
+
+    build_number = _bump_chrome_build_number(extension_dir)
+    version = f"1.0.{build_number}"
+    _generate_manifest(extension_dir, version)
 
     output_zip = dist_dir / f'nbj-chrome-extension-{version}.zip'
 
