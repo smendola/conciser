@@ -1,5 +1,7 @@
 // NBJ Condenser - Chrome Extension
 
+console.log('POPUP_BOOT: popup.js loaded');
+
 let currentUrl = null;
 let currentJobId = null;
 let currentTakeawaysJobId = null;
@@ -9,10 +11,213 @@ let takeawaysPollInterval = null;
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let currentTab = 'condense';
 let clientId = null;
 const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
+
+function getServerCacheKeyPrefix() {
+  return `serverCache:${serverUrl}`;
+}
+
+async function clearAllStateOnServerSwitchIfNeeded() {
+  const storage = await chrome.storage.local.get(['lastServerUrl', 'settings']);
+  const lastServerUrl = storage.lastServerUrl;
+  const settings = storage.settings || {};
+  const selectedServerUrl = normalizeServerUrl(settings.serverUrl || serverUrl);
+
+  console.log('METADATA_CACHE: server_switch_check', {
+    lastServerUrl,
+    selectedServerUrl
+  });
+  await apiLog('server_switch_check', { lastServerUrl, selectedServerUrl });
+
+  if (lastServerUrl && normalizeServerUrl(lastServerUrl) !== selectedServerUrl) {
+    console.log('METADATA_CACHE: server_switch_wipe', {
+      from: lastServerUrl,
+      to: selectedServerUrl
+    });
+    await apiLog('server_switch_wipe', { from: lastServerUrl, to: selectedServerUrl });
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({
+      settings: { serverUrl: selectedServerUrl },
+      lastServerUrl: selectedServerUrl
+    });
+  }
+}
+
+function getStrategiesCacheKey() {
+  return `${getServerCacheKeyPrefix()}:strategies`;
+}
+
+function getVoicesCacheKey(locale) {
+  return `${getServerCacheKeyPrefix()}:voices:${locale}`;
+}
+
+function getLanguageOnlyLocale() {
+  return (navigator.language || 'en').split('-')[0];
+}
+
+async function loadCachedStrategiesForCurrentServer() {
+  const key = getStrategiesCacheKey();
+  const storage = await chrome.storage.local.get([key]);
+  const cache = storage[key];
+  console.log('METADATA_CACHE: strategies_cache_read', {
+    serverUrl,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  await apiLog('strategies_cache_read', {
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  if (cache && Array.isArray(cache.data)) {
+    strategies = cache.data;
+    updateStrategyDescription();
+    return true;
+  }
+  return false;
+}
+
+async function loadCachedVoicesForCurrentServer(locale) {
+  const key = getVoicesCacheKey(locale);
+  const storage = await chrome.storage.local.get([key]);
+  const cache = storage[key];
+  console.log('METADATA_CACHE: voices_cache_read', {
+    serverUrl,
+    locale,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  await apiLog('voices_cache_read', {
+    locale,
+    key,
+    hit: !!(cache && Array.isArray(cache.data)),
+    count: cache && Array.isArray(cache.data) ? cache.data.length : 0
+  });
+  if (cache && Array.isArray(cache.data)) {
+    voices = cache.data;
+    return true;
+  }
+  return false;
+}
+
+async function fetchAndCacheStrategiesForCurrentServer() {
+  console.log('METADATA_CACHE: strategies_fetch_start', { serverUrl });
+  await apiLog('strategies_fetch_start', {});
+  const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
+  if (!response.ok) throw new Error(`Failed to fetch strategies (${response.status})`);
+  const data = await response.json();
+  strategies = data.strategies || [];
+  const key = getStrategiesCacheKey();
+  await chrome.storage.local.set({ [key]: { data: strategies, timestamp: Date.now() } });
+  console.log('METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
+  await apiLog('strategies_cache_write', { key, count: strategies.length });
+  updateStrategyDescription();
+}
+
+async function fetchAndCacheVoicesForCurrentServer(locale) {
+  console.log('METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
+  await apiLog('voices_fetch_start', { locale });
+  const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
+  if (!response.ok) throw new Error(`Failed to fetch voices (${response.status})`);
+  const data = await response.json();
+  voices = data.voices || [];
+  const key = getVoicesCacheKey(locale);
+  await chrome.storage.local.set({ [key]: { data: voices, locale, timestamp: Date.now() } });
+  console.log('METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
+  await apiLog('voices_cache_write', { locale, key, count: voices.length });
+}
+
+async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
+  const locale = getLanguageOnlyLocale();
+  console.log('METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
+  await apiLog('ensure_metadata_start', { locale, allowNetwork });
+  const haveStrategies = await loadCachedStrategiesForCurrentServer();
+  const haveVoices = await loadCachedVoicesForCurrentServer(locale);
+
+  if (haveVoices) {
+    populateLocaleSelect('localeSelect');
+    populateLocaleSelect('takeawaysLocaleSelect');
+    updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
+    updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
+    const storage = await chrome.storage.local.get(['settings']);
+    const settings = storage.settings || {};
+
+    console.log('METADATA_CACHE: restore_settings', {
+      condenseLocale: settings.condenseLocale,
+      condenseVoice: settings.condenseVoice,
+      takeawaysLocale: settings.takeawaysLocale,
+      takeawaysVoice: settings.takeawaysVoice
+    });
+    await apiLog('restore_settings', {
+      condenseLocale: settings.condenseLocale,
+      condenseVoice: settings.condenseVoice,
+      takeawaysLocale: settings.takeawaysLocale,
+      takeawaysVoice: settings.takeawaysVoice
+    });
+
+    const applySelection = (localeSelectId, voiceSelectId, savedLocaleKey, savedVoiceKey) => {
+      const localeSelectEl = document.getElementById(localeSelectId);
+      const voiceSelectEl = document.getElementById(voiceSelectId);
+      const savedLocale = settings[savedLocaleKey];
+      const savedVoice = settings[savedVoiceKey];
+
+      let localeToUse = savedLocale;
+      if (!localeToUse && savedVoice) {
+        const voiceItem = voices.find(v => v.name === savedVoice);
+        if (voiceItem) localeToUse = voiceItem.locale;
+      }
+
+      if (localeToUse) {
+        localeSelectEl.value = localeToUse;
+        updateVoiceSelectForLocale(voiceSelectId, localeToUse);
+      }
+
+      if (savedVoice) {
+        voiceSelectEl.value = savedVoice;
+      }
+
+      console.log('METADATA_CACHE: applied_selection', {
+        localeSelectId,
+        voiceSelectId,
+        savedLocaleKey,
+        savedVoiceKey,
+        appliedLocale: localeSelectEl.value,
+        appliedVoice: voiceSelectEl.value
+      });
+      apiLog('applied_selection', {
+        localeSelectId,
+        voiceSelectId,
+        savedLocaleKey,
+        savedVoiceKey,
+        appliedLocale: localeSelectEl.value,
+        appliedVoice: voiceSelectEl.value
+      });
+    };
+
+    applySelection('localeSelect', 'voiceSelect', 'condenseLocale', 'condenseVoice');
+    applySelection('takeawaysLocaleSelect', 'takeawaysVoiceSelect', 'takeawaysLocale', 'takeawaysVoice');
+  }
+
+  if (allowNetwork) {
+    const tasks = [];
+    if (!haveStrategies) tasks.push(fetchAndCacheStrategiesForCurrentServer());
+    if (!haveVoices) tasks.push(fetchAndCacheVoicesForCurrentServer(locale).then(() => {
+      populateLocaleSelect('localeSelect');
+      populateLocaleSelect('takeawaysLocaleSelect');
+      updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
+      updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
+    }));
+    if (tasks.length) {
+      await Promise.allSettled(tasks);
+    }
+  }
+
+  return { haveStrategies, haveVoices };
+}
 
 async function ensureClientId() {
   if (clientId) return clientId;
@@ -37,7 +242,21 @@ function withAuthHeaders(options = {}) {
 
 async function fetchWithAuth(url, options = {}) {
   await ensureClientId();
-  return fetch(url, withAuthHeaders(options));
+  const method = (options && options.method) ? options.method : 'GET';
+  console.log(`API_CALL: ${method} ${url}`);
+  try {
+    const response = await fetch(url, withAuthHeaders(options));
+    console.log(`API_CALL_RESULT: ${method} ${url} -> ${response.status} ok=${response.ok}`);
+    return response;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    console.log(`API_CALL_ERROR: ${method} ${url} -> ${message}`);
+    throw error;
+  }
+}
+
+async function apiLog(event, data = {}) {
+  return;
 }
 
 function buildDownloadUrl(jobId) {
@@ -107,6 +326,7 @@ function toServerAbsoluteUrl(url) {
 
 // Initialize popup
 async function initializePopup() {
+  console.log('POPUP_BOOT: initializePopup start');
   clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -144,9 +364,10 @@ async function initializePopup() {
   }
 
   // Load settings and populate controls
+  await clearAllStateOnServerSwitchIfNeeded();
   await loadSettings();
-  await fetchStrategies();
-  await fetchVoices();
+  await ensureServerMetadataLoaded({ allowNetwork: false });
+  await ensureServerMetadataLoaded({ allowNetwork: true });
 
   // Setup tabs
   await setupTabs();
@@ -192,6 +413,9 @@ async function initializePopup() {
 async function loadRecentJobs() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    if (response.ok) {
+      await ensureServerMetadataLoaded({ allowNetwork: true });
+    }
     const data = await response.json();
 
     // Filter completed jobs that have files
@@ -274,25 +498,7 @@ async function loadRecentJobs() {
   }
 }
 
-// Fetch strategies from API (cached 1 hour)
-async function fetchStrategies() {
-  try {
-    const storage = await chrome.storage.local.get(['strategiesCache']);
-    const cache = storage.strategiesCache;
-    if (cache && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
-      strategies = cache.data;
-      updateStrategyDescription();
-      return;
-    }
-    const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
-    const data = await response.json();
-    strategies = data.strategies;
-    await chrome.storage.local.set({ strategiesCache: { data: strategies, timestamp: Date.now() } });
-    updateStrategyDescription();
-  } catch (error) {
-    console.error('Failed to fetch strategies:', error);
-  }
-}
+// Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
 
 function setActiveTab(targetTab) {
   const tabButtons = document.querySelectorAll('.tab');
@@ -346,110 +552,62 @@ async function setupTabs() {
   });
 }
 
-// Fetch voices from API (cached 1 hour)
-async function fetchVoices() {
-  try {
-    const locale = navigator.language.split('-')[0];
-    const storage = await chrome.storage.local.get(['voicesCache', 'settings']);
-    const cache = storage.voicesCache;
+// Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
 
-    if (cache && cache.locale === locale && (Date.now() - cache.timestamp) < CACHE_TTL_MS) {
-      voices = cache.data;
-    } else {
-      const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
-      const data = await response.json();
-      voices = data.voices || [];
-      await chrome.storage.local.set({ voicesCache: { data: voices, locale, timestamp: Date.now() } });
-    }
+function populateLocaleSelect(localeSelectId) {
+  const select = document.getElementById(localeSelectId);
+  if (!select) return;
 
-    populateLocaleSelects();
-    updateVoiceSelects();
-
-    // Restore saved voice
-    if (storage.settings && storage.settings.voice) {
-      const savedVoice = voices.find(v => v.name === storage.settings.voice);
-      if (savedVoice) {
-        const locale = savedVoice.locale;
-        document.getElementById('localeSelect').value = locale;
-        document.getElementById('takeawaysLocaleSelect').value = locale;
-        updateVoiceSelects(locale);
-        document.getElementById('voiceSelect').value = savedVoice.name;
-        document.getElementById('takeawaysVoiceSelect').value = savedVoice.name;
-      }
-    }
-
-  } catch (error) {
-    console.error('Failed to fetch voices:', error);
-    const selects = ['localeSelect', 'voiceSelect', 'takeawaysLocaleSelect', 'takeawaysVoiceSelect'];
-    selects.forEach(id => {
-      document.getElementById(id).innerHTML = '<option value="">Error</option>';
-    });
-  }
-}
-
-function populateLocaleSelects() {
   const locales = [...new Set(voices.map(v => v.locale))].sort();
-  const localeSelects = [
-    document.getElementById('localeSelect'),
-    document.getElementById('takeawaysLocaleSelect')
-  ];
-
   const userLocale = navigator.language.split('-')[0];
   const userLocaleLong = navigator.language;
 
-  localeSelects.forEach(select => {
-    select.innerHTML = '';
-    locales.forEach(locale => {
-      const option = document.createElement('option');
-      option.value = locale;
-      option.textContent = locale;
-      select.appendChild(option);
-    });
-
-    // Set default locale
-    if (locales.includes(userLocaleLong)) {
-      select.value = userLocaleLong;
-    } else if (locales.find(l => l.startsWith(userLocale))) {
-      select.value = locales.find(l => l.startsWith(userLocale));
-    }
+  const previousValue = select.value;
+  select.innerHTML = '';
+  locales.forEach(locale => {
+    const option = document.createElement('option');
+    option.value = locale;
+    option.textContent = locale;
+    select.appendChild(option);
   });
-}
 
-function updateVoiceSelects(locale) {
-  const voiceSelects = [
-    document.getElementById('voiceSelect'),
-    document.getElementById('takeawaysVoiceSelect')
-  ];
-
-  if (!locale) {
-    locale = document.getElementById('localeSelect').value;
+  if (previousValue && locales.includes(previousValue)) {
+    select.value = previousValue;
+    return;
   }
 
+  if (locales.includes(userLocaleLong)) {
+    select.value = userLocaleLong;
+  } else if (locales.find(l => l.startsWith(userLocale))) {
+    select.value = locales.find(l => l.startsWith(userLocale));
+  }
+}
+
+function updateVoiceSelectForLocale(voiceSelectId, locale) {
+  const select = document.getElementById(voiceSelectId);
+  if (!select) return;
+
   const filteredVoices = voices.filter(v => v.locale === locale);
+  const currentVal = select.value;
+  select.innerHTML = '';
 
-  voiceSelects.forEach(select => {
-    const currentVal = select.value;
-    select.innerHTML = '';
+  if (filteredVoices.length === 0) {
+    select.innerHTML = '<option value="">No voices</option>';
+    return;
+  }
 
-    if (filteredVoices.length === 0) {
-      select.innerHTML = '<option value="">No voices</option>';
-      return;
-    }
-
-    filteredVoices.forEach(voice => {
-      const option = document.createElement('option');
-      option.value = voice.name;
-      option.textContent = `${voice.friendly_name} (${voice.gender})`;
-      select.appendChild(option);
-    });
-
-    // Try to restore previous selection if it exists in the new list
-    if (filteredVoices.some(v => v.name === currentVal)) {
-      select.value = currentVal;
-    } else if (filteredVoices.length > 0) {
-      select.value = filteredVoices[0].name;
-    }
+  filteredVoices.forEach(voice => {
+    const option = document.createElement('option');
+    option.value = voice.name;
+    option.textContent = `${voice.friendly_name} (${voice.gender})`;
+    select.appendChild(option);
   });
+
+  if (filteredVoices.some(v => v.name === currentVal)) {
+    select.value = currentVal;
+  } else {
+    select.value = filteredVoices[0].name;
+  }
 }
 
 // Load settings from storage
@@ -459,13 +617,21 @@ async function loadSettings() {
   const settings = Object.assign({
     serverUrl: DEFAULT_SERVER_URL,
     aggressiveness: 5,
-    voice: null,
+    condenseLocale: null,
+    condenseVoice: null,
+    takeawaysLocale: null,
+    takeawaysVoice: null,
+    takeawaysFormat: 'text',
     speechSpeed: 1.0,
     videoMode: 'slideshow',
     prependIntro: false
   }, saved);
 
+  const previousServerUrl = serverUrl;
   serverUrl = normalizeServerUrl(settings.serverUrl);
+  if (previousServerUrl !== serverUrl) {
+    await chrome.storage.local.set({ lastServerUrl: serverUrl });
+  }
 
   document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
@@ -473,6 +639,18 @@ async function loadSettings() {
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
   document.getElementById('videoModeSelect').value = settings.videoMode;
   document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
+
+  const normalizedTakeawaysFormat = (settings.takeawaysFormat || 'text').toString().trim().toLowerCase();
+  const takeawaysFormatValue = normalizedTakeawaysFormat === 'audio' ? 'audio' : 'text';
+  const formatTextEl = document.getElementById('formatText');
+  const formatAudioEl = document.getElementById('formatAudio');
+  if (takeawaysFormatValue === 'audio') {
+    if (formatAudioEl) formatAudioEl.checked = true;
+  } else {
+    if (formatTextEl) formatTextEl.checked = true;
+  }
+  const voiceGroup = document.getElementById('takeawaysVoiceGroup');
+  if (voiceGroup) voiceGroup.style.display = takeawaysFormatValue === 'audio' ? 'block' : 'none';
 }
 
 // Save settings to storage
@@ -480,10 +658,20 @@ async function saveSettings() {
   const storage = await chrome.storage.local.get(['settings']);
   const existing = storage.settings || {};
 
+  const condenseLocale = document.getElementById('localeSelect').value;
+  const takeawaysLocale = document.getElementById('takeawaysLocaleSelect').value;
+  const selectedFormat = document.querySelector('input[name="format"]:checked');
+  const takeawaysFormat = selectedFormat ? selectedFormat.value : 'text';
+
   const settings = {
     ...existing,
+    serverUrl: normalizeServerUrl(existing.serverUrl || serverUrl),
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
-    voice: document.getElementById('voiceSelect').value,
+    condenseLocale,
+    condenseVoice: document.getElementById('voiceSelect').value,
+    takeawaysLocale,
+    takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
+    takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
     videoMode: document.getElementById('videoModeSelect').value,
     prependIntro: document.getElementById('prependIntroCheck').checked
@@ -572,12 +760,12 @@ document.getElementById('speedSlider').addEventListener('input', (e) => {
 });
 
 document.getElementById('localeSelect').addEventListener('change', (e) => {
-  updateVoiceSelects(e.target.value);
+  updateVoiceSelectForLocale('voiceSelect', e.target.value);
   handleSettingChange();
 });
 
 document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
-  updateVoiceSelects(e.target.value);
+  updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
   handleSettingChange();
 });
 
@@ -586,6 +774,7 @@ document.getElementById('voiceSelect').addEventListener('change', () => {
 });
 
 document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
+
 
 document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
 

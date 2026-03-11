@@ -243,6 +243,11 @@ def download_extension():
     """Download the latest packaged Chrome extension."""
     dist_dir = Path(__file__).parent.parent / 'dist'
     files = list(dist_dir.glob('nbj-chrome-extension-*.zip'))
+
+    unversioned = dist_dir / 'nbj-chrome-extension.zip'
+    if unversioned.exists():
+        files.append(unversioned)
+
     if not files:
         return jsonify({'error': 'Extension package not found'}), 404
 
@@ -252,7 +257,7 @@ def download_extension():
         latest_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=latest_file.name
+        download_name='nbj-chrome-extension.zip'
     )
 
 

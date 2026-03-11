@@ -140,12 +140,23 @@ class SettingsActivity : AppCompatActivity() {
             // Still save the invalid URL
         }
 
-        getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit()
-            .putString("server_url", serverUrl)
-            .apply()
+        val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+        val previous = prefs.getString("server_url", "").orEmpty()
+        if (previous.isNotEmpty() && previous != serverUrl) {
+            prefs.edit().clear().apply()
+            getSharedPreferences("client_identity", Context.MODE_PRIVATE).edit().clear().apply()
+        }
+        prefs.edit().putString("server_url", serverUrl).apply()
 
         // Always ping, even if the URL seems invalid, to give feedback
         schedulePing(serverUrl)
+
+        if (previous.isNotEmpty() && previous != serverUrl) {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(intent)
+            finish()
+        }
 
         // Optional: Show a brief "Saved" message if needed, but auto-save should be silent
         // Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()

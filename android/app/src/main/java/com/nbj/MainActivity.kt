@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
+import android.util.Log
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -27,6 +28,10 @@ import com.google.gson.reflect.TypeToken
 import com.nbj.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -35,6 +40,47 @@ import java.util.TreeSet
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
+
+    private val logTag = "MetadataCache"
+
+    private suspend fun apiLog(serverUrl: String, event: String, data: Map<String, Any?> = emptyMap()) {
+        try {
+            val payload = mutableMapOf<String, Any?>(
+                "source" to "android",
+                "event" to event,
+                "serverUrl" to serverUrl,
+                "ts" to System.currentTimeMillis()
+            )
+            payload.putAll(data)
+
+            val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+            withContext(Dispatchers.IO) {
+                apiLogPost(api, payload)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun apiLogPost(api: ConciserApiService, payload: Map<String, Any?>) {
+        try {
+            val json = Gson().toJson(payload)
+            val request = okhttp3.Request.Builder()
+                .url((payload["serverUrl"] as String).trimEnd('/') + "/api/log")
+                .post(json.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            // Use the same client/headers as ConciserApi by reusing its underlying OkHttp isn't exposed;
+            // fall back to a plain OkHttp with X-User-Id header for logging.
+            val clientId = ClientIdentity.getOrCreate(this)
+            val client = okhttp3.OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val reqWithHeader = request.newBuilder().header("X-User-Id", clientId).build()
+            client.newCall(reqWithHeader).execute().close()
+        } catch (_: Exception) {
+        }
+    }
 
     // Mirrors Chrome extension's state model exactly.
     enum class AppState {
@@ -101,9 +147,249 @@ class MainActivity : AppCompatActivity() {
         setupSettingsControls()
         loadSettingsToUI()
         suppressAutoSave = false
-        fetchVoicesAndStrategies()
+        clearAllStateOnServerSwitchIfNeeded()
+        loadCachedVoicesAndStrategiesIntoUI()
+        fetchVoicesAndStrategiesIfMissing()
         setupUI()
         handleIntent(intent)
+    }
+
+    private fun getServerCacheKeyPrefix(serverUrl: String): String = "serverCache:$serverUrl"
+
+    private fun getStrategiesCacheKey(serverUrl: String): String = "${getServerCacheKeyPrefix(serverUrl)}:strategies"
+
+    private fun getVoicesCacheKey(serverUrl: String, locale: String): String = "${getServerCacheKeyPrefix(serverUrl)}:voices:$locale"
+
+    private fun getLanguageOnlyLocale(): String {
+        val raw = Locale.getDefault().toString()
+        val value = raw.substringBefore('-').substringBefore('_').ifBlank { "en" }
+        Log.i(logTag, "METADATA_CACHE: language_only_locale raw=$raw value=$value")
+        return value
+    }
+
+    private fun loadCachedVoicesAndStrategiesIntoUI() {
+        val serverUrl = getServerUrl()
+        val userLanguage = getLanguageOnlyLocale()
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+        val cachedVoicesJson = prefs.getString(getVoicesCacheKey(serverUrl, userLanguage), null)
+        val cachedStrategiesJson = prefs.getString(getStrategiesCacheKey(serverUrl), null)
+
+        Log.i(logTag, "METADATA_CACHE: cache_read serverUrl=$serverUrl voicesKey=${getVoicesCacheKey(serverUrl, userLanguage)} voicesPresent=${cachedVoicesJson != null} strategiesKey=${getStrategiesCacheKey(serverUrl)} strategiesPresent=${cachedStrategiesJson != null}")
+
+        lifecycleScope.launch {
+            apiLog(
+                serverUrl,
+                "metadata_cache_read",
+                mapOf(
+                    "lang" to userLanguage,
+                    "voicesKey" to getVoicesCacheKey(serverUrl, userLanguage),
+                    "voicesPresent" to (cachedVoicesJson != null),
+                    "strategiesKey" to getStrategiesCacheKey(serverUrl),
+                    "strategiesPresent" to (cachedStrategiesJson != null)
+                )
+            )
+        }
+
+        if (cachedVoicesJson != null) {
+            try {
+                val type = object : TypeToken<List<VoiceItem>>() {}.type
+                voices = Gson().fromJson(cachedVoicesJson, type) ?: emptyList()
+            } catch (_: Exception) {
+                voices = emptyList()
+            }
+        }
+
+        if (cachedStrategiesJson != null) {
+            try {
+                val type = object : TypeToken<List<StrategyItem>>() {}.type
+                strategies = Gson().fromJson(cachedStrategiesJson, type) ?: emptyList()
+            } catch (_: Exception) {
+                strategies = emptyList()
+            }
+        }
+
+        if (voices.isNotEmpty()) {
+            suppressAutoSave = true
+            restoringVoiceSelections = true
+            blockVoiceSelectionCallbacksUntilMs = SystemClock.elapsedRealtime() + 2000L
+            try {
+                populateLocaleSpinners()
+                val savedLocale = prefs.getString("locale", null)
+                val savedVoice = prefs.getString("voice", null)
+                val savedTakeawaysLocale = prefs.getString("takeaways_locale", savedLocale)
+                val savedTakeawaysVoice = prefs.getString("takeaways_voice", savedVoice)
+
+                Log.i(logTag, "METADATA_CACHE: restore_settings condenseLocale=$savedLocale condenseVoice=$savedVoice takeawaysLocale=$savedTakeawaysLocale takeawaysVoice=$savedTakeawaysVoice")
+                lifecycleScope.launch {
+                    apiLog(
+                        serverUrl,
+                        "metadata_restore_settings",
+                        mapOf(
+                            "condenseLocale" to savedLocale,
+                            "condenseVoice" to savedVoice,
+                            "takeawaysLocale" to savedTakeawaysLocale,
+                            "takeawaysVoice" to savedTakeawaysVoice
+                        )
+                    )
+                }
+                restoreLocaleAndVoiceSelection(binding.spinnerLocale, binding.spinnerVoice, savedLocale, savedVoice)
+                restoreLocaleAndVoiceSelection(binding.spinnerTakeawaysLocale, binding.spinnerTakeawaysVoice, savedTakeawaysLocale, savedTakeawaysVoice)
+            } finally {
+                lifecycleScope.launch {
+                    delay(500)
+                    restoringVoiceSelections = false
+                    suppressAutoSave = false
+                    blockVoiceSelectionCallbacksUntilMs = maxOf(blockVoiceSelectionCallbacksUntilMs, SystemClock.elapsedRealtime() + 1500L)
+                }
+            }
+        }
+
+        if (strategies.isNotEmpty()) {
+            updateStrategyDesc(binding.seekbarAggressiveness.progress + 1)
+        }
+    }
+
+    private fun clearAllStateOnServerSwitchIfNeeded() {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val selectedServerUrl = getServerUrl()
+        val lastServerUrl = prefs.getString("last_server_url", "").orEmpty()
+
+        Log.i(logTag, "METADATA_CACHE: server_switch_check last=$lastServerUrl selected=$selectedServerUrl")
+
+        lifecycleScope.launch {
+            apiLog(
+                selectedServerUrl,
+                "metadata_server_switch_check",
+                mapOf(
+                    "lastServerUrl" to lastServerUrl,
+                    "selectedServerUrl" to selectedServerUrl
+                )
+            )
+        }
+
+        if (lastServerUrl.isNotEmpty() && lastServerUrl != selectedServerUrl) {
+            Log.i(logTag, "METADATA_CACHE: server_switch_wipe from=$lastServerUrl to=$selectedServerUrl")
+            lifecycleScope.launch {
+                apiLog(
+                    selectedServerUrl,
+                    "metadata_server_switch_wipe",
+                    mapOf("from" to lastServerUrl, "to" to selectedServerUrl)
+                )
+            }
+            prefs.edit().clear().apply()
+            getSharedPreferences("client_identity", Context.MODE_PRIVATE).edit().clear().apply()
+            getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                .edit()
+                .putString("server_url", selectedServerUrl)
+                .putString("last_server_url", selectedServerUrl)
+                .apply()
+        } else if (lastServerUrl.isEmpty() && selectedServerUrl.isNotEmpty()) {
+            Log.i(logTag, "METADATA_CACHE: server_switch_set_last value=$selectedServerUrl")
+            lifecycleScope.launch {
+                apiLog(selectedServerUrl, "metadata_server_switch_set_last", mapOf("value" to selectedServerUrl))
+            }
+            prefs.edit().putString("last_server_url", selectedServerUrl).apply()
+        }
+    }
+
+    private fun fetchVoicesAndStrategiesIfMissing() {
+        val serverUrl = getServerUrl()
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val userLanguage = getLanguageOnlyLocale()
+
+        val haveVoices = prefs.contains(getVoicesCacheKey(serverUrl, userLanguage))
+        val haveStrategies = prefs.contains(getStrategiesCacheKey(serverUrl))
+        Log.i(logTag, "METADATA_CACHE: fetch_if_missing serverUrl=$serverUrl lang=$userLanguage haveVoices=$haveVoices haveStrategies=$haveStrategies")
+        lifecycleScope.launch {
+            apiLog(
+                serverUrl,
+                "metadata_fetch_if_missing",
+                mapOf(
+                    "lang" to userLanguage,
+                    "haveVoices" to haveVoices,
+                    "haveStrategies" to haveStrategies
+                )
+            )
+        }
+        if (haveVoices && haveStrategies) return
+
+        // Set loading states
+        val loadingLocaleAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Loading..."))
+        loadingLocaleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerLocale.adapter = loadingLocaleAdapter
+        binding.spinnerTakeawaysLocale.adapter = loadingLocaleAdapter
+
+        val loadingVoiceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Select language"))
+        loadingVoiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerVoice.adapter = loadingVoiceAdapter
+        binding.spinnerTakeawaysVoice.adapter = loadingVoiceAdapter
+
+        binding.tvStrategyDesc.text = "Loading..."
+
+        lifecycleScope.launch {
+            ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
+        }
+    }
+
+    private suspend fun ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl: String) {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val userLanguage = getLanguageOnlyLocale()
+
+        val haveVoices = prefs.contains(getVoicesCacheKey(serverUrl, userLanguage))
+        val haveStrategies = prefs.contains(getStrategiesCacheKey(serverUrl))
+        if (haveVoices && haveStrategies) return
+
+        val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+
+        if (!haveVoices) {
+            try {
+                Log.i(logTag, "METADATA_CACHE: voices_fetch_start url=$serverUrl locale=$userLanguage")
+                apiLog(serverUrl, "metadata_voices_fetch_start", mapOf("lang" to userLanguage))
+                val response = api.getVoices(userLanguage)
+                voices = response.voices
+                prefs.edit().putString(getVoicesCacheKey(serverUrl, userLanguage), Gson().toJson(voices)).apply()
+                Log.i(logTag, "METADATA_CACHE: voices_cache_write key=${getVoicesCacheKey(serverUrl, userLanguage)} count=${voices.size}")
+                apiLog(
+                    serverUrl,
+                    "metadata_voices_cache_write",
+                    mapOf(
+                        "lang" to userLanguage,
+                        "key" to getVoicesCacheKey(serverUrl, userLanguage),
+                        "count" to voices.size
+                    )
+                )
+            } catch (_: Exception) {
+                Log.w(logTag, "METADATA_CACHE: voices_fetch_failed")
+                apiLog(serverUrl, "metadata_voices_fetch_failed", mapOf("lang" to userLanguage))
+            }
+        }
+
+        if (!haveStrategies) {
+            try {
+                Log.i(logTag, "METADATA_CACHE: strategies_fetch_start url=$serverUrl")
+                apiLog(serverUrl, "metadata_strategies_fetch_start")
+                val response = api.getStrategies()
+                strategies = response.strategies
+                prefs.edit().putString(getStrategiesCacheKey(serverUrl), Gson().toJson(strategies)).apply()
+                Log.i(logTag, "METADATA_CACHE: strategies_cache_write key=${getStrategiesCacheKey(serverUrl)} count=${strategies.size}")
+                apiLog(
+                    serverUrl,
+                    "metadata_strategies_cache_write",
+                    mapOf(
+                        "key" to getStrategiesCacheKey(serverUrl),
+                        "count" to strategies.size
+                    )
+                )
+            } catch (_: Exception) {
+                Log.w(logTag, "METADATA_CACHE: strategies_fetch_failed")
+                apiLog(serverUrl, "metadata_strategies_fetch_failed")
+            }
+        }
+
+        runOnUiThread {
+            loadCachedVoicesAndStrategiesIntoUI()
+        }
     }
 
     override fun onResume() {
@@ -384,6 +670,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val api = ConciserApi.createService(serverUrl, clientId)
                 val response = api.condenseVideo(request)
+                ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
                 currentJobId = response.job_id
 
                 updateUI(
@@ -411,12 +698,12 @@ class MainActivity : AppCompatActivity() {
 
         val format = takeawaysFormatValues.getOrNull(binding.spinnerTakeawaysFormat.selectedItemPosition) ?: "text"
 
-        val voice = if (format == "audio" && voices.isNotEmpty()) {
+        val voice = if (format == "audio") {
+            val savedVoice = prefs.getString("takeaways_voice", null)
             val selectedLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
-            getSelectedVoiceOption(binding.spinnerTakeawaysVoice, selectedLocale)?.id
-        } else {
-            null
-        }
+            val selected = if (!savedVoice.isNullOrBlank()) savedVoice else getSelectedVoiceOption(binding.spinnerTakeawaysVoice, selectedLocale)?.id
+            selected
+        } else null
 
         currentJobType = "takeaways"
         currentOutputFormat = format  // "text" or "audio"
@@ -432,6 +719,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val api = ConciserApi.createService(serverUrl, clientId)
                 val response = api.extractTakeaways(request)
+                ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
                 currentJobId = response.job_id
 
                 updateUI(
@@ -451,6 +739,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+            ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
             while (isPolling) {
                 try {
                     val status = api.getStatus(jobId)
@@ -666,71 +955,7 @@ class MainActivity : AppCompatActivity() {
         binding.layoutTakeawaysVoice.visibility = if (isAudio) View.VISIBLE else View.GONE
     }
 
-    private fun fetchVoicesAndStrategies() {
-        val serverUrl = getServerUrl()
-        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-
-        // Set loading states
-        val loadingLocaleAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Loading..."))
-        loadingLocaleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerLocale.adapter = loadingLocaleAdapter
-        binding.spinnerTakeawaysLocale.adapter = loadingLocaleAdapter
-
-        val loadingVoiceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Select language"))
-        loadingVoiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerVoice.adapter = loadingVoiceAdapter
-        binding.spinnerTakeawaysVoice.adapter = loadingVoiceAdapter
-
-        binding.tvStrategyDesc.text = "Loading..."
-
-        lifecycleScope.launch {
-            val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
-
-            try {
-                val userLanguage = Locale.getDefault().language
-                val response = api.getVoices(userLanguage)
-                voices = response.voices
-                suppressAutoSave = true
-                restoringVoiceSelections = true
-                blockVoiceSelectionCallbacksUntilMs = SystemClock.elapsedRealtime() + 2000L
-                try {
-                    populateLocaleSpinners()
-
-                    // Restore saved settings after voices are loaded
-                    val savedLocale = prefs.getString("locale", null)
-                    val savedVoice = prefs.getString("voice", null)
-                    val savedTakeawaysLocale = prefs.getString("takeaways_locale", savedLocale)
-                    val savedTakeawaysVoice = prefs.getString("takeaways_voice", savedVoice)
-
-                    restoreLocaleAndVoiceSelection(binding.spinnerLocale, binding.spinnerVoice, savedLocale, savedVoice)
-                    restoreLocaleAndVoiceSelection(binding.spinnerTakeawaysLocale, binding.spinnerTakeawaysVoice, savedTakeawaysLocale, savedTakeawaysVoice)
-                } finally {
-                    lifecycleScope.launch {
-                        delay(500)
-                        restoringVoiceSelections = false
-                        suppressAutoSave = false
-                        blockVoiceSelectionCallbacksUntilMs = maxOf(blockVoiceSelectionCallbacksUntilMs, SystemClock.elapsedRealtime() + 1500L)
-                    }
-                }
-
-            } catch (e: Exception) {
-                val errorAdapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, listOf("Error"))
-                errorAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                binding.spinnerLocale.adapter = errorAdapter
-                binding.spinnerTakeawaysLocale.adapter = errorAdapter
-                binding.spinnerVoice.adapter = errorAdapter
-                binding.spinnerTakeawaysVoice.adapter = errorAdapter
-            }
-
-            try {
-                val response = api.getStrategies()
-                strategies = response.strategies
-                updateStrategyDesc(binding.seekbarAggressiveness.progress + 1)
-            } catch (e: Exception) {
-                binding.tvStrategyDesc.text = ""
-            }
-        }
-    }
+    // Voices/strategies are loaded from local cache on start; if missing they are fetched once and persisted.
 
     private fun updateStrategyDesc(level: Int) {
         if (strategies.isEmpty()) return
