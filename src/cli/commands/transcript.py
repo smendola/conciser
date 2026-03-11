@@ -58,6 +58,8 @@ def _extract_video_id(url: str) -> str | None:
 )
 def transcript(url, no_transcribe, output, resume):
     """Get transcript text from a video URL or videos.txt index."""
+    settings = get_settings()
+
     # If resume is not specified via command line, use the setting from .env
     if resume is None:
         resume = settings.resume
@@ -88,7 +90,6 @@ def transcript(url, no_transcribe, output, resume):
 
         print(f"URL: {url}")
 
-        settings = get_settings()
         method = settings.transcription_method.lower()
         if no_transcribe:
             method = "youtube"

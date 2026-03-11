@@ -554,7 +554,7 @@ def get_voices():
     settings = get_settings()
 
     try:
-        if settings.voice_service == 'azure' and settings.azure_speech_key and settings.azure_speech_region:
+        if settings.tts_provider == 'azure' and settings.azure_speech_key and settings.azure_speech_region:
             from src.modules.azure_tts import AzureTTS
             azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
             all_voices = azure.list_voices(locale_filter=locale)

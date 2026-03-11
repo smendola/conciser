@@ -50,7 +50,7 @@ from ..app import cli  # noqa: E402
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
     default=None,
-    help='TTS provider for audio output. Default: VOICE_SERVICE env var or edge'
+    help='TTS provider for audio output. Default: TTS_PROVIDER env var or edge'
 )
 @click.option(
     '--speech-rate',
@@ -102,6 +102,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         # Auto-determine optimal number of points
         nbj takeaways https://youtube.com/watch?v=... --top=auto
     """
+    settings = get_settings()
+
     # If resume is not specified via command line, use the setting from .env
     if resume is None:
         resume = settings.resume
@@ -147,10 +149,8 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         print(f"Output format: {format}")
 
         # Check API keys
-        settings = get_settings()
-
         if tts_provider is None:
-            tts_provider = settings.voice_service
+            tts_provider = settings.tts_provider
 
         # Parse voice shortcut if provided (e.g., edge/ryan, azure/aria)
         if voice and '/' in voice:

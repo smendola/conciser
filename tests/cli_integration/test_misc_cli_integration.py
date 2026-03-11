@@ -43,7 +43,7 @@ def test_voices_azure_missing_credentials(runner, monkeypatch, settings_factory)
 
 def test_check_all_required_valid(runner, monkeypatch, settings_factory):
     settings = settings_factory(
-        voice_service="edge",
+        tts_provider="edge",
         transcription_service="groq",
     )
 
@@ -63,7 +63,7 @@ def test_check_all_required_valid(runner, monkeypatch, settings_factory):
 
 
 def test_check_verbose_shows_error(runner, monkeypatch, settings_factory):
-    settings = settings_factory(voice_service="edge")
+    settings = settings_factory(tts_provider="edge")
     monkeypatch.setattr(check_module, "get_settings", lambda: settings)
     monkeypatch.setattr(check_module, "_validate_openai_key", lambda *_: (False, "auth failed detail"))
     monkeypatch.setattr(check_module, "_validate_groq_key", lambda *_: (True, None))

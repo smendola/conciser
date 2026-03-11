@@ -125,14 +125,14 @@ def check(verbose):
     else:
         print(f"  D-ID: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set (optional - only needed for avatar mode)")
 
-    azure_required = (getattr(settings, 'voice_service', '') == 'azure')
+    azure_required = (getattr(settings, 'tts_provider', '') == 'azure')
     if settings.azure_speech_key and settings.azure_speech_region:
         tasks.append(('Azure Speech', (settings.azure_speech_key, settings.azure_speech_region), _validate_azure_speech))
     else:
         if azure_required:
             print(
                 f"  Azure Speech: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not set "
-                "(required when voice_service=azure; set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION)"
+                "(required when tts_provider=azure; set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION)"
             )
             required_services_missing = True
         else:

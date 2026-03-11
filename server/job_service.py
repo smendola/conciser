@@ -166,7 +166,7 @@ class JobService:
             output_path=output_path,
             quality="1080p",
             video_gen_mode=params.get("video_mode", "slideshow"),
-            tts_provider=params.get("tts_provider", self.settings.voice_service),
+            tts_provider=params.get("tts_provider", self.settings.tts_provider),
             voice_id=params.get("voice", "en-US-AriaNeural"),
             tts_rate=params.get("speech_rate", "+0%"),
             skip_voice_clone=True,

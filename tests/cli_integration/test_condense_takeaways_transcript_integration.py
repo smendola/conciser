@@ -272,7 +272,7 @@ def test_transcript_no_transcribe_hard_fail(runner, monkeypatch, settings_factor
     result = runner.invoke(cli, ["transcript", "https://youtube.com/watch?v=ABCDEFGHIJK", "--no-transcribe"])
 
     assert result.exit_code == 1
-    assert "--no-transcribe was set" in result.output
+    assert "YouTube transcript not available" in result.output
 
 
 def test_transcript_resume_uses_cached_output(runner, monkeypatch, settings_factory, tmp_path):
