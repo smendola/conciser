@@ -7,12 +7,20 @@ android {
     namespace 'com.nbj'
     compileSdk 34
 
+    def androidBuildNumberFile = rootProject.file('.build_number')
+    if (!androidBuildNumberFile.exists()) {
+        androidBuildNumberFile.text = '0' + System.lineSeparator()
+    }
+    def androidBuildNumber = androidBuildNumberFile.text.trim().isInteger() ? androidBuildNumberFile.text.trim().toInteger() : 0
+    def androidVersionCodeValue = Math.max(1, androidBuildNumber + 1)
+    def androidVersionName = "1.0.${androidVersionCodeValue}"
+
     defaultConfig {
         applicationId "com.nbj"
         minSdk 24
         targetSdk 34
-        versionCode 110
-        versionName "1.0.110"
+        versionCode androidVersionCodeValue
+        versionName androidVersionName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -23,9 +31,9 @@ android {
         // Expose build version for UI
         buildConfigField "String", "BUILD_VERSION", "\"${versionName}\""
 
-        // Inject default server URL from build-settings.json
-        def buildSettings = new groovy.json.JsonSlurper().parse(rootProject.file('../build-settings.json'))
-        buildConfigField "String", "DEFAULT_SERVER_URL", "\"${buildSettings.default_server_url}\""
+        // Inject default server URL
+        def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: 'http://conciser.603apps.net'
+        buildConfigField "String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl}\""
     }
 
     signingConfigs {
@@ -91,4 +99,21 @@ tasks.register('copyReleaseApkToDist', Copy) {
 
 tasks.matching { it.name == 'assembleRelease' }.configureEach {
     finalizedBy 'copyReleaseApkToDist'
+}
+
+tasks.register('incrementAndroidBuildNumber') {
+    doLast {
+        def buildNumberFile = rootProject.file('.build_number')
+        if (!buildNumberFile.exists()) {
+            buildNumberFile.text = '0' + System.lineSeparator()
+        }
+        def current = buildNumberFile.text.trim().isInteger() ? buildNumberFile.text.trim().toInteger() : 0
+        def next = current + 1
+        buildNumberFile.text = next.toString() + System.lineSeparator()
+        println("Incremented Android build number: ${current} -> ${next}")
+    }
+}
+
+tasks.matching { it.name == 'assembleRelease' }.configureEach {
+    dependsOn 'incrementAndroidBuildNumber'
 }
