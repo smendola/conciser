@@ -24,7 +24,7 @@ body {
 .header {
     background: linear-gradient(135deg, #1a73e8 0%, #1557b0 100%);
     color: white;
-    padding: 30px 40px;
+    padding: 30px 60px;
     text-align: center;
 }
 
@@ -40,7 +40,8 @@ body {
 }
 
 .content {
-    padding: 40px;
+    padding: 60px;
+    font-size: 19px;
 }
 
 .content h1 {
@@ -67,9 +68,9 @@ body {
 }
 
 .content p {
-    margin-bottom: 15px;
+    margin-bottom: 18px;
     color: #555;
-    font-size: 17px;
+    font-size: 19px;
 }
 
 .content ul,
@@ -91,8 +92,10 @@ body {
 .content em {
     font-style: normal;
     font-size: 19px;
-    font-weight: 500;
+    font-weight: light;
     color: #666;
+    letter-spacing: 3px;
+    text-transform: uppercase;
 }
 
 .content code {
