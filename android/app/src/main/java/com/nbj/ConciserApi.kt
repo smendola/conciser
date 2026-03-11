@@ -196,19 +196,4 @@ object ConciserApi {
     fun getFullDeleteUrl(baseUrl: String, jobId: String): String {
         return "$baseUrl/api/jobs/$jobId"
     }
-
-    suspend fun postDebugLog(baseUrl: String, clientId: String?, payload: Map<String, Any?>) = withContext(Dispatchers.IO) {
-        try {
-            val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-            val requestJson = Gson().toJson(payload)
-            val requestBuilder = Request.Builder()
-                .url("${base}api/log")
-                .post(requestJson.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            if (!clientId.isNullOrBlank()) {
-                requestBuilder.header("X-User-Id", clientId)
-            }
-            httpClient.newCall(requestBuilder.build()).execute().use { }
-        } catch (e: Exception) {
-        }
-    }
 }

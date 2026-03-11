@@ -112,7 +112,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        debugLog("on_pause_start", mapOf("state" to currentState.name))
         autoSaveSettings(forceCommit = true)
         super.onPause()
     }
@@ -550,7 +549,6 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedLocale = parent?.getItemAtPosition(position) as? String
                 if (selectedLocale != null) {
-                    debugLog("condense_locale_selected", mapOf("position" to position, "selected_locale" to selectedLocale))
                     if (shouldIgnoreVoiceSelectionCallbacks()) return
                     updateVoiceSpinner(selectedLocale, binding.spinnerVoice)
                     autoSaveSettings()
@@ -561,7 +559,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.spinnerVoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                debugLog("condense_voice_selected", mapOf("position" to position, "selected_display" to (parent?.getItemAtPosition(position) as? String)))
                 if (shouldIgnoreVoiceSelectionCallbacks()) return
                 persistVoiceSelection("locale", "voice", binding.spinnerLocale.selectedItem as? String, position)
                 autoSaveSettings()
@@ -622,7 +619,6 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val selectedLocale = parent?.getItemAtPosition(position) as? String
                 if (selectedLocale != null) {
-                    debugLog("takeaways_locale_selected", mapOf("position" to position, "selected_locale" to selectedLocale))
                     if (shouldIgnoreTakeawaysVoiceCallbacks()) return
                     updateVoiceSpinner(selectedLocale, binding.spinnerTakeawaysVoice)
                     autoSaveSettings()
@@ -634,7 +630,6 @@ class MainActivity : AppCompatActivity() {
         // Takeaways voice shares same list as condense voice
         binding.spinnerTakeawaysVoice.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                debugLog("takeaways_voice_selected", mapOf("position" to position, "selected_display" to (parent?.getItemAtPosition(position) as? String)))
                 if (shouldIgnoreTakeawaysVoiceCallbacks()) return
                 persistVoiceSelection("takeaways_locale", "takeaways_voice", binding.spinnerTakeawaysLocale.selectedItem as? String, position)
                 autoSaveSettings()
@@ -674,16 +669,6 @@ class MainActivity : AppCompatActivity() {
     private fun fetchVoicesAndStrategies() {
         val serverUrl = getServerUrl()
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-        debugLog(
-            "fetch_voices_start",
-            mapOf(
-                "server_url" to serverUrl,
-                "saved_locale" to prefs.getString("locale", null),
-                "saved_voice" to prefs.getString("voice", null),
-                "saved_takeaways_locale" to prefs.getString("takeaways_locale", null),
-                "saved_takeaways_voice" to prefs.getString("takeaways_voice", null)
-            )
-        )
 
         // Set loading states
         val loadingLocaleAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Loading..."))
@@ -705,22 +690,6 @@ class MainActivity : AppCompatActivity() {
                 val userLanguage = Locale.getDefault().language
                 val response = api.getVoices(userLanguage)
                 voices = response.voices
-                debugLog(
-                    "fetch_voices_success",
-                    mapOf(
-                        "user_language" to userLanguage,
-                        "voice_count" to voices.size,
-                        "locales" to voices.map { it.locale }.distinct().sorted(),
-                        "sample_voices" to voices.take(10).map {
-                            mapOf(
-                                "name" to it.name,
-                                "locale" to it.locale,
-                                "friendly_name" to it.friendly_name,
-                                "gender" to it.gender
-                            )
-                        }
-                    )
-                )
                 suppressAutoSave = true
                 restoringVoiceSelections = true
                 blockVoiceSelectionCallbacksUntilMs = SystemClock.elapsedRealtime() + 2000L
@@ -732,29 +701,19 @@ class MainActivity : AppCompatActivity() {
                     val savedVoice = prefs.getString("voice", null)
                     val savedTakeawaysLocale = prefs.getString("takeaways_locale", savedLocale)
                     val savedTakeawaysVoice = prefs.getString("takeaways_voice", savedVoice)
-                    debugLog(
-                        "restore_saved_values",
-                        mapOf(
-                            "saved_locale" to savedLocale,
-                            "saved_voice" to savedVoice,
-                            "saved_takeaways_locale" to savedTakeawaysLocale,
-                            "saved_takeaways_voice" to savedTakeawaysVoice
-                        )
-                    )
 
                     restoreLocaleAndVoiceSelection(binding.spinnerLocale, binding.spinnerVoice, savedLocale, savedVoice)
                     restoreLocaleAndVoiceSelection(binding.spinnerTakeawaysLocale, binding.spinnerTakeawaysVoice, savedTakeawaysLocale, savedTakeawaysVoice)
                 } finally {
-                    binding.root.post {
+                    lifecycleScope.launch {
+                        delay(500)
                         restoringVoiceSelections = false
                         suppressAutoSave = false
                         blockVoiceSelectionCallbacksUntilMs = maxOf(blockVoiceSelectionCallbacksUntilMs, SystemClock.elapsedRealtime() + 1500L)
-                        debugLog("restore_selection_window_closed")
                     }
                 }
 
             } catch (e: Exception) {
-                debugLog("fetch_voices_error", mapOf("message" to e.message))
                 val errorAdapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, listOf("Error"))
                 errorAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 binding.spinnerLocale.adapter = errorAdapter
@@ -795,18 +754,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateVoiceSpinner(locale: String, spinner: android.widget.Spinner) {
         val voiceNames = getVoiceOptionsForLocale(locale).map { it.displayName }
-        debugLog(
-            "update_voice_spinner",
-            mapOf(
-                "spinner" to spinner.resources.getResourceEntryName(spinner.id),
-                "locale" to locale,
-                "voice_names" to voiceNames
-            )
-        )
-
-        val voiceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, voiceNames)
-        voiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinner.adapter = voiceAdapter
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, voiceNames)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spinner.adapter = adapter
     }
 
     private fun restoreLocaleAndVoiceSelection(
@@ -827,58 +777,16 @@ class MainActivity : AppCompatActivity() {
             savedLocale != null -> locales.find { it.startsWith(savedLocale.substringBefore("-")) }
             else -> locales.find { it.startsWith(Locale.getDefault().language) }
         } ?: locales.first()
-        debugLog(
-            "restore_locale_voice_begin",
-            mapOf(
-                "spinner_locale" to localeSpinner.resources.getResourceEntryName(localeSpinner.id),
-                "spinner_voice" to voiceSpinner.resources.getResourceEntryName(voiceSpinner.id),
-                "saved_locale" to savedLocale,
-                "saved_voice" to savedVoice,
-                "saved_voice_item_locale" to savedVoiceItem?.locale,
-                "saved_voice_item_name" to savedVoiceItem?.name,
-                "locale_to_select" to localeToSelect,
-                "available_locales" to locales
-            )
-        )
+
         val localeIndex = locales.indexOf(localeToSelect)
-        if (localeIndex >= 0) {
-            localeSpinner.setSelection(localeIndex)
-            updateVoiceSpinner(localeToSelect, voiceSpinner)
+        localeSpinner.setSelection(localeIndex)
 
-            if (savedVoiceItem != null) {
-                val voiceOptions = getVoiceOptionsForLocale(localeToSelect)
-                val voiceIndex = findSavedVoiceOptionIndex(voiceOptions, savedVoiceItem)
-                debugLog(
-                    "restore_voice_match",
-                    mapOf(
-                        "spinner_voice" to voiceSpinner.resources.getResourceEntryName(voiceSpinner.id),
-                        "saved_voice" to savedVoiceItem.name,
-                        "saved_display" to buildVoiceDisplayName(savedVoiceItem),
-                        "voice_index" to voiceIndex,
-                        "voice_options" to voiceOptions.map { mapOf("id" to it.id, "display" to it.displayName, "locale" to it.voice.locale) }
-                    )
-                )
-                if (voiceIndex >= 0) {
-                    voiceSpinner.setSelection(voiceIndex)
-                }
+        if (savedVoiceItem != null) {
+            val voiceOptions = getVoiceOptionsForLocale(localeToSelect)
+            val voiceIndex = findSavedVoiceOptionIndex(voiceOptions, savedVoiceItem)
+            if (voiceIndex >= 0) {
+                voiceSpinner.setSelection(voiceIndex)
             }
-        }
-    }
-
-    private fun findSavedVoiceOptionIndex(
-        voiceOptions: List<VoiceOption>,
-        savedVoiceItem: VoiceItem
-    ): Int {
-        val exactIndex = voiceOptions.indexOfFirst { it.voice.name == savedVoiceItem.name }
-        if (exactIndex >= 0) return exactIndex
-
-        val savedDisplayName = buildVoiceDisplayName(savedVoiceItem)
-        val displayMatchIndex = voiceOptions.indexOfFirst { it.displayName == savedDisplayName }
-        if (displayMatchIndex >= 0) return displayMatchIndex
-
-        return voiceOptions.indexOfFirst {
-            normalizeFriendlyVoiceName(it.voice.friendly_name) == normalizeFriendlyVoiceName(savedVoiceItem.friendly_name) &&
-                normalizeGender(it.voice.gender) == normalizeGender(savedVoiceItem.gender)
         }
     }
 
@@ -889,16 +797,6 @@ class MainActivity : AppCompatActivity() {
         if (locale.isNullOrBlank()) return null
         val selectedDisplayName = spinner.selectedItem as? String ?: return null
         val selected = getVoiceOptionsForLocale(locale).firstOrNull { it.displayName == selectedDisplayName }
-        debugLog(
-            "get_selected_voice_option",
-            mapOf(
-                "spinner" to spinner.resources.getResourceEntryName(spinner.id),
-                "locale" to locale,
-                "selected_display_name" to selectedDisplayName,
-                "resolved_voice_id" to selected?.id,
-                "resolved_voice_locale" to selected?.voice?.locale
-            )
-        )
         return selected
     }
 
@@ -910,22 +808,11 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (suppressAutoSave || shouldIgnoreVoiceSelectionCallbacks() || locale.isNullOrBlank()) return
         val selectedVoiceOption = getVoiceOptionsForLocale(locale).getOrNull(position) ?: return
-        getSharedPreferences(prefsName, Context.MODE_PRIVATE).edit()
+        getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            .edit()
             .putString(localeKey, selectedVoiceOption.voice.locale)
             .putString(voiceKey, selectedVoiceOption.id)
             .apply()
-        debugLog(
-            "persist_voice_selection",
-            mapOf(
-                "locale_key" to localeKey,
-                "voice_key" to voiceKey,
-                "locale" to locale,
-                "position" to position,
-                "persisted_voice_id" to selectedVoiceOption.id,
-                "persisted_voice_locale" to selectedVoiceOption.voice.locale,
-                "persisted_display" to selectedVoiceOption.displayName
-            )
-        )
     }
 
     private fun shouldIgnoreVoiceSelectionCallbacks(): Boolean {
@@ -1016,47 +903,10 @@ class MainActivity : AppCompatActivity() {
             prefs.putString("takeaways_locale", selectedTakeawaysLocale)
         }
 
-        debugLog(
-            "autosave_settings",
-            mapOf(
-                "force_commit" to forceCommit,
-                "selected_locale" to selectedLocale,
-                "selected_voice_display" to (binding.spinnerVoice.selectedItem as? String),
-                "resolved_voice_id" to selectedVoiceOption?.id,
-                "resolved_voice_locale" to selectedVoiceOption?.voice?.locale,
-                "selected_takeaways_locale" to selectedTakeawaysLocale,
-                "selected_takeaways_voice_display" to (binding.spinnerTakeawaysVoice.selectedItem as? String),
-                "resolved_takeaways_voice_id" to selectedTakeawaysVoiceOption?.id,
-                "resolved_takeaways_voice_locale" to selectedTakeawaysVoiceOption?.voice?.locale
-            )
-        )
-
         if (forceCommit) {
             prefs.commit()
         } else {
             prefs.apply()
-        }
-    }
-
-    private fun debugLog(event: String, fields: Map<String, Any?> = emptyMap()) {
-        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-        val payload = linkedMapOf<String, Any?>(
-            "event" to event,
-            "timestamp" to System.currentTimeMillis(),
-            "client_id" to ClientIdentity.getOrCreate(this),
-            "current_state" to currentState.name,
-            "stored_locale" to prefs.getString("locale", null),
-            "stored_voice" to prefs.getString("voice", null),
-            "stored_takeaways_locale" to prefs.getString("takeaways_locale", null),
-            "stored_takeaways_voice" to prefs.getString("takeaways_voice", null),
-            "ui_locale" to (binding.spinnerLocale.selectedItem as? String),
-            "ui_voice" to (binding.spinnerVoice.selectedItem as? String),
-            "ui_takeaways_locale" to (binding.spinnerTakeawaysLocale.selectedItem as? String),
-            "ui_takeaways_voice" to (binding.spinnerTakeawaysVoice.selectedItem as? String)
-        )
-        payload.putAll(fields)
-        lifecycleScope.launch {
-            ConciserApi.postDebugLog(getServerUrl(), ClientIdentity.getOrCreate(this@MainActivity), payload)
         }
     }
 
