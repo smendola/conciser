@@ -738,16 +738,20 @@ def _print_startup_banner():
 
 
 if __name__ == '__main__':
-    # Avoid printing twice when Werkzeug reloads the dev server
-    if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    use_reloader = os.environ.get('NBJ_NO_RELOADER') not in {'1', 'true', 'yes'}
+
+    # With the Werkzeug reloader, the parent process should NOT perform one-time startup.
+    # Only the reloader child (WERKZEUG_RUN_MAIN=true) should start workers and print banners.
+    is_reloader_child = (not use_reloader) or (os.environ.get("WERKZEUG_RUN_MAIN") == "true")
+
+    if is_reloader_child:
         _print_startup_banner()
 
-    # Start job service worker loop
-    job_service.start()
-    import threading
-    worker_thread = threading.Thread(target=job_service.start_worker_loop, daemon=True)
-    worker_thread.start()
-    print("Concurrent mode enabled with JobService")
+        # Start job service worker loop
+        job_service.start()
+        import threading
+        worker_thread = threading.Thread(target=job_service.start_worker_loop, daemon=True)
+        worker_thread.start()
+        print("Concurrent mode enabled with JobService")
 
-    use_reloader = os.environ.get('NBJ_NO_RELOADER') not in {'1', 'true', 'yes'}
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=use_reloader)

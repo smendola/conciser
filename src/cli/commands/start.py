@@ -22,8 +22,13 @@ from ..app import cli
     default=False,
     help='Run server in the background (logs to nbj.log).',
 )
+@click.option(
+    '--reload/--no-reload',
+    default=False,
+    help='Enable/disable the Flask/Werkzeug auto-reloader. Off by default.',
+)
 @click.pass_context
-def start(ctx: click.Context, detach: bool) -> None:
+def start(ctx: click.Context, detach: bool, reload: bool) -> None:
     repo_root = Path(__file__).resolve().parents[3]
     server_app = repo_root / 'server' / 'app.py'
     log_path = repo_root / 'nbj.log'
@@ -39,9 +44,11 @@ def start(ctx: click.Context, detach: bool) -> None:
     try:
         if detach:
             with log_path.open('ab', buffering=0) as log_f:
+                env = os.environ.copy()
+                env.setdefault('NBJ_NO_RELOADER', '1')
                 popen_kwargs: dict = {
                     'cwd': str(repo_root),
-                    'env': os.environ.copy(),
+                    'env': env,
                     'stdout': log_f,
                     'stderr': subprocess.STDOUT,
                     'stdin': subprocess.DEVNULL,
@@ -62,7 +69,10 @@ def start(ctx: click.Context, detach: bool) -> None:
                     f"Logs: {log_path}{Style.RESET_ALL}"
                 )
         else:
-            subprocess.run(cmd, cwd=str(repo_root), env=os.environ.copy(), check=False)
+            env = os.environ.copy()
+            if not reload:
+                env.setdefault('NBJ_NO_RELOADER', '1')
+            subprocess.run(cmd, cwd=str(repo_root), env=env, check=False)
     except FileNotFoundError:
         print(f"{Fore.RED}Error: failed to execute Python interpreter: {python_exe}{Style.RESET_ALL}")
         sys.exit(1)
