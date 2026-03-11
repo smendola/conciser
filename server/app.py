@@ -128,6 +128,10 @@ def _youtube_thumbnail_url(youtube_url: str) -> str | None:
     return url_for('youtube_thumbnail', video_id=video_id, v=str(uuid.uuid4())[:8])
 
 
+def _cover_path_for_output(output_path: Path) -> Path:
+    return output_path.with_suffix('.jpg')
+
+
 @app.route('/api/yt_thumb/<video_id>')
 def youtube_thumbnail(video_id: str):
     """Proxy a YouTube thumbnail image so the player reliably shows a real thumbnail."""
@@ -492,7 +496,13 @@ def open_output(job_id):
     params = job.get('params') or {}
     aggressiveness = params.get('aggressiveness')
     voice = params.get('voice')
-    thumbnail_url = _youtube_thumbnail_url(job.get('url') or '')
+    thumbnail_url = None
+    if media_kind == 'audio':
+        cover_path = _cover_path_for_output(output_path)
+        if cover_path.exists():
+            thumbnail_url = url_for('open_output_cover', job_id=job_id, cid=client_id, v=str(uuid.uuid4())[:8])
+        else:
+            thumbnail_url = _youtube_thumbnail_url(job.get('url') or '')
 
     return render_template(
         'media_player.html',
@@ -507,6 +517,33 @@ def open_output(job_id):
         download_url=download_url,
         file_name=output_path.name,
     )
+
+
+@app.route('/api/open/<job_id>.jpg', methods=['GET'])
+def open_output_cover(job_id):
+    """Serve a standalone cover image alongside an MP3 output, if present."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 400 if job_error[1] == 400 else 404
+        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    if output_path.suffix.lower() != '.mp3':
+        return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
+
+    cover_path = _cover_path_for_output(output_path)
+    if not cover_path.exists():
+        return jsonify({'error': 'Cover image not found'}), 404
+
+    return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
 
 
 @app.route('/api/open/<job_id>/content', methods=['GET'])

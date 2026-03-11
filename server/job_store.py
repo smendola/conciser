@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from contextlib import contextmanager
+import shutil
 
 from src.config import get_settings
 
@@ -19,10 +20,28 @@ class JobStore:
 
     def __init__(self, db_path: Optional[Path] = None):
         self.settings = get_settings()
-        self.db_path = db_path or (self.settings.output_dir / "jobs.db")
+        self.db_path = db_path or (self.settings.data_dir / "jobs.db")
+        if db_path is None:
+            self._best_effort_migrate_default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
         self._init_schema()
+
+    def _best_effort_migrate_default_db_path(self) -> None:
+        """If an older DB exists in output_dir, copy it into data_dir on first run."""
+        try:
+            new_path = self.settings.data_dir / "jobs.db"
+            old_path = self.settings.output_dir / "jobs.db"
+
+            if new_path.exists():
+                return
+            if not old_path.exists():
+                return
+
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(old_path, new_path)
+        except Exception:
+            return
 
     @contextmanager
     def _conn(self):

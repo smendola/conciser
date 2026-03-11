@@ -397,18 +397,40 @@ class CondenserPipeline:
                 import shutil
                 shutil.copy(generated_audio_path, final_path)
                 logger.info(f"Audio-only output saved to: {final_path}")
-                try:
-                    from .utils.audio_utils import embed_cover_art_mp3
-                    thumb_candidates = [
-                        p
-                        for p in video_folder.glob("source_video.*")
-                        if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
-                    ]
-                    if thumb_candidates:
-                        embed_cover_art_mp3(final_path, thumb_candidates[0])
-                        logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")
-                except Exception as e:
-                    logger.warning(f"Failed to embed cover art into MP3: {e}")
+                thumb_candidates = [
+                    p
+                    for p in video_folder.glob("source_video.*")
+                    if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
+                ]
+                if thumb_candidates:
+                    thumb_path = thumb_candidates[0]
+                    cover_out = final_path.with_suffix('.jpg')
+
+                    # Write standalone cover regardless of whether MP3 embedding succeeds.
+                    try:
+                        if thumb_path.suffix.lower() == '.webp':
+                            cmd_img = [
+                                'ffmpeg',
+                                '-i', str(thumb_path),
+                                '-frames:v', '1',
+                                '-q:v', '2',
+                                '-y',
+                                str(cover_out),
+                            ]
+                            subprocess.run(cmd_img, capture_output=True, text=True, check=True)
+                        else:
+                            shutil.copy(thumb_path, cover_out)
+                        logger.info(f"Wrote cover image: {cover_out}")
+                    except Exception as e:
+                        logger.warning(f"Failed to write standalone cover image: {e}")
+
+                    try:
+                        from .utils.audio_utils import embed_cover_art_mp3
+
+                        embed_cover_art_mp3(final_path, thumb_path)
+                        logger.info(f"Embedded cover art into MP3 from: {thumb_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to embed cover art into MP3: {e}")
                 stats = { 'original_duration_minutes': duration_minutes, 'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'], 'reduction_percentage': condensed_result['reduction_percentage'], 'aggressiveness': aggressiveness, 'quality': quality, }
                 update_progress("COMPLETE", f"Audio condensed successfully: {final_path}")
                 return { 'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result }

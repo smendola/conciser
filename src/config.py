@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Use absolute paths anchored to project root (not relative to cwd)
     # This ensures CLI and server use the same directories
     temp_dir: Path = Field(default=PROJECT_ROOT / "temp")
+    data_dir: Path = Field(default=PROJECT_ROOT / "data")
     output_dir: Path = Field(default=PROJECT_ROOT / "output")
 
     # Service preferences
@@ -75,6 +76,7 @@ class Settings(BaseSettings):
         super().__init__(**kwargs)
         # Create directories if they don't exist
         self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
 

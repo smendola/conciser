@@ -54,7 +54,7 @@ def expire_jobs(age):
         cutoff_delta = parse_age_to_timedelta(age)
         settings = get_settings()
         output_dir = settings.output_dir
-        db_path = output_dir / "jobs.db"
+        db_path = settings.data_dir / "jobs.db"
 
         if not db_path.exists():
             print(f"{Fore.YELLOW}No jobs database found at: {db_path}{Style.RESET_ALL}")

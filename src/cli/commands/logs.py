@@ -74,7 +74,7 @@ def logs(job_id, limit, stage, follow, width):
 
     try:
         settings = get_settings()
-        db_path = settings.output_dir / "jobs.db"
+        db_path = settings.data_dir / "jobs.db"
         
         if not db_path.exists():
             print(f"{Fore.YELLOW}No jobs database found at: {db_path}{Style.RESET_ALL}")

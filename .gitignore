@@ -6,6 +6,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
+data/
 dist/
 .build_number
 downloads/
