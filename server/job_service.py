@@ -59,12 +59,13 @@ class JobService:
         url: str,
         job_type: str,
         title: Optional[str] = None,
+        channel_name: Optional[str] = None,
         client_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new job and queue it for processing."""
         job_id = str(uuid.uuid4())[:8]
-        self.store.create_job(job_id, url, title, job_type, client_id, params)
+        self.store.create_job(job_id, url, title, channel_name, job_type, client_id, params)
         logger.info(f"Created job {job_id} ({job_type}) for client {client_id}")
         return job_id
 
@@ -131,7 +132,7 @@ class JobService:
                 raise ValueError(f"Unknown job type: {job['job_type']}")
 
         except Exception as e:
-            logger.error(f"Error processing job {job_id}: {e}")
+            logger.exception(f"Error processing job {job_id}: {e}")
             self.mark_error(job_id, str(e))
         finally:
             with self._workers_lock:

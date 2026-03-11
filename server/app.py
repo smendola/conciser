@@ -19,6 +19,9 @@ from flask_cors import CORS
 # Add parent directory to path to import nbj modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Initialize CLI logging for server output
+from src.cli import logging as _logging  # noqa: F401
+
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
@@ -68,6 +71,22 @@ def fetch_video_title(youtube_url):
             return data.get('title')
     except Exception as e:
         print(f"Failed to fetch video title: {e}")
+        return None
+
+
+def fetch_channel_name(youtube_url):
+    """Fetch channel name (author_name) from YouTube oEmbed API."""
+    try:
+        import urllib.request
+        import urllib.parse
+        import json
+
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(youtube_url)}&format=json"
+        with urllib.request.urlopen(oembed_url, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            return data.get('author_name')
+    except Exception as e:
+        print(f"Failed to fetch channel name: {e}")
         return None
 
 
@@ -227,6 +246,7 @@ def condense():
 
     # Submit to JobService
     title = fetch_video_title(youtube_url)
+    channel_name = fetch_channel_name(youtube_url)
     params = {
         'aggressiveness': aggressiveness,
         'voice': voice,
@@ -238,6 +258,7 @@ def condense():
         url=youtube_url,
         job_type='condense',
         title=title,
+        channel_name=channel_name,
         client_id=client_id,
         params=params,
     )
@@ -279,6 +300,7 @@ def takeaways():
 
     # Submit to JobService
     title = fetch_video_title(youtube_url)
+    channel_name = fetch_channel_name(youtube_url)
     params = {
         'top': top,
         'format_type': format_type,
@@ -288,6 +310,7 @@ def takeaways():
         url=youtube_url,
         job_type='takeaways',
         title=title,
+        channel_name=channel_name,
         client_id=client_id,
         params=params,
     )

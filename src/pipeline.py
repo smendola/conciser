@@ -189,6 +189,9 @@ class CondenserPipeline:
                 metadata = download_result['metadata']
                 video_folder = download_result['video_folder']
 
+            if video_folder is None:
+                raise RuntimeError("Internal error: video folder was not set during FETCH")
+
             logger.info(f"FETCH: {time.time() - _t:.1f} sec")
 
             # Store video_id for output filename (will add tts/voice info later)
@@ -220,7 +223,10 @@ class CondenserPipeline:
             # Stage 2: Extract and transcribe audio
             _t = time.time()
             if resume:
-                existing_transcript = self._find_existing_transcript(video_path)
+                if video_path is not None:
+                    existing_transcript = self._find_existing_transcript(video_path)
+                else:
+                    existing_transcript = self._find_existing_transcript_in_folder(video_folder)
                 if existing_transcript:
                     update_progress("TRANSCRIBE", f"Resuming from step TRANSCRIBE - found existing transcript")
                     transcript_result = existing_transcript
@@ -313,8 +319,14 @@ class CondenserPipeline:
                 used_voice_id = voice_id
                 cleanup_voice = False
             else:
+                if video_path is None:
+                    raise RuntimeError(
+                        "Voice cloning requires a downloaded source video, but no video file is available. "
+                        "Either set skip_voice_clone=True (use a premade voice) or use a non-audio_only mode that downloads the video."
+                    )
                 update_progress("VOICE_CLONE", "Cloning speaker's voice...")
-                used_voice_id = self._clone_voice(video_path, segments, metadata['title'], video_folder)
+                channel_name = metadata.get('uploader') or ""
+                used_voice_id = self._clone_voice(video_path, segments, metadata['title'], channel_name, video_folder)
                 cleanup_voice = True
             logger.info(f"VOICE_CLONE: {time.time() - _t:.1f} sec")
 
@@ -613,6 +625,7 @@ class CondenserPipeline:
         video_path: Path,
         segments: list,
         title: str,
+        channel_name: str,
         video_folder: Path
     ) -> str:
         """Clone voice from video."""
@@ -656,7 +669,11 @@ class CondenserPipeline:
             sample_paths.append(normalized_path)
 
         # Clone voice
-        voice_name = f"conciser_{normalize_name(title, max_length=30)}"
+        channel_norm = normalize_name(channel_name or "", max_length=60)
+        if channel_norm:
+            voice_name = f"yt_{channel_norm}"
+        else:
+            voice_name = f"yt_{normalize_name(title, max_length=60)}"
         voice_id = self.voice_cloner.clone_voice(voice_name, sample_paths)
 
         # Cleanup samples
@@ -1164,6 +1181,24 @@ class CondenserPipeline:
         """Find existing transcript JSON file (keyed by transcription model)."""
         import re
         video_folder = video_path.parent
+        youtube_transcript_json = video_folder / "transcript_yt_extract.json"
+        if youtube_transcript_json.exists():
+            logger.info(f"Found existing transcript: {youtube_transcript_json}")
+            return self.transcriber.load_transcript(youtube_transcript_json)
+
+        model_norm = re.sub(r'[^a-z0-9]', '_', self.transcriber.model.lower()).strip('_')
+        transcript_json = video_folder / f"transcript_{model_norm}.json"
+
+        if transcript_json.exists():
+            logger.info(f"Found existing transcript: {transcript_json}")
+            return self.transcriber.load_transcript(transcript_json)
+
+        return None
+
+    def _find_existing_transcript_in_folder(self, video_folder: Path) -> Optional[Dict[str, Any]]:
+        """Find existing transcript JSON file inside a known video folder."""
+        import re
+
         youtube_transcript_json = video_folder / "transcript_yt_extract.json"
         if youtube_transcript_json.exists():
             logger.info(f"Found existing transcript: {youtube_transcript_json}")

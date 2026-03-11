@@ -50,6 +50,7 @@ class JobStore:
                     id TEXT PRIMARY KEY,
                     url TEXT NOT NULL,
                     title TEXT,
+                    channel_name TEXT,
                     job_type TEXT NOT NULL,  -- 'condense' or 'takeaways'
                     status TEXT NOT NULL DEFAULT 'queued',  -- queued, processing, completed, error, deleted
                     progress TEXT,
@@ -92,6 +93,7 @@ class JobStore:
         job_id: str,
         url: str,
         title: Optional[str],
+        channel_name: Optional[str],
         job_type: str,
         client_id: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
@@ -100,10 +102,10 @@ class JobStore:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO jobs (id, url, title, job_type, client_id)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO jobs (id, url, title, channel_name, job_type, client_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (job_id, url, title or "", job_type, client_id),
+                (job_id, url, title or "", channel_name or "", job_type, client_id),
             )
             if params:
                 conn.executemany(
