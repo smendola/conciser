@@ -257,7 +257,7 @@ def download_extension():
         latest_file,
         mimetype='application/zip',
         as_attachment=True,
-        download_name='nbj-chrome-extension.zip'
+        download_name=latest_file.name
     )
 
 
