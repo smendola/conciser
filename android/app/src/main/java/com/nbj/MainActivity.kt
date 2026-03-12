@@ -43,6 +43,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.TreeSet
 import kotlin.math.roundToInt
+import io.sentry.Sentry
+import io.sentry.SentryLevel
 
 class MainActivity : AppCompatActivity() {
 
@@ -102,6 +104,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 val msg = if (currentOutputFormat == "text") {
                     "No browser found."
                 } else {
@@ -129,6 +132,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 val msg = if (job.outputFormat == "text") "No browser found." else "No media player found."
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
             }
@@ -939,6 +943,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 )
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 Log.w(logTag, "METADATA_CACHE: voices_fetch_failed", e)
                 apiLog(serverUrl, "metadata_voices_fetch_failed", mapOf("lang" to userLanguage, "error" to (e.message ?: "")))
             }
@@ -961,6 +966,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 )
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 Log.w(logTag, "METADATA_CACHE: strategies_fetch_failed", e)
                 apiLog(serverUrl, "metadata_strategies_fetch_failed", mapOf("error" to (e.message ?: "")))
             }
@@ -1272,6 +1278,7 @@ class MainActivity : AppCompatActivity() {
                 updateUI(AppState.PROCESSING, statusText = "Processing video...\nJob ID: ${response.id}")
                 startPolling()
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 updateUI(AppState.ERROR, statusText = "Failed to submit: ${e.message}")
             }
         }
@@ -1319,6 +1326,7 @@ class MainActivity : AppCompatActivity() {
                 updateUI(AppState.PROCESSING, statusText = "Extracting takeaways...\nJob ID: ${response.id}")
                 startPolling()
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 updateUI(AppState.ERROR, statusText = "Failed to submit: ${e.message}")
             }
         }
@@ -1337,6 +1345,7 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     // Check if it's a 404 error
                     if (e is retrofit2.HttpException && e.code() == 404) {
+                        Sentry.captureException(e)
                         isPolling = false
                         val missingId = currentJobId
                         currentJobId = null
@@ -1344,6 +1353,9 @@ class MainActivity : AppCompatActivity() {
                             AppState.ERROR,
                             statusText = "Job ${missingId ?: "(unknown)"} not found on server"
                         )
+                    } else {
+                        // Log other errors but continue polling
+                        Sentry.captureMessage("Polling error: ${e.message}", SentryLevel.WARNING)
                     }
                     // Keep polling on other network errors — mirrors Chrome popup behavior
                 }

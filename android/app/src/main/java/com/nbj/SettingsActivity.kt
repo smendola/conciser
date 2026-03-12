@@ -22,6 +22,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import io.sentry.Sentry
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -194,6 +195,7 @@ class SettingsActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
+                Sentry.captureException(e)
                 HealthResult.Unreachable
             }
         }

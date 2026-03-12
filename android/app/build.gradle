@@ -37,6 +37,10 @@ android {
         def settingsDefaultUrl = settingsJson?.default_server_url
         def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: (settingsDefaultUrl ?: 'http://127.0.0.1:5000')
         buildConfigField "String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl}\""
+
+        // Inject Sentry DSN from environment or build-settings.json
+        def sentryDsn = System.getenv('SENTRY_DSN') ?: (settingsJson?.sentry_dsn ?: '')
+        buildConfigField "String", "SENTRY_DSN", "\"${sentryDsn}\""
     }
 
     signingConfigs {
@@ -86,6 +90,9 @@ dependencies {
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+
+    // Sentry (library only, no initialization yet)
+    implementation 'io.sentry:sentry-android:7.3.0'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
