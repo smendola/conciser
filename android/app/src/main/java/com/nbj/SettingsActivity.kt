@@ -151,13 +151,6 @@ class SettingsActivity : AppCompatActivity() {
         // Always ping, even if the URL seems invalid, to give feedback
         schedulePing(serverUrl)
 
-        if (previous.isNotEmpty() && previous != serverUrl) {
-            val intent = Intent(this, MainActivity::class.java)
-            intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-            startActivity(intent)
-            finish()
-        }
-
         // Optional: Show a brief "Saved" message if needed, but auto-save should be silent
         // Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
     }
@@ -181,7 +174,7 @@ class SettingsActivity : AppCompatActivity() {
     private suspend fun performHealthCheck(rawUrl: String) {
         val result = withContext(Dispatchers.IO) {
             val normalized = normalizeServerUrl(rawUrl)
-            val healthUrl = "$normalized/health"
+            val healthUrl = "$normalized/api/health"
             try {
                 val request = Request.Builder().url(healthUrl).get().build()
                 httpClient.newCall(request).execute().use { response ->

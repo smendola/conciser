@@ -32,7 +32,10 @@ android {
         buildConfigField "String", "BUILD_VERSION", "\"${versionName}\""
 
         // Inject default server URL
-        def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: 'http://conciser.603apps.net'
+        def settingsFile = new File(rootProject.projectDir, '../build-settings.json')
+        def settingsJson = settingsFile.exists() ? new groovy.json.JsonSlurper().parseText(settingsFile.text) : [:]
+        def settingsDefaultUrl = settingsJson?.default_server_url
+        def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: (settingsDefaultUrl ?: 'http://127.0.0.1:5000')
         buildConfigField "String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl}\""
     }
 
