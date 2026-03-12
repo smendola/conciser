@@ -627,7 +627,7 @@ async function loadSettings() {
     takeawaysLocale: null,
     takeawaysVoice: null,
     takeawaysFormat: 'text',
-    speechSpeed: 1.0,
+    speechSpeed: 1.00,
     videoMode: 'slideshow',
     prependIntro: false
   }, saved);

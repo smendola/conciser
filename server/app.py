@@ -835,7 +835,14 @@ def _print_startup_banner():
     print("NBJ Condenser Server")
     print("=" * 60)
     print("\nServer starting on http://127.0.0.1:5000")
-    # print("\nPublic URL: http://conciser.603apps.net")
+    try:
+        settings_path = get_project_root() / 'build-settings.json'
+        settings = json.loads(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else {}
+        public_url = settings.get('default_server_url')
+    except Exception:
+        public_url = None
+    if public_url:
+        print(f"\nPublic URL: {public_url}")
     print("\nEndpoints:")
     print("  GET    /start            - Extension download & installation guide")
     print("  GET    /extension.zip    - Download Chrome extension bundle")
@@ -850,7 +857,8 @@ def _print_startup_banner():
     print("  GET    /api/strategies   - Get aggressiveness strategies")
     print("  GET    /api/voices       - Get Edge TTS voices")
     print("  GET    /api/health       - Health check")
-    # print("\n👉 Share this link: http://conciser.603apps.net/start")
+    if public_url:
+        print(f"\n👉 Share this link: {public_url.rstrip('/')}/start")
     print("\n" + "=" * 60 + "\n")
 
 

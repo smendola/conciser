@@ -53,14 +53,13 @@ class MainActivity : AppCompatActivity() {
             val payload = mutableMapOf<String, Any?>(
                 "source" to "android",
                 "event" to event,
-                "serverUrl" to serverUrl,
                 "ts" to System.currentTimeMillis()
             )
             payload.putAll(data)
 
             val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
             withContext(Dispatchers.IO) {
-                apiLogPost(api, payload)
+                apiLogPost(serverUrl, api, payload)
             }
         } catch (_: Exception) {
         }
@@ -136,11 +135,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun apiLogPost(api: ConciserApiService, payload: Map<String, Any?>) {
+    private fun apiLogPost(serverUrl: String, api: ConciserApiService, payload: Map<String, Any?>) {
         try {
             val json = Gson().toJson(payload)
             val request = okhttp3.Request.Builder()
-                .url((payload["serverUrl"] as String).trimEnd('/') + "/api/log")
+                .url(serverUrl.trimEnd('/') + "/api/log")
                 .post(json.toRequestBody("application/json".toMediaType()))
                 .build()
 
@@ -196,24 +195,358 @@ class MainActivity : AppCompatActivity() {
     private val takeawaysFormatValues = listOf("text", "audio")
     private val takeawaysFormatLabels = listOf("Text", "Audio")
     private val prefsName = "nbj_prefs"
+
+    private val KEY_CONDENSE_LOCALE = "condense_locale"
+    private val KEY_CONDENSE_VOICE = "condense_voice"
+    private val KEY_TAKEAWAYS_LOCALE = "takeaways_locale"
+    private val KEY_TAKEAWAYS_VOICE = "takeaways_voice"
+    private val KEY_TAKEAWAYS_FORMAT = "takeaways_format"
     private var suppressAutoSave = false
     private var restoringVoiceSelections = false
     private var blockVoiceSelectionCallbacksUntilMs = 0L
+    private var blockTakeawaysVoicePersistUntilMs = 0L
+
+    private fun migratePrefsKeysIfNeeded() {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        var changed = false
+
+        if (!prefs.contains(KEY_CONDENSE_LOCALE) && prefs.contains("locale")) {
+            editor.putString(KEY_CONDENSE_LOCALE, prefs.getString("locale", null))
+            changed = true
+        }
+        if (!prefs.contains(KEY_CONDENSE_VOICE) && prefs.contains("voice")) {
+            editor.putString(KEY_CONDENSE_VOICE, prefs.getString("voice", null))
+            changed = true
+        }
+
+        if (!prefs.contains(KEY_TAKEAWAYS_LOCALE) && prefs.contains("takeaways_locale")) {
+            editor.putString(KEY_TAKEAWAYS_LOCALE, prefs.getString("takeaways_locale", null))
+            changed = true
+        }
+        if (!prefs.contains(KEY_TAKEAWAYS_VOICE) && prefs.contains("takeaways_voice")) {
+            editor.putString(KEY_TAKEAWAYS_VOICE, prefs.getString("takeaways_voice", null))
+            changed = true
+        }
+        if (!prefs.contains(KEY_TAKEAWAYS_FORMAT) && prefs.contains("takeaways_format")) {
+            editor.putString(KEY_TAKEAWAYS_FORMAT, prefs.getString("takeaways_format", null))
+            changed = true
+        }
+
+        if (changed) editor.apply()
+    }
 
     // -------------------------------------------------------------------------
     // Minimal stubs to keep compilation working after API migration
     // -------------------------------------------------------------------------
 
     private fun setupSettingsControls() {
-        // No-op: UI wiring is handled elsewhere.
+        // Keep this wiring minimal but functional: persist key settings to SharedPreferences.
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+        // Aggressiveness
+        binding.seekbarAggressiveness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                val level = progress + 1
+                binding.tvAggressivenessValue.text = level.toString()
+                updateStrategyDesc(level)
+                if (!fromUser) return
+                if (suppressAutoSave || restoringVoiceSelections) return
+                prefs.edit().putInt("aggressiveness", level).apply()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        // Speech speed
+        binding.seekbarSpeechSpeed.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // progress is 0..110 representing 0.00x..1.10x? Existing UI expects 1.10x default.
+                // Keep compatible: store float in [0.00, 2.10] would be weird; instead map 0..110 to 0.0..2.10 is unknown.
+                // Use simple mapping to [0.50, 1.60] with 1.10 at 60.
+                val speed = 0.50f + (progress / 100f) * 1.10f
+                binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", speed)
+                if (!fromUser) return
+                if (suppressAutoSave || restoringVoiceSelections) return
+                prefs.edit().putFloat("speech_speed", speed).apply()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        // Prepend intro
+        binding.switchPrependIntro.setOnCheckedChangeListener { _, isChecked ->
+            if (suppressAutoSave || restoringVoiceSelections) return@setOnCheckedChangeListener
+            prefs.edit().putBoolean("prepend_intro", isChecked).apply()
+        }
+
+        // Video mode (condense)
+        val videoModeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, videoModeLabels)
+        videoModeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerVideoMode.adapter = videoModeAdapter
+        binding.spinnerVideoMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val value = videoModeValues.getOrNull(position) ?: return
+                if (suppressAutoSave || restoringVoiceSelections) return
+                prefs.edit().putString("video_mode", value).apply()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Takeaways spinners
+        val topAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysTopLabels)
+        topAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerTakeawaysTop.adapter = topAdapter
+        binding.spinnerTakeawaysTop.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val value = takeawaysTopValues.getOrNull(position) ?: return
+                if (suppressAutoSave || restoringVoiceSelections) return
+                prefs.edit().putString("takeaways_top", value).apply()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        val fmtAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysFormatLabels)
+        fmtAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerTakeawaysFormat.adapter = fmtAdapter
+        binding.spinnerTakeawaysFormat.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (suppressAutoSave || restoringVoiceSelections) return
+                // Show/hide voice controls based on whether audio is selected.
+                val formatValue = takeawaysFormatValues.getOrNull(position) ?: "text"
+                binding.layoutTakeawaysVoice.isVisible = (formatValue == "audio")
+                prefs.edit().putString(KEY_TAKEAWAYS_FORMAT, formatValue).apply()
+                lifecycleScope.launch {
+                    apiLog(getServerUrl(), "takeaways_format_changed", mapOf("value" to formatValue))
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+
+        // Persist voice selection changes.
+        val voiceListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (suppressAutoSave || restoringVoiceSelections) return
+                val selectedLocale = binding.spinnerLocale.selectedItem as? String
+                val voiceId = getSelectedVoiceOption(binding.spinnerVoice, selectedLocale)?.id ?: return
+                prefs.edit().putString(KEY_CONDENSE_VOICE, voiceId).apply()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        binding.spinnerVoice.onItemSelectedListener = voiceListener
+
+        val takeawaysVoiceListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                // Don't save while we're restoring, but allow normal user selection even if
+                // suppressAutoSave is being used for unrelated bulk UI updates.
+                if (restoringVoiceSelections) return
+                if (SystemClock.elapsedRealtime() < blockTakeawaysVoicePersistUntilMs) return
+                val selectedLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
+                val voiceId = getSelectedVoiceOption(binding.spinnerTakeawaysVoice, selectedLocale)?.id ?: return
+                prefs.edit().putString(KEY_TAKEAWAYS_VOICE, voiceId).apply()
+                lifecycleScope.launch {
+                    apiLog(
+                        getServerUrl(),
+                        "takeaways_voice_changed",
+                        mapOf("locale" to selectedLocale, "voice" to voiceId)
+                    )
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        binding.spinnerTakeawaysVoice.onItemSelectedListener = takeawaysVoiceListener
+
+        // Persist locale selections.
+        binding.spinnerLocale.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs) return
+                val selectedLocale = parent?.getItemAtPosition(position)?.toString() ?: return
+                if (suppressAutoSave || restoringVoiceSelections) return
+                prefs.edit().putString(KEY_CONDENSE_LOCALE, selectedLocale).apply()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        binding.spinnerTakeawaysLocale.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs) return
+                val selectedLocale = parent?.getItemAtPosition(position)?.toString() ?: return
+                if (restoringVoiceSelections) return
+                prefs.edit().putString(KEY_TAKEAWAYS_LOCALE, selectedLocale).apply()
+
+                // Also refresh voice list immediately when locale changes.
+                populateTakeawaysVoiceSpinnerForLocale(selectedLocale)
+                lifecycleScope.launch {
+                    apiLog(getServerUrl(), "takeaways_locale_changed", mapOf("locale" to selectedLocale))
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
     }
 
     private fun loadSettingsToUI() {
-        // No-op: settings are already loaded as part of setupUI().
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+        suppressAutoSave = true
+        try {
+            val aggressiveness = prefs.getInt("aggressiveness", 5).coerceIn(1, 10)
+            binding.seekbarAggressiveness.progress = aggressiveness - 1
+            binding.tvAggressivenessValue.text = aggressiveness.toString()
+
+            val speechSpeed = prefs.getFloat("speech_speed", 1.00f)
+            binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", speechSpeed)
+            // Map back to progress using the same mapping used in listener.
+            val p = (((speechSpeed - 0.50f) / 1.10f) * 100f).toInt().coerceIn(0, 110)
+            binding.seekbarSpeechSpeed.progress = p
+
+            binding.switchPrependIntro.isChecked = prefs.getBoolean("prepend_intro", false)
+
+            val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
+            val idx = videoModeValues.indexOf(videoMode).let { if (it >= 0) it else 0 }
+            binding.spinnerVideoMode.setSelection(idx)
+
+            val takeawaysTop = prefs.getString("takeaways_top", "5") ?: "5"
+            val topIdx = takeawaysTopValues.indexOf(takeawaysTop).let { if (it >= 0) it else 1 }
+            binding.spinnerTakeawaysTop.setSelection(topIdx)
+
+            val takeawaysFormat = prefs.getString(KEY_TAKEAWAYS_FORMAT, "text") ?: "text"
+            val fmtIdx = takeawaysFormatValues.indexOf(takeawaysFormat).let { if (it >= 0) it else 0 }
+            binding.spinnerTakeawaysFormat.setSelection(fmtIdx)
+            binding.layoutTakeawaysVoice.isVisible = (takeawaysFormat == "audio")
+        } finally {
+            suppressAutoSave = false
+        }
     }
 
     private fun populateLocaleSpinners() {
-        // No-op: leave existing spinner contents as-is.
+        populateCondenseLocaleSpinner()
+        populateTakeawaysLocaleSpinner()
+    }
+
+    private fun availableLocaleItems(): List<String> {
+        val localeSet = TreeSet<String>(String.CASE_INSENSITIVE_ORDER)
+        for (v in voices) {
+            val loc = v.locale.trim()
+            if (loc.isNotBlank()) localeSet.add(loc)
+        }
+        return if (localeSet.isNotEmpty()) localeSet.toList() else listOf(Locale.getDefault().toLanguageTag())
+    }
+
+    private fun defaultLocaleIndex(localeItems: List<String>): Int {
+        val deviceTag = Locale.getDefault().toLanguageTag()
+        val exactIdx = localeItems.indexOfFirst { it.equals(deviceTag, ignoreCase = true) }
+        val langOnly = deviceTag.substringBefore('-')
+        val langIdx = localeItems.indexOfFirst { it.substringBefore('-').equals(langOnly, ignoreCase = true) }
+        return when {
+            exactIdx >= 0 -> exactIdx
+            langIdx >= 0 -> langIdx
+            else -> 0
+        }
+    }
+
+    private fun populateCondenseLocaleSpinner() {
+        val localeItems = availableLocaleItems()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, localeItems)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        suppressAutoSave = true
+        try {
+            binding.spinnerLocale.adapter = adapter
+
+            val voicePlaceholder = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Select voice"))
+            voicePlaceholder.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spinnerVoice.adapter = voicePlaceholder
+
+            val idx = defaultLocaleIndex(localeItems)
+            binding.spinnerLocale.setSelection(idx)
+
+            val locale = binding.spinnerLocale.selectedItem?.toString()
+            if (!locale.isNullOrBlank()) {
+                populateCondenseVoiceSpinnerForLocale(locale)
+            }
+        } finally {
+            suppressAutoSave = false
+        }
+    }
+
+    private fun populateTakeawaysLocaleSpinner() {
+        val localeItems = availableLocaleItems()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, localeItems)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+
+        suppressAutoSave = true
+        try {
+            binding.spinnerTakeawaysLocale.adapter = adapter
+
+            val voicePlaceholder = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Select voice"))
+            voicePlaceholder.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            binding.spinnerTakeawaysVoice.adapter = voicePlaceholder
+
+            val idx = defaultLocaleIndex(localeItems)
+            binding.spinnerTakeawaysLocale.setSelection(idx)
+
+            val locale = binding.spinnerTakeawaysLocale.selectedItem?.toString()
+            if (!locale.isNullOrBlank()) {
+                populateTakeawaysVoiceSpinnerForLocale(locale)
+            }
+        } finally {
+            suppressAutoSave = false
+        }
+    }
+
+    private fun populateCondenseVoiceSpinnerForLocale(localeTag: String) {
+        val options = voices
+            .filter { it.locale.equals(localeTag, ignoreCase = true) }
+            .map {
+                val genderSuffix = when (it.gender?.trim()?.lowercase()) {
+                    "male" -> " (Male)"
+                    "female" -> " (Female)"
+                    null, "" -> ""
+                    else -> " (${it.gender.trim()})"
+                }
+                VoiceOption(
+                    id = it.name,
+                    displayName = (it.friendly_name.ifBlank { it.name }) + genderSuffix,
+                    voice = it
+                )
+            }
+            .sortedBy { it.displayName.lowercase() }
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options.map { it.displayName })
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerVoice.adapter = adapter
+    }
+
+    private fun populateTakeawaysVoiceSpinnerForLocale(localeTag: String) {
+        blockTakeawaysVoicePersistUntilMs = SystemClock.elapsedRealtime() + 1500L
+        val options = voices
+            .filter { it.locale.equals(localeTag, ignoreCase = true) }
+            .map {
+                val genderSuffix = when (it.gender?.trim()?.lowercase()) {
+                    "male" -> " (Male)"
+                    "female" -> " (Female)"
+                    null, "" -> ""
+                    else -> " (${it.gender.trim()})"
+                }
+                VoiceOption(
+                    id = it.name,
+                    displayName = (it.friendly_name.ifBlank { it.name }) + genderSuffix,
+                    voice = it
+                )
+            }
+            .sortedBy { it.displayName.lowercase() }
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options.map { it.displayName })
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerTakeawaysVoice.adapter = adapter
     }
 
     private fun restoreLocaleAndVoiceSelection(
@@ -233,12 +566,39 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            if (!savedVoice.isNullOrBlank()) {
-                val adapter = voiceSpinner.adapter
-                for (i in 0 until adapter.count) {
-                    if (adapter.getItem(i)?.toString() == savedVoice) {
-                        voiceSpinner.setSelection(i)
-                        break
+
+            // Always populate the voice spinner based on the currently selected locale.
+            val selectedLocale = localeSpinner.selectedItem?.toString()
+            if (!selectedLocale.isNullOrBlank()) {
+                if (voiceSpinner === binding.spinnerTakeawaysVoice) {
+                    blockTakeawaysVoicePersistUntilMs = SystemClock.elapsedRealtime() + 2000L
+                }
+                if (voiceSpinner === binding.spinnerTakeawaysVoice) {
+                    populateTakeawaysVoiceSpinnerForLocale(selectedLocale)
+                } else {
+                    populateCondenseVoiceSpinnerForLocale(selectedLocale)
+                }
+
+                if (!savedVoice.isNullOrBlank()) {
+                    val options = voices
+                        .filter { it.locale.equals(selectedLocale, ignoreCase = true) }
+                        .map {
+                            val genderSuffix = when (it.gender?.trim()?.lowercase()) {
+                                "male" -> " (Male)"
+                                "female" -> " (Female)"
+                                null, "" -> ""
+                                else -> " (${it.gender.trim()})"
+                            }
+                            VoiceOption(
+                                id = it.name,
+                                displayName = (it.friendly_name.ifBlank { it.name }) + genderSuffix,
+                                voice = it
+                            )
+                        }
+                        .sortedBy { it.displayName.lowercase() }
+                    val pos = options.indexOfFirst { it.id == savedVoice }
+                    if (pos >= 0) {
+                        voiceSpinner.setSelection(pos)
                     }
                 }
             }
@@ -257,15 +617,60 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun autoSaveSettings(forceCommit: Boolean = false) {
-        // No-op: settings persistence handled elsewhere.
+        if (suppressAutoSave || restoringVoiceSelections) return
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+
+        val aggressiveness = binding.seekbarAggressiveness.progress + 1
+        editor.putInt("aggressiveness", aggressiveness)
+        editor.putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
+
+        val videoMode = videoModeValues.getOrNull(binding.spinnerVideoMode.selectedItemPosition) ?: "slideshow"
+        editor.putString("video_mode", videoMode)
+
+        val takeawaysTop = takeawaysTopValues.getOrNull(binding.spinnerTakeawaysTop.selectedItemPosition) ?: "auto"
+        editor.putString("takeaways_top", takeawaysTop)
+
+        val takeawaysFormat = takeawaysFormatValues.getOrNull(binding.spinnerTakeawaysFormat.selectedItemPosition) ?: "text"
+        editor.putString("takeaways_format", takeawaysFormat)
+
+        val locale = binding.spinnerLocale.selectedItem as? String
+        if (!locale.isNullOrBlank()) editor.putString(KEY_CONDENSE_LOCALE, locale)
+        val takeawaysLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
+        if (!takeawaysLocale.isNullOrBlank()) editor.putString(KEY_TAKEAWAYS_LOCALE, takeawaysLocale)
+
+        // Only save voice if it looks like a real voice id.
+        getSelectedVoiceOption(binding.spinnerVoice, locale)?.id?.let { editor.putString(KEY_CONDENSE_VOICE, it) }
+        getSelectedVoiceOption(binding.spinnerTakeawaysVoice, takeawaysLocale)?.id?.let { editor.putString(KEY_TAKEAWAYS_VOICE, it) }
+
+        if (forceCommit) editor.commit() else editor.apply()
     }
 
     private data class _VoiceOption(val id: String)
 
     private fun getSelectedVoiceOption(spinner: android.widget.Spinner, locale: String?): _VoiceOption? {
-        val value = spinner.selectedItem?.toString() ?: return null
-        if (value.isBlank()) return null
-        return _VoiceOption(value)
+        val selectedLocale = locale?.ifBlank { null } ?: Locale.getDefault().toLanguageTag()
+
+        val options = voices
+            .filter { it.locale.equals(selectedLocale, ignoreCase = true) }
+            .map {
+                val genderSuffix = when (it.gender?.trim()?.lowercase()) {
+                    "male" -> " (Male)"
+                    "female" -> " (Female)"
+                    null, "" -> ""
+                    else -> " (${it.gender.trim()})"
+                }
+                VoiceOption(
+                    id = it.name,
+                    displayName = (it.friendly_name.ifBlank { it.name }) + genderSuffix,
+                    voice = it
+                )
+            }
+            .sortedBy { it.displayName.lowercase() }
+
+        val pos = spinner.selectedItemPosition
+        if (pos < 0 || pos >= options.size) return null
+        return _VoiceOption(options[pos].id)
     }
 
     // Background colors for layoutStatus — mirror Chrome popup CSS classes
@@ -284,6 +689,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.tvBuildInfo.text = "Build: ${BuildConfig.BUILD_VERSION}"
+
+        migratePrefsKeysIfNeeded()
 
         suppressAutoSave = true
         setupSettingsControls()
@@ -357,10 +764,11 @@ class MainActivity : AppCompatActivity() {
             blockVoiceSelectionCallbacksUntilMs = SystemClock.elapsedRealtime() + 2000L
             try {
                 populateLocaleSpinners()
-                val savedLocale = prefs.getString("locale", null)
-                val savedVoice = prefs.getString("voice", null)
-                val savedTakeawaysLocale = prefs.getString("takeaways_locale", savedLocale)
-                val savedTakeawaysVoice = prefs.getString("takeaways_voice", savedVoice)
+                val savedLocale = prefs.getString(KEY_CONDENSE_LOCALE, null)
+                val savedVoice = prefs.getString(KEY_CONDENSE_VOICE, null)
+                val savedTakeawaysLocale = prefs.getString(KEY_TAKEAWAYS_LOCALE, savedLocale)
+                val savedTakeawaysVoice = prefs.getString(KEY_TAKEAWAYS_VOICE, null)
+                    ?: prefs.getString(KEY_TAKEAWAYS_VOICE, savedVoice)
                 Log.i(logTag, "METADATA_CACHE: restore_settings condenseLocale=$savedLocale condenseVoice=$savedVoice")
                 lifecycleScope.launch {
                     apiLog(
@@ -376,6 +784,36 @@ class MainActivity : AppCompatActivity() {
                 }
                 restoreLocaleAndVoiceSelection(binding.spinnerLocale, binding.spinnerVoice, savedLocale, savedVoice)
                 restoreLocaleAndVoiceSelection(binding.spinnerTakeawaysLocale, binding.spinnerTakeawaysVoice, savedTakeawaysLocale, savedTakeawaysVoice)
+
+                // If takeaways voice UI starts hidden (format != audio), the spinner may not
+                // get fully initialized until later. Re-apply once more after UI settles.
+                lifecycleScope.launch {
+                    delay(250)
+                    restoreLocaleAndVoiceSelection(
+                        binding.spinnerTakeawaysLocale,
+                        binding.spinnerTakeawaysVoice,
+                        savedTakeawaysLocale,
+                        savedTakeawaysVoice
+                    )
+
+                    // If takeaways format is audio, ensure the voice selection is applied.
+                    val fmt = prefs.getString(KEY_TAKEAWAYS_FORMAT, "text") ?: "text"
+                    if (fmt == "audio") {
+                        val selectedLocale = binding.spinnerTakeawaysLocale.selectedItem?.toString()
+                        if (!selectedLocale.isNullOrBlank()) {
+                            populateTakeawaysVoiceSpinnerForLocale(selectedLocale)
+                        }
+                        val savedTv = prefs.getString(KEY_TAKEAWAYS_VOICE, null)
+                        if (!savedTv.isNullOrBlank()) {
+                            restoreLocaleAndVoiceSelection(
+                                binding.spinnerTakeawaysLocale,
+                                binding.spinnerTakeawaysVoice,
+                                savedTakeawaysLocale,
+                                savedTv
+                            )
+                        }
+                    }
+                }
             } finally {
                 lifecycleScope.launch {
                     delay(500)
@@ -500,9 +938,9 @@ class MainActivity : AppCompatActivity() {
                         "count" to voices.size
                     )
                 )
-            } catch (_: Exception) {
-                Log.w(logTag, "METADATA_CACHE: voices_fetch_failed")
-                apiLog(serverUrl, "metadata_voices_fetch_failed", mapOf("lang" to userLanguage))
+            } catch (e: Exception) {
+                Log.w(logTag, "METADATA_CACHE: voices_fetch_failed", e)
+                apiLog(serverUrl, "metadata_voices_fetch_failed", mapOf("lang" to userLanguage, "error" to (e.message ?: "")))
             }
         }
 
@@ -522,14 +960,31 @@ class MainActivity : AppCompatActivity() {
                         "count" to strategies.size
                     )
                 )
-            } catch (_: Exception) {
-                Log.w(logTag, "METADATA_CACHE: strategies_fetch_failed")
-                apiLog(serverUrl, "metadata_strategies_fetch_failed")
+            } catch (e: Exception) {
+                Log.w(logTag, "METADATA_CACHE: strategies_fetch_failed", e)
+                apiLog(serverUrl, "metadata_strategies_fetch_failed", mapOf("error" to (e.message ?: "")))
             }
         }
 
         runOnUiThread {
             loadCachedVoicesAndStrategiesIntoUI()
+
+            val prefs2 = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            val haveVoicesNow = prefs2.contains(getVoicesCacheKey(serverUrl, userLanguage))
+            val haveStrategiesNow = prefs2.contains(getStrategiesCacheKey(serverUrl))
+            if (!haveVoicesNow) {
+                val fallback = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf(userLanguage))
+                fallback.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                binding.spinnerLocale.adapter = fallback
+                binding.spinnerTakeawaysLocale.adapter = fallback
+                val loadingVoiceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Failed to load voices"))
+                loadingVoiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                binding.spinnerVoice.adapter = loadingVoiceAdapter
+                binding.spinnerTakeawaysVoice.adapter = loadingVoiceAdapter
+            }
+            if (!haveStrategiesNow) {
+                binding.tvStrategyDesc.text = "Failed to load"
+            }
         }
     }
 
@@ -789,13 +1244,11 @@ class MainActivity : AppCompatActivity() {
         val serverUrl = prefs.getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
         val clientId = ClientIdentity.getOrCreate(this)
         val aggressiveness = prefs.getInt("aggressiveness", 5)
-        val voice = prefs.getString("voice", "") ?: ""
-        val speechSpeed = prefs.getFloat("speech_speed", 1.10f)
+        val voice = prefs.getString(KEY_CONDENSE_VOICE, "") ?: ""
+        val speechSpeed = prefs.getFloat("speech_speed", 1.00f)
         val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
         val prependIntro = prefs.getBoolean("prepend_intro", false)
 
-        currentVideoMode = videoMode
-        currentJobType = "condense"
         currentOutputFormat = if (videoMode == "audio_only") "audio" else "video"
 
         val req = CreateJobRequest(

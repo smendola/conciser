@@ -35,7 +35,6 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private val presetUrls = listOf(
-        "https://conciser.603apps.net",
         "https://x13.puma-garibaldi.ts.net",
         "https://cuda-linux.puma-garibaldi.ts.net"
     )

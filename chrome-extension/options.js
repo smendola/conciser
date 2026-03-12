@@ -1,6 +1,5 @@
 // DEFAULT_SERVER_URL is injected at build time via build-info.js
 const PRESET_URLS = [
-  'https://conciser.603apps.net',
   'https://x13.puma-garibaldi.ts.net',
   'https://cuda-linux.puma-garibaldi.ts.net'
 ];

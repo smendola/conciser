@@ -9,13 +9,12 @@
     <string name="play_video">Play Video</string>
     <string name="settings">Settings</string>
     <string name="server_url">Server URL</string>
-    <string name="server_url_hint">http://conciser.603apps.net</string>
+    <string name="server_url_hint">https://x13.puma-garibaldi.ts.net</string>
 
     <string-array name="server_url_options">
         <item>Select a server or enter custom URL...</item>
-        <item>1. Conciser</item>
-        <item>2. X13</item>
-        <item>3. CUDA-LINUX</item>
+        <item>1. X13</item>
+        <item>2. CUDA-LINUX</item>
         <item>Custom URL...</item>
     </string-array>
     <string name="save">Save</string>
