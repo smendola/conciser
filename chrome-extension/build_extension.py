@@ -12,6 +12,16 @@ import shutil
 from datetime import datetime
 
 
+def _find_project_root(start: Path) -> Path:
+    start = start.resolve()
+    for candidate in [start, *start.parents]:
+        if (candidate / '.project-root').exists():
+            return candidate
+    raise FileNotFoundError(
+        f"Could not locate project root: missing `.project-root` when searching upward from {start}"
+    )
+
+
 def _read_json_file(path: Path) -> dict:
     with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
@@ -64,7 +74,7 @@ def build_extension():
     """Package the chrome extension into a zip file."""
     # Paths
     extension_dir = Path(__file__).parent  # chrome-extension/
-    project_root = extension_dir.parent    # project root
+    project_root = _find_project_root(extension_dir)
     dist_dir = project_root / 'dist'
 
     build_number = _bump_chrome_build_number(extension_dir)

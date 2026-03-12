@@ -149,7 +149,7 @@ def test_condense_avatar_without_did_key(runner, monkeypatch, settings_factory):
 
     result = runner.invoke(
         cli,
-        ["condense", "https://youtube.com/watch?v=ABCDEFGHIJK", "--video-gen-mode=avatar"],
+        ["condense", "https://youtube.com/watch?v=ABCDEFGHIJK", "--format=avatar"],
     )
 
     assert result.exit_code == 1
@@ -361,7 +361,7 @@ def test_condense_audio_only_embeds_thumbnail_cover_art(runner, monkeypatch, set
     monkeypatch.setattr(condense_module, "get_settings", lambda: settings)
     monkeypatch.setattr(condense_module, "CondenserPipeline", lambda s: pipeline)
 
-    result = runner.invoke(cli, ["condense", f"https://youtube.com/watch?v={video_id}", "--video-gen-mode=audio_only", "--voice=edge/ryan"])
+    result = runner.invoke(cli, ["condense", f"https://youtube.com/watch?v={video_id}", "--format=audio_only", "--voice=edge/ryan"])
     assert result.exit_code == 0
     _assert_mp3_has_cover_art_matching_thumbnail(mp3_path, thumbnail_path)
 

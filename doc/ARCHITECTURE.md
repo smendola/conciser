@@ -154,7 +154,7 @@ OpenAI API + ffmpeg (fallback)
 
 **Module**: `src/modules/video_generator.py`, `src/modules/compositor.py`
 
-Three modes, selected via `--video-gen-mode`:
+Three modes, selected via `--format`:
 
 | Mode         | Description                                      | Output           |
 | ------------ | ------------------------------------------------ | ---------------- |
@@ -239,7 +239,7 @@ mode only)
 | `--output`, `-o`         | auto         | Output file path                                   |
 | `--reduction`            | None         | Target reduction % (overrides aggressiveness)      |
 | `--resume/--no-resume`   | `--resume`   | Resume from existing intermediate files            |
-| `--video-gen-mode`       | `slideshow`  | `static`, `slideshow`, `avatar`, `audio_only`      |
+| `--format`               | `slideshow`  | `static`, `slideshow`, `avatar`, `audio_only`      |
 | `--voice`                | None         | Voice (e.g., `edge/ryan`, `en-GB-RyanNeural`)      |
 | `--tts-provider`         | `elevenlabs` | `elevenlabs` or `edge`                             |
 | `--slideshow-frames`     | auto         | Max frames for slideshow mode                      |
@@ -271,12 +271,12 @@ mode only)
 
 ```json
 {
-    "url": "https://youtu.be/...",
-    "aggressiveness": 5,
-    "voice": "en-GB-RyanNeural",
-    "speech_rate": "+10%",
-    "video_mode": "slideshow",
-    "prepend_intro": false
+  "url": "https://youtu.be/...",
+  "aggressiveness": 5,
+  "voice": "en-GB-RyanNeural",
+  "speech_rate": "+10%",
+  "video_mode": "slideshow",
+  "prepend_intro": false
 }
 ```
 

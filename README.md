@@ -52,7 +52,7 @@ Output file is saved to `output/` and opened automatically.
 nbj condense https://youtu.be/VIDEO_ID
 
 # Audio only (fastest — no video)
-nbj condense https://youtu.be/VIDEO_ID --video-gen-mode audio_only
+nbj condense https://youtu.be/VIDEO_ID --format audio_only
 
 # Choose a voice and speed
 nbj condense https://youtu.be/VIDEO_ID --voice en-US-AriaNeural --speech-rate "+20%"
@@ -76,7 +76,7 @@ nbj check
 | ------------------------ | ----------- | ----------------------------------------------------------- |
 | `--aggressiveness`, `-a` | `5`         | Condensing level 1–10                                       |
 | `--quality`, `-q`        | `1080p`     | Video quality: `720p`, `1080p`, `4k`                        |
-| `--video-gen-mode`       | `slideshow` | `slideshow`, `audio_only`, `static`, `avatar`               |
+| `--format`               | `slideshow` | `slideshow`, `audio_only`, `static`, `avatar`               |
 | `--voice`                | auto        | Edge voice (e.g., `en-GB-RyanNeural`) or `edge/ryan`        |
 | `--tts-provider`         | `edge`      | `edge` (free), `elevenlabs` (paid), or `azure` (paid, SSML) |
 | `--speech-rate`          | `+0%`       | TTS speed: `+50%` faster, `-25%` slower                     |

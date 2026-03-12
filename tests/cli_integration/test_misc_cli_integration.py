@@ -228,6 +228,10 @@ def test_init_success(runner, monkeypatch, settings_factory):
 
 def test_setup_cancel_existing_env(runner, tmp_path):
     with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        import os
+        from pathlib import Path
+
+        os.environ["NBJ_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         Path(".env").write_text("EXISTING=1\n", encoding="utf-8")
 
         result = runner.invoke(cli, ["setup"], input="n\n")
@@ -241,6 +245,10 @@ def test_setup_writes_env(runner, tmp_path):
     user_input = "openai\nanthropic\neleven\n\n"
 
     with runner.isolated_filesystem(temp_dir=str(tmp_path)):
+        import os
+        from pathlib import Path
+
+        os.environ["NBJ_PROJECT_ROOT"] = str(Path(__file__).resolve().parents[2])
         result = runner.invoke(cli, ["setup"], input=user_input)
 
         assert result.exit_code == 0

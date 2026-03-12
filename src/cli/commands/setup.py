@@ -1,10 +1,12 @@
 from pathlib import Path
+import os
 
 import click
 
 from colorama import Fore, Style
 
 from ..app import cli
+from ...utils.project_root import get_project_root
 
 
 @cli.command()
@@ -20,7 +22,10 @@ def setup():
 
     print("This wizard will help you configure API keys for Conciser.\n")
 
-    env_file = Path('.env')
+    if (os.environ.get("NBJ_PROJECT_ROOT") or "").strip():
+        env_file = Path('.env')
+    else:
+        env_file = get_project_root() / '.env'
 
     if env_file.exists():
         print(f"{Fore.YELLOW}.env file already exists.{Style.RESET_ALL}")
@@ -62,8 +67,8 @@ TEMP_DIR=./temp
 OUTPUT_DIR=./output
 """
 
-    logger.info("Writing configuration: .env")
-    with open('.env', 'w') as f:
+    logger.info(f"Writing configuration: {env_file}")
+    with open(env_file, 'w') as f:
         f.write(env_content)
 
     print(f"\n{Fore.GREEN}Setup complete! .env file created.{Style.RESET_ALL}")

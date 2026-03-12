@@ -44,10 +44,10 @@ from ..app import cli  # noqa: E402
     help='Resume from existing intermediate files (default: enabled, or RESUME env var)'
 )
 @click.option(
-    '--video-gen-mode',
-    type=click.Choice(['static', 'slideshow', 'avatar', 'audio_only']),
+    '--format',
+    type=click.Choice(['slideshow', 'audio_only', 'avatar']),
     default='slideshow',
-    help='Video generation mode: static (single frame), slideshow (scene-detected frames), avatar (expensive, D-ID), audio_only (MP3 output, fastest). Default: slideshow'
+    help='Video generation mode: slideshow (scene-detected frames), audio_only (MP3 output, fastest), avatar (expensive, D-ID). Default: slideshow'
 )
 @click.option(
     '--voice',
@@ -91,7 +91,7 @@ from ..app import cli  # noqa: E402
     default=False,
     help='Open the output file with xdg-open after completion'
 )
-def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress, xdg_open):
+def condense(url, aggressiveness, quality, output, resume, format, voice, tts_provider, slideshow_frames, speech_rate, prepend_intro, llm_progress, xdg_open):
     """
     Condense a video from URL.
 
@@ -105,11 +105,11 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
 
         nbj condense https://youtube.com/watch?v=... --reduction 60
 
-        nbj condense https://youtube.com/watch?v=... --video-gen-mode=static
+        nbj condense https://youtube.com/watch?v=... --format=static
 
-        nbj condense https://youtube.com/watch?v=... --video-gen-mode=slideshow
+        nbj condense https://youtube.com/watch?v=... --format=slideshow
 
-        nbj condense https://youtube.com/watch?v=... --video-gen-mode=avatar
+        nbj condense https://youtube.com/watch?v=... --format=avatar
 
         # Voice shortcuts (provider/voice format)
         nbj condense https://youtube.com/watch?v=... --voice=edge/ryan
@@ -168,7 +168,7 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
         print(f"URL: {url}")
         print(f"Aggressiveness: {aggressiveness}/10")
         print(f"Quality: {quality}")
-        print(f"Video Mode: {video_gen_mode}")
+        print(f"Video Mode: {format}")
 
         # Load settings first
         settings = get_settings()
@@ -283,9 +283,9 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
             click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
             sys.exit(1)
         # D-ID only required for avatar mode
-        if video_gen_mode == 'avatar' and not settings.did_api_key:
+        if format == 'avatar' and not settings.did_api_key:
             click.echo(f"{Fore.RED}Error: DID_API_KEY not set. Required for avatar mode.{Style.RESET_ALL}")
-            click.echo(f"{Fore.YELLOW}Hint: Use --video-gen-mode=static or --video-gen-mode=slideshow for lower cost alternatives.{Style.RESET_ALL}")
+            click.echo(f"{Fore.YELLOW}Hint: Use --format=static or --format=slideshow for lower cost alternatives.{Style.RESET_ALL}")
             sys.exit(1)
 
         # Initialize pipeline
@@ -307,7 +307,7 @@ def condense(url, aggressiveness, quality, output, resume, video_gen_mode, voice
             aggressiveness=aggressiveness,
             output_path=output_path,
             quality=quality,
-            video_gen_mode=video_gen_mode,
+            video_gen_mode=format,
             progress_callback=ProgressDisplay.show,
             resume=resume,
             skip_voice_clone=skip_voice_clone,

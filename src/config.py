@@ -5,15 +5,17 @@ from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .utils.project_root import get_project_root, resolve_env_file
+
 # Project root directory (where src/ and server/ are located)
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = get_project_root()
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file='.env',
+        env_file=str(resolve_env_file()),
         env_file_encoding='utf-8',
         case_sensitive=False,
         extra='ignore'
@@ -35,11 +37,11 @@ class Settings(BaseSettings):
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
     default_output_quality: str = Field(default="1080p")
     
-    # Use absolute paths anchored to project root (not relative to cwd)
-    # This ensures CLI and server use the same directories
-    temp_dir: Path = Field(default=PROJECT_ROOT / "temp")
-    data_dir: Path = Field(default=PROJECT_ROOT / "data")
-    output_dir: Path = Field(default=PROJECT_ROOT / "output")
+    # Paths: keep defaults relative in config, but resolve them relative to PROJECT_ROOT
+    # (never relative to the current working directory)
+    temp_dir: Path = Field(default=Path("./temp"))
+    data_dir: Path = Field(default=Path("./data"))
+    output_dir: Path = Field(default=Path("./output"))
 
     # Service preferences
     transcription_method: str = Field(default="chained", description="youtube (YouTube API only), whisper (Whisper only), or chained (try YouTube, fallback to Whisper)")
@@ -74,6 +76,20 @@ class Settings(BaseSettings):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+        root = PROJECT_ROOT
+
+        def _resolve_root_relative(p: Path) -> Path:
+            if p.is_absolute():
+                return p
+            return (root / p).resolve()
+
+        self.temp_dir = _resolve_root_relative(self.temp_dir)
+        self.data_dir = _resolve_root_relative(self.data_dir)
+        self.output_dir = _resolve_root_relative(self.output_dir)
+
+        if self.youtube_cookie_file:
+            self.youtube_cookie_file = str(_resolve_root_relative(Path(self.youtube_cookie_file)))
         # Create directories if they don't exist
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)

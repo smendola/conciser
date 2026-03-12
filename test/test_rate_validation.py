@@ -2,6 +2,7 @@
 """Test speech rate validation."""
 
 import re
+import pytest
 
 def validate_speech_rate(speech_rate):
     """Test the validation regex."""
@@ -13,31 +14,35 @@ def validate_speech_rate(speech_rate):
     else:
         return False, "Invalid format"
 
-# Test cases
-test_cases = [
-    ("+0%", True),
-    ("+25%", True),
-    ("-10%", True),
-    ("+100%", True),
-    ("-50%", True),
-    ("25%", False),      # Missing sign
-    ("+25", False),       # Missing %
-    ("+-25%", False),     # Double sign
-    ("+25.5%", False),    # Decimal
-    ("fast", False),      # Invalid
-    ("", False),          # Empty
-]
 
-print("Testing speech rate validation...\n")
+@pytest.mark.parametrize(
+    "rate,expected_valid",
+    [
+        ("+0%", True),
+        ("+25%", True),
+        ("-10%", True),
+        ("+100%", True),
+        ("-50%", True),
+        ("25%", False),
+        ("+25", False),
+        ("+-25%", False),
+        ("+25.5%", False),
+        ("fast", False),
+        ("", False),
+    ],
+)
+def test_validate_speech_rate(rate, expected_valid):
+    is_valid, _message = validate_speech_rate(rate)
+    assert is_valid == expected_valid
 
-for rate, expected_valid in test_cases:
-    is_valid, message = validate_speech_rate(rate)
 
-    if is_valid == expected_valid:
-        status = "✓ PASS"
-    else:
-        status = "❌ FAIL"
+def test_settings_paths_resolve_from_project_root_regardless_of_cwd(monkeypatch):
+    from src.config import get_settings
+    from src.utils.project_root import get_project_root
 
-    print(f"{status}: '{rate}' -> {is_valid} ({message})")
+    project_root = get_project_root()
+    monkeypatch.chdir(project_root / "server")
 
-print("\nValidation tests complete!")
+    s = get_settings()
+    assert s.temp_dir == (project_root / "temp").resolve()
+    assert s.output_dir == (project_root / "output").resolve()

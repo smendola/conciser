@@ -16,8 +16,10 @@ from flask import Flask, request, jsonify, send_file, render_template, send_from
 from urllib.parse import quote_plus
 from flask_cors import CORS
 
-# Add parent directory to path to import nbj modules
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.utils.project_root import get_project_root
+
+# Add project root to path to import nbj modules (independent of CWD)
+sys.path.insert(0, str(get_project_root()))
 
 # Initialize CLI logging for server output
 os.environ.setdefault('NBJ_LOG_STREAM', '0')
@@ -117,7 +119,7 @@ def _get_authorized_completed_job(job_id, client_id):
 def _resolve_output_path(output_file):
     output_path = Path(output_file)
     if not output_path.is_absolute():
-        output_path = Path(__file__).parent.parent / output_path
+        output_path = get_project_root() / output_path
     return output_path
 
 
@@ -241,7 +243,7 @@ def root_redirect():
 @app.route('/extension.zip')
 def download_extension():
     """Download the latest packaged Chrome extension."""
-    dist_dir = Path(__file__).parent.parent / 'dist'
+    dist_dir = get_project_root() / 'dist'
     files = list(dist_dir.glob('nbj-chrome-extension-*.zip'))
 
     unversioned = dist_dir / 'nbj-chrome-extension.zip'
@@ -264,7 +266,7 @@ def download_extension():
 @app.route('/android.apk')
 def download_android_apk():
     """Serve the latest Android APK for side-loading."""
-    dist_dir = Path(__file__).parent.parent / 'dist'
+    dist_dir = get_project_root() / 'dist'
     files = list(dist_dir.glob('nbj-condenser-*.apk'))
     if not files:
         return jsonify({'error': 'Android APK not found. Please download from desktop instead.'}), 404
@@ -593,7 +595,7 @@ def list_jobs():
         if job['output_file']:
             file_path = Path(job['output_file'])
             if not file_path.is_absolute():
-                file_path = Path(__file__).parent.parent / file_path
+                file_path = get_project_root() / file_path
             file_exists = file_path.exists()
             suffix = file_path.suffix.lower()
             if suffix == '.mp3':

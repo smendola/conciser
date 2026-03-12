@@ -14,6 +14,7 @@ import concurrent.futures
 from server.job_store import JobStore
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
+from src.utils.project_root import get_project_root
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +235,7 @@ class JobService:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            cwd=Path(__file__).parent.parent,
+            cwd=get_project_root(),
         )
 
         assert proc.stdout is not None

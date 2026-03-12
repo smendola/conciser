@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -14,6 +15,10 @@ def get_project_root(start: Path | None = None) -> Path:
     Raises:
         FileNotFoundError: if no marker is found when walking upward.
     """
+
+    env_override = (os.environ.get("NBJ_PROJECT_ROOT") or "").strip()
+    if env_override:
+        return Path(env_override).expanduser().resolve()
 
     if start is None:
         start = Path.cwd()

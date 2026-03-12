@@ -86,7 +86,7 @@ Total: **3–5 minutes** for a typical 10-minute video.
 ### Option B: Audio Only (fastest, MP3 output)
 
 ```bash
-nbj condense "https://youtube.com/watch?v=VIDEO_ID" --video-gen-mode audio_only
+nbj condense "https://youtube.com/watch?v=VIDEO_ID" --format audio_only
 ```
 
 No video generation step — just the condensed speech as an MP3. Total: **1–3
