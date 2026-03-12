@@ -316,6 +316,7 @@ class VideoDownloader:
                 output_filename = "source_video.%(ext)s"
 
             output_template = str(video_folder / output_filename)
+            thumbnail_template = str(video_folder / "thumbnail.%(ext)s")
 
             # If metadata_only, return early without downloading
             if metadata_only:
@@ -327,7 +328,7 @@ class VideoDownloader:
                         'ignoreconfig': True,
                         'skip_download': True,
                         'writethumbnail': True,
-                        'outtmpl': output_template,
+                        'outtmpl': thumbnail_template,
                         'extractor_args': {
                             'youtube': {
                                 'player_client': ['web', 'android'],
@@ -365,6 +366,23 @@ class VideoDownloader:
                 'ignoreconfig': True,
                 'extract_flat': False,
                 'writethumbnail': True,
+                'postprocessors': [
+                    {
+                        'key': 'FFmpegThumbnailsConvertor',
+                        'format': 'webp',
+                    }
+                ],
+                'postprocessor_args': [
+                    '-update', '1',
+                ],
+                'writesubtitles': False,
+                'writeautomaticsub': False,
+                'ignoreerrors': False,
+                'writethumbnail': True,
+                'outtmpl': {
+                    'default': output_template,
+                    'thumbnail': thumbnail_template,
+                },
                 'writesubtitles': False,
                 'writeautomaticsub': False,
                 'ignoreerrors': False,
@@ -387,8 +405,13 @@ class VideoDownloader:
                 # Find the actual downloaded file (yt-dlp may choose different format than expected)
                 # Look for source_video.* in the video folder
                 downloaded_files = list(video_folder.glob("source_video.*"))
-                # Filter out .webp thumbnail files
-                video_files = [f for f in downloaded_files if f.suffix.lower() not in ['.webp', '.jpg', '.png']]
+
+                # Filter out image thumbnails
+                video_files = [
+                    f
+                    for f in downloaded_files
+                    if f.suffix.lower() not in ['.webp', '.jpg', '.jpeg', '.png']
+                ]
 
                 if not video_files:
                     raise RuntimeError(f"Downloaded video not found in {video_folder}")
@@ -397,7 +420,11 @@ class VideoDownloader:
                 logger.info(f"Download completed: {video_path}")
                 
                 # Find and log thumbnail file
-                thumbnail_files = [f for f in downloaded_files if f.suffix.lower() in ['.webp', '.jpg', '.png']]
+                thumbnail_files = [
+                    f
+                    for f in video_folder.glob("thumbnail.*")
+                    if f.suffix.lower() in ['.webp', '.jpg', '.jpeg', '.png']
+                ]
                 if thumbnail_files:
                     thumbnail_path = thumbnail_files[0]
                     logger.info(f"Thumbnail saved to: {thumbnail_path}")

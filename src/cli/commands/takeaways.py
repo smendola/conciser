@@ -393,9 +393,15 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
             try:
                 thumb_candidates = [
                     p
-                    for p in video_folder.glob("source_video.*")
+                    for p in video_folder.glob("thumbnail.*")
                     if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
                 ]
+                if not thumb_candidates:
+                    thumb_candidates = [
+                        p
+                        for p in video_folder.glob("source_video.*")
+                        if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+                    ]
                 if thumb_candidates:
                     embed_cover_art_mp3(audio_path, thumb_candidates[0])
                     logger.info(f"Embedded cover art into MP3 from: {thumb_candidates[0]}")

@@ -12,9 +12,10 @@ import threading
 import subprocess
 from pathlib import Path
 from datetime import datetime
-from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for, Response
 from urllib.parse import quote_plus
 from flask_cors import CORS
+import requests
 
 from src.utils.project_root import get_project_root
 
@@ -125,12 +126,27 @@ def _resolve_output_path(output_file):
 
 def _youtube_thumbnail_url(youtube_url: str) -> str | None:
     try:
-        video_id = CondenserPipeline._extract_video_id(youtube_url)
+        import re
+        # Bare video ID (11 chars, YouTube-legal characters)
+        if re.fullmatch(r'[a-zA-Z0-9_-]{11}', youtube_url):
+            video_id = youtube_url
+        else:
+            patterns = [
+                r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})',
+                r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})',
+            ]
+            video_id = None
+            for pattern in patterns:
+                match = re.search(pattern, youtube_url)
+                if match:
+                    video_id = match.group(1)
+                    break
     except Exception:
         return None
+
     if not video_id:
         return None
-    return url_for('youtube_thumbnail', video_id=video_id, v=str(uuid.uuid4())[:8])
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
 
 def _cover_path_for_output(output_path: Path) -> Path:
@@ -195,6 +211,118 @@ def api_log():
     return jsonify({'ok': True})
 
 
+def _job_type_to_type(job_type: str) -> str:
+    jt = (job_type or '').strip().lower()
+    if jt in {'condense', 'takeaways'}:
+        return jt
+    return jt
+
+
+def _artifact_kind_from_suffix(suffix: str) -> str:
+    s = (suffix or '').lower()
+    if s == '.mp4':
+        return 'video'
+    if s == '.mp3':
+        return 'audio'
+    if s in {'.jpg', '.jpeg'}:
+        return 'image'
+    if s in {'.md', '.txt'}:
+        return 'text'
+    return 'file'
+
+
+def _artifact_mime_from_suffix(suffix: str) -> str:
+    s = (suffix or '').lower()
+    if s == '.mp4':
+        return 'video/mp4'
+    if s == '.mp3':
+        return 'audio/mpeg'
+    if s in {'.jpg', '.jpeg'}:
+        return 'image/jpeg'
+    if s == '.md':
+        return 'text/markdown'
+    if s == '.txt':
+        return 'text/plain'
+    return 'application/octet-stream'
+
+
+def _artifact_name_for_job(job: dict) -> str:
+    """Stable logical artifact names.
+
+    - condense: slideshow/mp4, audio/mp3 (when audio_only)
+    - takeaways: takeaways/md (or mp3 when format_type=audio)
+    """
+    jt = _job_type_to_type(job.get('job_type'))
+    params = job.get('params') or {}
+
+    if jt == 'takeaways':
+        return 'takeaways'
+
+    # condense
+    video_mode = (params.get('video_mode') or 'slideshow').strip().lower()
+    if video_mode == 'audio_only':
+        return 'audio'
+    return 'slideshow'
+
+
+def _artifact_ext_for_output_path(output_path: Path) -> str:
+    return (output_path.suffix or '').lstrip('.').lower()
+
+
+def _artifact_render_ext_for_output_path(output_path: Path) -> str:
+    """Render URLs always end in .html for now."""
+    return 'html'
+
+
+def _job_repr(job: dict) -> dict:
+    params = job.get('params') or {}
+    rep = {
+        'id': job.get('id'),
+        'type': _job_type_to_type(job.get('job_type')),
+        'url': job.get('url'),
+        'title': job.get('title'),
+        'status': job.get('status'),
+        'progress': job.get('progress') or None,
+        'params': params,
+        'error': job.get('error') or None,
+        'created_at': job.get('created_at'),
+        'completed_at': job.get('completed_at') or None,
+    }
+    if rep['status'] == 'queued':
+        pos = job_service.get_queue_position(job.get('id'))
+        if pos is not None:
+            rep['queue_position'] = pos
+    return rep
+
+
+def _artifact_repr(job: dict, output_path: Path) -> dict:
+    artifact_name = _artifact_name_for_job(job)
+    raw_ext = _artifact_ext_for_output_path(output_path)
+    render_ext = _artifact_render_ext_for_output_path(output_path)
+
+    return {
+        'name': artifact_name,
+        'ext': raw_ext,
+        'kind': _artifact_kind_from_suffix(output_path.suffix),
+        'mime': _artifact_mime_from_suffix(output_path.suffix),
+        'filename': output_path.name,
+        'raw_url': url_for('raw_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=raw_ext, cid=job.get('client_id')),
+        'render_url': url_for('render_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=render_ext, cid=job.get('client_id')),
+    }
+
+
+def _thumbnail_artifact_repr(job: dict) -> dict:
+    return {
+        'name': 'thumbnail',
+        'ext': 'jpg',
+        'kind': 'image',
+        'mime': 'image/jpeg',
+        'filename': 'thumbnail.jpg',
+        'raw_url': url_for('raw_thumbnail', job_id=job.get('id'), cid=job.get('client_id')),
+        'render_url': None,
+    }
+
+
 def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None):
     import markdown
 
@@ -226,6 +354,310 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
         youtube_url=youtube_url,
         channel_name=channel_name,
     )
+
+
+@app.route('/api/jobs', methods=['POST'])
+def api_create_job():
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    data = request.get_json(force=True, silent=True) or {}
+    job_type = (data.get('type') or '').strip().lower()
+    youtube_url = data.get('url')
+    params = data.get('params') or {}
+
+    if job_type not in {'condense', 'takeaways'}:
+        return jsonify({'error': 'Invalid type'}), 400
+    if not youtube_url:
+        return jsonify({'error': 'Missing url parameter'}), 400
+
+    title = fetch_video_title(youtube_url)
+    channel_name = fetch_channel_name(youtube_url)
+
+    job_id = job_service.create_job(
+        url=youtube_url,
+        job_type=job_type,
+        title=title,
+        channel_name=channel_name,
+        client_id=client_id,
+        params=params,
+    )
+
+    resp = jsonify({'id': job_id, 'status': 'queued', 'type': job_type, 'created_at': datetime.utcnow().isoformat() + 'Z'})
+    resp.status_code = 201
+    resp.headers['Location'] = f"/api/jobs/{job_id}"
+    return resp
+
+
+@app.route('/api/jobs', methods=['GET'])
+def api_list_jobs():
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    status = request.args.get('status')
+    job_type = request.args.get('type')
+    limit = request.args.get('limit')
+    limit_int = None
+    if limit:
+        try:
+            limit_int = int(limit)
+        except Exception:
+            return jsonify({'error': 'Invalid limit'}), 400
+
+    jobs = job_service.list_jobs(client_id=client_id, status=status, limit=limit_int)
+    if job_type:
+        jt = job_type.strip().lower()
+        jobs = [j for j in jobs if _job_type_to_type(j.get('job_type')) == jt]
+
+    return jsonify({'jobs': [_job_repr(j) for j in jobs]})
+
+
+@app.route('/api/jobs/<job_id>', methods=['GET'])
+def api_get_job(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('client_id') and job.get('client_id') != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    return jsonify(_job_repr(job))
+
+
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+def api_delete_job(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('client_id') and job.get('client_id') != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    ok = job_service.store.mark_deleted(job_id)
+    if not ok:
+        return jsonify({'error': 'Job not found'}), 404
+
+    return ('', 204)
+
+
+@app.route('/api/jobs/<job_id>/artifacts', methods=['GET'])
+def api_list_artifacts(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('client_id') and job.get('client_id') != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    if job.get('status') != 'completed' or not job.get('output_file'):
+        return jsonify({'error': 'Job not ready'}), 409
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    artifacts = [_artifact_repr(job, output_path)]
+
+    # Expose a stable thumbnail artifact if we can derive a YouTube thumbnail.
+    # This gives users/clients a URL like /raw/<job_id>/thumbnail.jpg
+    yt_thumb = _youtube_thumbnail_url(job.get('url') or '')
+    if yt_thumb:
+        artifacts.append(_thumbnail_artifact_repr(job))
+
+    return jsonify({'artifacts': artifacts})
+
+
+@app.route('/raw/<job_id>/<artifact_name>.<ext>', methods=['GET'])
+def raw_artifact(job_id: str, artifact_name: str, ext: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        error_message = 'Job not ready' if status_code == 409 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    expected_name = _artifact_name_for_job(job)
+    expected_ext = _artifact_ext_for_output_path(output_path)
+    if artifact_name != expected_name or ext.lower() != expected_ext:
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    return send_file(output_path, as_attachment=True, download_name=output_path.name)
+
+
+@app.route('/raw/<job_id>/thumbnail.jpg', methods=['GET'])
+def raw_thumbnail(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        error_message = 'Job not ready' if status_code == 409 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    thumb_url = _youtube_thumbnail_url(job.get('url') or '')
+    if not thumb_url:
+        return jsonify({'error': 'Thumbnail not available'}), 404
+
+    r = requests.get(thumb_url, timeout=10)
+    if r.status_code != 200:
+        return jsonify({'error': 'Thumbnail fetch failed'}), 502
+
+    return Response(r.content, mimetype='image/jpeg')
+
+
+@app.route('/render/<job_id>/<artifact_name>.<ext>', methods=['GET'])
+def render_artifact(job_id: str, artifact_name: str, ext: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        error_message = 'Job not ready' if status_code == 409 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    expected_name = _artifact_name_for_job(job)
+    if artifact_name != expected_name:
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    # We only support HTML render endpoints.
+    if ext.lower() != 'html':
+        return jsonify({'error': 'Unsupported render format'}), 400
+
+    suffix = output_path.suffix.lower()
+
+    if suffix == '.md':
+        try:
+            return _render_markdown_output(
+                job_id,
+                client_id,
+                output_path,
+                youtube_url=job.get('url'),
+                channel_name=job.get('channel_name'),
+            )
+        except Exception as e:
+            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for render: {suffix or "unknown"}'}), 400
+
+    media_kind = 'audio' if suffix == '.mp3' else 'video'
+    media_url = url_for('render_artifact_content', job_id=job_id, cid=client_id)
+    raw_url = url_for('raw_artifact', job_id=job_id, artifact_name=expected_name, ext=_artifact_ext_for_output_path(output_path), cid=client_id)
+
+    params = job.get('params') or {}
+    aggressiveness = params.get('aggressiveness')
+    voice = params.get('voice')
+    thumbnail_url = None
+    if media_kind == 'audio':
+        cover_path = _cover_path_for_output(output_path)
+        if cover_path.exists():
+            thumbnail_url = url_for('render_artifact_cover', job_id=job_id, cid=client_id, v=str(uuid.uuid4())[:8])
+        else:
+            # Use our own proxied thumbnail endpoint to avoid hotlink/CORS issues.
+            if _youtube_thumbnail_url(job.get('url') or ''):
+                thumbnail_url = url_for('raw_thumbnail', job_id=job_id, cid=client_id)
+
+    return render_template(
+        'media_player.html',
+        job_id=job_id,
+        video_title=job.get('title') or None,
+        channel_name=job.get('channel_name') or None,
+        aggressiveness=aggressiveness,
+        voice=voice,
+        thumbnail_url=thumbnail_url,
+        media_kind=media_kind,
+        media_url=media_url,
+        download_url=raw_url,
+        file_name=output_path.name,
+        youtube_url=job.get('url') or None,
+    )
+
+
+@app.route('/render/<job_id>/cover.jpg', methods=['GET'])
+def render_artifact_cover(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        error_message = 'Job not ready' if status_code == 409 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    if output_path.suffix.lower() != '.mp3':
+        return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
+
+    cover_path = _cover_path_for_output(output_path)
+    if not cover_path.exists():
+        return jsonify({'error': 'Cover image not found'}), 404
+
+    return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
+
+
+@app.route('/render/<job_id>/content', methods=['GET'])
+def render_artifact_content(job_id: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        error_message = 'Job not ready' if status_code == 409 else 'Job not found'
+        return jsonify({'error': error_message}), status_code
+
+    output_path = _resolve_output_path(job['output_file'])
+    if not output_path.exists():
+        return jsonify({'error': 'Output file not found'}), 404
+
+    suffix = output_path.suffix.lower()
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for content: {suffix or "unknown"}'}), 400
+
+    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    return send_file(output_path, as_attachment=False, mimetype=mimetype, download_name=output_path.name)
+
+
+@app.route('/api/health', methods=['GET'])
+def api_health():
+    running_jobs = job_service.get_running_jobs()
+    return jsonify({
+        'status': 'ok',
+        'busy': len(running_jobs) > 0,
+        'running_jobs': len(running_jobs),
+        'max_workers': job_service.max_workers
+    })
 
 
 @app.route('/start')
@@ -281,388 +713,6 @@ def download_android_apk():
         as_attachment=True,
         download_name=latest_file.name
     )
-
-
-@app.route('/api/condense', methods=['POST'])
-def condense():
-    """Submit a YouTube URL for processing."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    data = request.json
-    youtube_url = data.get('url')
-
-    if not youtube_url:
-        return jsonify({'error': 'Missing url parameter'}), 400
-
-    # Get optional parameters (with defaults)
-    aggressiveness = data.get('aggressiveness', 5)
-    settings = get_settings()
-    tts_provider = (data.get('tts_provider') or settings.tts_provider or 'edge').strip().lower()
-    voice = data.get('voice')
-    if not voice:
-        if tts_provider == 'elevenlabs':
-            return jsonify({'error': 'Missing voice parameter (required when tts_provider=elevenlabs)'}), 400
-        voice = 'en-GB-RyanNeural'
-    speech_rate = data.get('speech_rate', '+0%')  # Default to 1.0x
-    video_mode = data.get('video_mode', 'slideshow')  # slideshow, static, audio_only
-    prepend_intro = bool(data.get('prepend_intro', False))
-
-    # Log all received parameters
-    print(f"\n{'='*60}")
-    print(f"NEW CONDENSE REQUEST")
-    print(f"{'='*60}")
-    print(f"URL: {youtube_url}")
-    print(f"Aggressiveness: {aggressiveness}/10")
-    print(f"Voice: {voice}")
-    print(f"Speech Rate: {speech_rate}")
-    print(f"Video Mode: {video_mode}")
-    print(f"Prepend Intro: {prepend_intro}")
-    print(f"{'='*60}\n")
-
-    # Validate aggressiveness
-    if not isinstance(aggressiveness, int) or aggressiveness < 1 or aggressiveness > 10:
-        return jsonify({'error': 'aggressiveness must be between 1 and 10'}), 400
-
-    # Submit to JobService
-    title = fetch_video_title(youtube_url)
-    channel_name = fetch_channel_name(youtube_url)
-    params = {
-        'aggressiveness': aggressiveness,
-        'voice': voice,
-        'tts_provider': tts_provider,
-        'speech_rate': speech_rate,
-        'video_mode': video_mode,
-        'prepend_intro': prepend_intro,
-    }
-    job_id = job_service.create_job(
-        url=youtube_url,
-        job_type='condense',
-        title=title,
-        channel_name=channel_name,
-        client_id=client_id,
-        params=params,
-    )
-    return jsonify({
-        'job_id': job_id,
-        'status': 'queued',
-        'message': 'Processing started'
-    })
-
-
-@app.route('/api/takeaways', methods=['POST'])
-def takeaways():
-    """Extract takeaways from a YouTube video."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    data = request.json
-    youtube_url = data.get('url')
-
-    if not youtube_url:
-        return jsonify({'error': 'Missing url parameter'}), 400
-
-    # Get optional parameters
-    top = data.get('top')  # None for auto, or int (3, 5, 10, etc.)
-    format_type = data.get('format', 'text')  # text or audio
-    voice = data.get('voice', 'en-GB-RyanNeural') if format_type == 'audio' else None
-
-    # Log all received parameters
-    print(f"\n{'='*60}")
-    print(f"NEW TAKEAWAYS REQUEST")
-    print(f"{'='*60}")
-    print(f"URL: {youtube_url}")
-    print(f"Top: {top if top else 'auto'}")
-    print(f"Format: {format_type}")
-    if voice:
-        print(f"Voice: {voice}")
-    print(f"{'='*60}\n")
-
-    # Submit to JobService
-    title = fetch_video_title(youtube_url)
-    channel_name = fetch_channel_name(youtube_url)
-    params = {
-        'top': top,
-        'format_type': format_type,
-        'voice': voice,
-    }
-    job_id = job_service.create_job(
-        url=youtube_url,
-        job_type='takeaways',
-        title=title,
-        channel_name=channel_name,
-        client_id=client_id,
-        params=params,
-    )
-    return jsonify({
-        'job_id': job_id,
-        'status': 'queued',
-        'message': 'Takeaways extraction started'
-    })
-
-
-@app.route('/api/status/<job_id>', methods=['GET'])
-def status(job_id):
-    """Get status of a processing job."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    # Query JobService
-    job = job_service.get_job(job_id)
-    if not job:
-        return jsonify({'error': 'Job not found'}), 404
-
-    if job['client_id'] and job['client_id'] != client_id:
-        return jsonify({'error': 'Job not found'}), 404
-
-    response = {
-        'job_id': job['id'],
-        'status': job['status'],
-        'progress': job.get('progress') or None,
-        'created_at': job['created_at'],
-    }
-
-    if job['completed_at']:
-        response['completed_at'] = job['completed_at']
-
-    if job['status'] == 'completed' and job['output_file']:
-        download_url = f"/api/download/{job['id']}"
-        open_url = f"/api/open/{job['id']}"
-        if job['client_id']:
-            download_url += f"?cid={quote_plus(job['client_id'])}"
-            open_url += f"?cid={quote_plus(job['client_id'])}"
-        response['download_url'] = download_url
-        response['open_url'] = open_url
-
-    if job['error']:
-        response['error'] = job['error']
-
-    # Add queue position if queued
-    if job['status'] == 'queued':
-        position = job_service.get_queue_position(job_id)
-        if position is not None:
-            response['queue_position'] = position
-
-    return jsonify(response)
-
-
-@app.route('/api/download/<job_id>', methods=['GET'])
-def download(job_id):
-    """Download the processed output file."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    job, job_error = _get_authorized_completed_job(job_id, client_id)
-    if job_error:
-        status_code = 400 if job_error[1] == 400 else 404
-        error_message = 'Job not ready for download' if status_code == 400 else 'Job not found'
-        return jsonify({'error': error_message}), status_code
-
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    return send_file(
-        output_path,
-        as_attachment=True,
-        download_name=output_path.name
-    )
-
-
-@app.route('/api/open/<job_id>', methods=['GET'])
-def open_output(job_id):
-    """Open the processed output in a browser-friendly viewer."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    job, job_error = _get_authorized_completed_job(job_id, client_id)
-    if job_error:
-        status_code = 400 if job_error[1] == 400 else 404
-        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
-        return jsonify({'error': error_message}), status_code
-
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    suffix = output_path.suffix.lower()
-
-    if suffix == '.md':
-        try:
-            return _render_markdown_output(
-                job_id,
-                client_id,
-                output_path,
-                youtube_url=job.get('url'),
-                channel_name=job.get('channel_name')
-            )
-        except Exception as e:
-            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
-
-    if suffix not in {'.mp3', '.mp4'}:
-        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
-
-    media_kind = 'audio' if suffix == '.mp3' else 'video'
-    media_url = url_for('open_output_content', job_id=job_id, cid=client_id)
-    download_url = url_for('download', job_id=job_id, cid=client_id)
-
-    params = job.get('params') or {}
-    aggressiveness = params.get('aggressiveness')
-    voice = params.get('voice')
-    thumbnail_url = None
-    if media_kind == 'audio':
-        cover_path = _cover_path_for_output(output_path)
-        if cover_path.exists():
-            thumbnail_url = url_for('open_output_cover', job_id=job_id, cid=client_id, v=str(uuid.uuid4())[:8])
-        else:
-            thumbnail_url = _youtube_thumbnail_url(job.get('url') or '')
-
-    return render_template(
-        'media_player.html',
-        job_id=job_id,
-        video_title=job.get('title') or None,
-        channel_name=job.get('channel_name') or None,
-        aggressiveness=aggressiveness,
-        voice=voice,
-        thumbnail_url=thumbnail_url,
-        media_kind=media_kind,
-        media_url=media_url,
-        download_url=download_url,
-        file_name=output_path.name,
-        youtube_url=job.get('url') or None,
-    )
-
-
-@app.route('/api/open/<job_id>.jpg', methods=['GET'])
-def open_output_cover(job_id):
-    """Serve a standalone cover image alongside an MP3 output, if present."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    job, job_error = _get_authorized_completed_job(job_id, client_id)
-    if job_error:
-        status_code = 400 if job_error[1] == 400 else 404
-        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
-        return jsonify({'error': error_message}), status_code
-
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    if output_path.suffix.lower() != '.mp3':
-        return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
-
-    cover_path = _cover_path_for_output(output_path)
-    if not cover_path.exists():
-        return jsonify({'error': 'Cover image not found'}), 404
-
-    return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
-
-
-@app.route('/api/open/<job_id>/content', methods=['GET'])
-def open_output_content(job_id):
-    """Serve processed media inline for the browser player."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    job, job_error = _get_authorized_completed_job(job_id, client_id)
-    if job_error:
-        status_code = 400 if job_error[1] == 400 else 404
-        error_message = 'Job not ready to open' if status_code == 400 else 'Job not found'
-        return jsonify({'error': error_message}), status_code
-
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    suffix = output_path.suffix.lower()
-    if suffix not in {'.mp3', '.mp4'}:
-        return jsonify({'error': f'Unsupported file type for open: {suffix or "unknown"}'}), 400
-
-    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
-    return send_file(output_path, as_attachment=False, mimetype=mimetype, download_name=output_path.name)
-
-@app.route('/api/jobs', methods=['GET'])
-def list_jobs():
-    """List all jobs (for debugging)."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    jobs_list = []
-    for job in job_service.list_jobs(client_id=client_id):
-        # Check if output file exists
-        file_exists = False
-        output_format = None
-        if job['output_file']:
-            file_path = Path(job['output_file'])
-            if not file_path.is_absolute():
-                file_path = get_project_root() / file_path
-            file_exists = file_path.exists()
-            suffix = file_path.suffix.lower()
-            if suffix == '.mp3':
-                output_format = 'mp3'
-            elif suffix == '.mp4':
-                output_format = 'mp4'
-            elif suffix in {'.md', '.txt'}:
-                output_format = 'txt'
-
-        jobs_list.append({
-            'job_id': job['id'],
-            'url': job['url'],
-            'title': job.get('title'),
-            'status': job['status'],
-            'job_type': job['job_type'],
-            'file_exists': file_exists,
-            'created_at': job['created_at'],
-            'output_format': output_format,
-        })
-
-    running_jobs = job_service.get_running_jobs()
-    return jsonify({
-        'jobs': jobs_list,
-        'currently_processing': running_jobs
-    })
-
-
-@app.route('/api/jobs/<job_id>', methods=['DELETE'])
-def delete_job(job_id):
-    """Soft-delete a job. This does not delete any files."""
-    client_id, error_response = _client_id_response()
-    if error_response:
-        return error_response
-
-    job = job_service.get_job(job_id)
-    if not job:
-        return jsonify({'error': 'Job not found'}), 404
-
-    if job['client_id'] and job['client_id'] != client_id:
-        return jsonify({'error': 'Job not found'}), 404
-
-    ok = job_service.store.mark_deleted(job_id)
-    if not ok:
-        return jsonify({'error': 'Job not found'}), 404
-
-    return jsonify({'ok': True, 'job_id': job_id, 'status': 'deleted'})
-
-
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint."""
-    running_jobs = job_service.get_running_jobs()
-    return jsonify({
-        'status': 'ok',
-        'busy': len(running_jobs) > 0,
-        'running_jobs': len(running_jobs),
-        'max_workers': job_service.max_workers
-    })
 
 
 @app.route('/api/strategies', methods=['GET'])
@@ -790,16 +840,16 @@ def _print_startup_banner():
     print("  GET    /start            - Extension download & installation guide")
     print("  GET    /extension.zip    - Download Chrome extension bundle")
     print("  GET    /android.apk      - Download Android APK")
-    print("  POST   /api/condense     - Submit YouTube URL for condensation")
-    print("  POST   /api/takeaways    - Extract key takeaways from video")
-    print("  GET    /api/status/<id>  - Check job status")
-    print("  GET    /api/download/<id>- Download output file")
-    print("  GET    /api/open/<id>    - Open output in browser")
+    print("  POST   /api/jobs         - Create a job (condense/takeaways)")
+    print("  GET    /api/jobs         - List jobs")
+    print("  GET    /api/jobs/<id>    - Get job")
+    print("  DELETE /api/jobs/<id>    - Delete job")
+    print("  GET    /api/jobs/<id>/artifacts - List artifacts")
+    print("  GET    /raw/<job>/<artifact>.<ext>    - Download raw artifact")
+    print("  GET    /render/<job>/<artifact>.html  - Render artifact")
     print("  GET    /api/strategies   - Get aggressiveness strategies")
     print("  GET    /api/voices       - Get Edge TTS voices")
-    print("  GET    /api/jobs         - List all jobs")
-    print("  DELETE /api/jobs/<id>    - Soft-delete a job (no file deletion)")
-    print("  GET    /health           - Health check")
+    print("  GET    /api/health       - Health check")
     # print("\n👉 Share this link: http://conciser.603apps.net/start")
     print("\n" + "=" * 60 + "\n")
 

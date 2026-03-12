@@ -259,20 +259,25 @@ async function apiLog(event, data = {}) {
   return;
 }
 
-function buildDownloadUrl(jobId) {
-  let url = `${serverUrl}/api/download/${jobId}`;
-  if (clientId) {
-    url += `?cid=${encodeURIComponent(clientId)}`;
+async function fetchArtifacts(jobId) {
+  const response = await fetchWithAuth(`${serverUrl}/api/jobs/${jobId}/artifacts`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = (data && data.error) ? data.error : `Failed to fetch artifacts (${response.status})`;
+    throw new Error(msg);
   }
-  return url;
+  return data;
 }
 
-function buildOpenUrl(jobId) {
-  let url = `${serverUrl}/api/open/${jobId}`;
-  if (clientId) {
-    url += `?cid=${encodeURIComponent(clientId)}`;
+async function openJobInNewTab(jobId) {
+  const data = await fetchArtifacts(jobId);
+  const artifacts = (data && Array.isArray(data.artifacts)) ? data.artifacts : [];
+  const artifact = artifacts[0];
+  const renderUrl = artifact ? toServerAbsoluteUrl(artifact.render_url) : null;
+  if (!renderUrl) {
+    throw new Error('No render_url available');
   }
-  return url;
+  chrome.tabs.create({ url: renderUrl });
 }
 
 async function deleteJob(jobId) {
@@ -287,7 +292,7 @@ async function deleteJob(jobId) {
     }
     throw new Error(message);
   }
-  return response.json().catch(() => ({}));
+  return {};
 }
 
 function getRecentJobBadge(outputFormat, jobType) {
@@ -418,13 +423,14 @@ async function loadRecentJobs() {
     }
     const data = await response.json();
 
-    // Filter completed jobs that have files
-    const condenseJobs = data.jobs.filter(job =>
-      job.status === 'completed' && job.file_exists && job.job_type === 'condense'
-    ).slice(0, 5);  // Show max 5 recent
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
 
-    const takeawaysJobs = data.jobs.filter(job =>
-      job.status === 'completed' && job.file_exists && job.job_type === 'takeaways'
+    const condenseJobs = jobs.filter(job =>
+      job.status === 'completed' && job.type === 'condense'
+    ).slice(0, 5);
+
+    const takeawaysJobs = jobs.filter(job =>
+      job.status === 'completed' && job.type === 'takeaways'
     ).slice(0, 5);
 
     const renderJobs = (container, list, jobs) => {
@@ -433,20 +439,19 @@ async function loadRecentJobs() {
           const date = new Date(job.created_at);
           const dateStr = date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-          const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.job_id;
+          const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.id;
           const displayTitle = job.title || videoId;
 
-          const format = job.output_format || (job.job_type === 'condense' ? 'mp4' : 'txt');
-          const { badgeClass, badgeText } = getRecentJobBadge(format, job.job_type);
+          const { badgeClass, badgeText } = getRecentJobBadge('unknown', job.type);
 
           const jobHtml = `
-            <div class="recent-job" data-job-id="${job.job_id}">
+            <div class="recent-job" data-job-id="${job.id}">
               <div class="recent-job-badge ${badgeClass}">${badgeText}</div>
               <div class="recent-job-details">
                 <div class="recent-job-title">${displayTitle}</div>
                 <div class="recent-job-timestamp">${dateStr}</div>
               </div>
-              <button class="recent-job-delete" data-job-id="${job.job_id}" aria-label="Delete">×</button>
+              <button class="recent-job-delete" data-job-id="${job.id}" aria-label="Delete">×</button>
             </div>
           `;
           const dividerHtml = index < jobs.length - 1 ? '<div class="recent-job-divider"></div>' : '';
@@ -459,7 +464,7 @@ async function loadRecentJobs() {
         list.querySelectorAll('.recent-job').forEach(el => {
           el.addEventListener('click', () => {
             const jobId = el.getAttribute('data-job-id');
-            chrome.tabs.create({ url: buildOpenUrl(jobId) });
+            openJobInNewTab(jobId).catch(err => console.error(err));
           });
         });
 
@@ -805,25 +810,28 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
     const videoMode = document.getElementById('videoModeSelect').value;
     const prependIntro = document.getElementById('prependIntroCheck').checked;
 
-    const response = await fetchWithAuth(`${serverUrl}/api/condense`, {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        type: 'condense',
         url: currentUrl,
-        aggressiveness: aggressiveness,
-        voice: voice,
-        speech_rate: speechRate,
-        video_mode: videoMode,
-        prepend_intro: prependIntro
+        params: {
+          aggressiveness: aggressiveness,
+          voice: voice,
+          speech_rate: speechRate,
+          video_mode: videoMode,
+          prepend_intro: prependIntro
+        }
       })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      currentJobId = data.job_id;
+      currentJobId = data.id;
 
       // Clear any previous completed job for this URL
       const storage = await chrome.storage.local.get(['completedJobs']);
@@ -873,7 +881,7 @@ function startPolling() {
 
 async function checkStatus() {
   try {
-    const response = await fetchWithAuth(`${serverUrl}/api/status/${currentJobId}`);
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
 
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
@@ -895,7 +903,7 @@ async function checkStatus() {
     if (data.status === 'completed') {
       clearInterval(pollInterval);
       await saveCompletedJob();
-      showCompleted(data);
+      showCompleted({ job_id: currentJobId });
     } else if (data.status === 'error') {
       clearInterval(pollInterval);
       await clearJobStorage();
@@ -944,7 +952,7 @@ function showCompleted(data) {
   `;
 
   document.getElementById('downloadBtn').addEventListener('click', () => {
-    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentJobId)) });
+    openJobInNewTab(currentJobId).catch(err => console.error(err));
   });
 }
 
@@ -969,31 +977,34 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
     const format = formatRadio.value;
     const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
 
-    const payload = {
-      url: currentUrl,
-      format: format
+    const params = {
+      format_type: format
     };
 
     if (top !== null) {
-      payload.top = top;
+      params.top = top;
     }
 
     if (voice) {
-      payload.voice = voice;
+      params.voice = voice;
     }
 
-    const response = await fetchWithAuth(`${serverUrl}/api/takeaways`, {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        type: 'takeaways',
+        url: currentUrl,
+        params
+      })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      currentTakeawaysJobId = data.job_id;
+      currentTakeawaysJobId = data.id;
 
       // Clear any previous completed takeaways for this URL
       const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
@@ -1043,7 +1054,7 @@ function startTakeawaysPolling() {
 
 async function checkTakeawaysStatus() {
   try {
-    const response = await fetchWithAuth(`${serverUrl}/api/status/${currentTakeawaysJobId}`);
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
 
     // If job returns 404, forget it ever existed
     if (response.status === 404) {
@@ -1065,7 +1076,7 @@ async function checkTakeawaysStatus() {
     if (data.status === 'completed') {
       clearInterval(takeawaysPollInterval);
       await saveTakeawaysCompletedJob();
-      showTakeawaysCompleted(data);
+      showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
     } else if (data.status === 'error') {
       clearInterval(takeawaysPollInterval);
       await clearTakeawaysJobStorage();
@@ -1114,7 +1125,7 @@ function showTakeawaysCompleted(data) {
   `;
 
   document.getElementById('downloadTakeawaysBtn').addEventListener('click', async () => {
-    chrome.tabs.create({ url: toServerAbsoluteUrl(data.open_url || buildOpenUrl(currentTakeawaysJobId)) });
+    openJobInNewTab(currentTakeawaysJobId).catch(err => console.error(err));
   });
 }
 

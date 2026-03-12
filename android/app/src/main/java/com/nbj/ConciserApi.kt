@@ -15,43 +15,45 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
-data class CondenseRequest(
+data class CreateJobRequest(
+    val type: String,
     val url: String,
-    val aggressiveness: Int = 5,
-    val voice: String = "",
-    val speech_rate: String = "+10%",
-    val video_mode: String = "slideshow",
-    val prepend_intro: Boolean = false
+    val params: Map<String, Any?> = emptyMap()
 )
 
-data class CondenseResponse(
-    val job_id: String,
+data class CreateJobResponse(
+    val id: String,
     val status: String,
-    val message: String
+    val type: String,
+    val created_at: String? = null
 )
 
-data class TakeawaysRequest(
+data class JobResponse(
+    val id: String,
+    val type: String,
     val url: String,
-    val top: Int? = null,  // null = auto
-    val format: String = "text",  // "text" or "audio"
-    val voice: String? = null  // only used if format="audio"
-)
-
-data class TakeawaysResponse(
-    val job_id: String,
-    val status: String,
-    val message: String
-)
-
-data class StatusResponse(
-    val job_id: String,
+    val title: String? = null,
     val status: String,
     val progress: String? = null,
-    val open_url: String? = null,
-    val download_url: String? = null,
+    val queue_position: Int? = null,
+    val params: Map<String, Any?>? = null,
     val error: String? = null,
     val created_at: String? = null,
     val completed_at: String? = null
+)
+
+data class ArtifactItem(
+    val name: String,
+    val ext: String,
+    val kind: String? = null,
+    val mime: String? = null,
+    val filename: String? = null,
+    val raw_url: String,
+    val render_url: String? = null,
+)
+
+data class ArtifactsResponse(
+    val artifacts: List<ArtifactItem>
 )
 
 data class VoiceItem(
@@ -76,14 +78,14 @@ data class StrategiesResponse(
 )
 
 interface ConciserApiService {
-    @POST("api/condense")
-    suspend fun condenseVideo(@Body request: CondenseRequest): CondenseResponse
+    @POST("api/jobs")
+    suspend fun createJob(@Body request: CreateJobRequest): CreateJobResponse
 
-    @POST("api/takeaways")
-    suspend fun extractTakeaways(@Body request: TakeawaysRequest): TakeawaysResponse
+    @GET("api/jobs/{jobId}")
+    suspend fun getJob(@Path("jobId") jobId: String): JobResponse
 
-    @GET("api/status/{jobId}")
-    suspend fun getStatus(@Path("jobId") jobId: String): StatusResponse
+    @GET("api/jobs/{jobId}/artifacts")
+    suspend fun getArtifacts(@Path("jobId") jobId: String): ArtifactsResponse
 
     @GET("api/voices")
     suspend fun getVoices(@Query("locale") locale: String): VoicesResponse
@@ -99,18 +101,7 @@ interface ConciserApiService {
 }
 
 data class JobsResponse(
-    val jobs: List<JobSummary>,
-    val currently_processing: String?
-)
-
-data class JobSummary(
-    val job_id: String,
-    val url: String,
-    val title: String?,
-    val status: String,
-    val job_type: String,
-    val file_exists: Boolean,
-    val created_at: String
+    val jobs: List<JobResponse>
 )
 
 data class OEmbedResponse(val title: String)
@@ -181,16 +172,6 @@ object ConciserApi {
         } catch (e: Exception) {
             true
         }
-    }
-
-    fun getFullDownloadUrl(baseUrl: String, jobId: String, clientId: String? = null): String {
-        val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        val cidParam = clientId?.takeIf { it.isNotBlank() }?.let { "?cid=${Uri.encode(it)}" } ?: ""
-        return "${base}api/download/$jobId$cidParam"
-    }
-
-    fun getFullOpenUrl(baseUrl: String, jobId: String, clientId: String): String {
-        return "$baseUrl/api/open/$jobId?cid=${java.net.URLEncoder.encode(clientId, "UTF-8")}";
     }
 
     fun getFullDeleteUrl(baseUrl: String, jobId: String): String {

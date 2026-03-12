@@ -399,7 +399,7 @@ class CondenserPipeline:
                 logger.info(f"Audio-only output saved to: {final_path}")
                 thumb_candidates = [
                     p
-                    for p in video_folder.glob("source_video.*")
+                    for p in video_folder.glob("thumbnail.*")
                     if p.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']
                 ]
                 if thumb_candidates:

@@ -68,6 +68,13 @@ E.g.
    This system does one thing well.
    It makes everything faster.
 
+Express numbers with units with the fully spelled out unit name, e.g.
+
+**BAD**: 4.5 MB
+**GOOD**: 4.5 megabytes
+**BAD**: 100 ms
+**GOOD**: 100 milliseconds
+
 The newlines are meaningful to the TTS engine. Use them judiciously to improve the prosody of the output.
 
 **What can always be CUT:**
@@ -289,6 +296,13 @@ Requirements:
 - Do not add new content
 - Output valid SSML only
 - Output must be a single SSML document wrapped in <speak>...</speak>.
+
+Express numbers with units with the fully spelled out unit name, e.g.
+
+**BAD**: 4.5 MB
+**GOOD**: 4.5 megabytes
+**BAD**: 100 ms
+**GOOD**: 100 milliseconds
 """
 
 EXTRACT_TAKEAWAYS_PROMPT_BASE = """
