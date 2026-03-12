@@ -195,7 +195,7 @@ def api_log():
     return jsonify({'ok': True})
 
 
-def _render_markdown_output(job_id, client_id, output_path):
+def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None):
     import markdown
 
     md_content = output_path.read_text(encoding='utf-8')
@@ -223,6 +223,8 @@ def _render_markdown_output(job_id, client_id, output_path):
         page_title=page_title,
         html_content=html_content,
         client_id=client_id,
+        youtube_url=youtube_url,
+        channel_name=channel_name,
     )
 
 
@@ -492,7 +494,13 @@ def open_output(job_id):
 
     if suffix == '.md':
         try:
-            return _render_markdown_output(job_id, client_id, output_path)
+            return _render_markdown_output(
+                job_id,
+                client_id,
+                output_path,
+                youtube_url=job.get('url'),
+                channel_name=job.get('channel_name')
+            )
         except Exception as e:
             return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
 
@@ -526,6 +534,7 @@ def open_output(job_id):
         media_url=media_url,
         download_url=download_url,
         file_name=output_path.name,
+        youtube_url=job.get('url') or None,
     )
 
 

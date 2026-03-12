@@ -20,6 +20,9 @@
                 {% if voice %}
                 | Voice: {{ voice }}
                 {% endif %}
+                {% if youtube_url %}
+                | <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer" style="color: #4a9eff;">Watch on YouTube</a>
+                {% endif %}
             </div>
         </div>
 

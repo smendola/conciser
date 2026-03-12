@@ -39,6 +39,15 @@ body {
     opacity: 0.8;
 }
 
+.header .job-id a {
+    color: white;
+    text-decoration: none;
+}
+
+.header .job-id a:hover {
+    text-decoration: underline;
+}
+
 .content {
     padding: 60px;
     font-size: 19px;
