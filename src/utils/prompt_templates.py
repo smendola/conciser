@@ -296,6 +296,7 @@ Requirements:
 - Do not add new content
 - Output valid SSML only
 - Output must be a single SSML document wrapped in <speak>...</speak>.
+- Do not include a <voice> tag or any voice name/voice ID. Voice selection is handled separately.
 
 Express numbers with units with the fully spelled out unit name, e.g.
 
