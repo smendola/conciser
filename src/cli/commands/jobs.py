@@ -103,8 +103,8 @@ def jobs(status, client_id, limit):
                 args.extend(status_list)
             
         if client_id:
-            query += " AND client_id = ?"
-            args.append(client_id)
+            query += " AND client_id LIKE ?"
+            args.append(f"{client_id}%")
             
         query += " ORDER BY created_at DESC LIMIT ?"
         args.append(limit)
