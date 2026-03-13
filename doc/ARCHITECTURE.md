@@ -282,9 +282,10 @@ mode only)
 
 ### Concurrency Model
 
-- Processes **one job at a time** (single background thread)
-- Returns HTTP 429 if another job is already running
-- Jobs stored in-memory (lost on server restart)
+- up to n jobs can be queued and processed concurrently
+- job info persisted to sqlite
+- each installed user (client) has a unique identifier and can only access their
+  own jobs
 
 ---
 
