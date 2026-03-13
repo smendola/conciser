@@ -13,12 +13,18 @@ import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.MotionEvent
 import android.view.Menu
 import android.view.MenuItem
+import android.view.Gravity
+import android.graphics.Color
 import android.view.View
+import android.util.TypedValue
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -43,6 +49,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TreeSet
 import kotlin.math.roundToInt
+import kotlin.math.abs
 import io.sentry.Sentry
 import io.sentry.SentryLevel
 
@@ -62,6 +69,179 @@ class MainActivity : AppCompatActivity() {
             BuildConfig.SENTRY_VERBOSE_LANG_VOICE_LOGGING
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private data class RecentJobBadge(val badgeText: String, val bgColor: Int)
+
+    private fun getRecentJobBadge(job: JobResponse): RecentJobBadge {
+        val params = job.params ?: emptyMap()
+        val outputFormat = (params["output_format"] ?: params["outputFormat"] ?: "").toString().trim().lowercase(Locale.US)
+        val jobType = job.type.trim().lowercase(Locale.US)
+
+        if (outputFormat == "audio" || outputFormat == "mp3") {
+            return RecentJobBadge("MP3", 0xFF28a745.toInt())
+        }
+        if (outputFormat == "text" || outputFormat == "txt" || outputFormat == "markdown" || outputFormat == "md") {
+            return RecentJobBadge("TXT", 0xFF212121.toInt())
+        }
+        if (outputFormat == "video" || outputFormat == "mp4") {
+            return RecentJobBadge("MP4", 0xFF1a73e8.toInt())
+        }
+        if (jobType == "takeaways") {
+            return RecentJobBadge("TXT", 0xFF212121.toInt())
+        }
+        return RecentJobBadge("MP4", 0xFF1a73e8.toInt())
+    }
+
+    private fun getRecentJobDisplayTitle(job: JobResponse): String {
+        val title = job.title?.trim().orEmpty()
+        if (title.isNotBlank()) return title
+        val url = job.url
+        val videoId = Regex("""[?&]v=([^&]+)""").find(url)?.groupValues?.getOrNull(1)
+        return videoId ?: job.id
+    }
+
+    private fun attachSwipeToDelete(row: View, job: JobResponse, serverUrl: String) {
+        val dp = resources.displayMetrics.density
+        var startX = 0f
+        var startY = 0f
+        var swiping = false
+
+        // Red background + white trash icon, revealed behind the swiped row.
+        val parent = row.parent as? LinearLayout
+        val idx = parent?.indexOfChild(row) ?: -1
+        val deleteBg = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#d32f2f"))
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
+            )
+            visibility = View.GONE
+        }
+        val trash = ImageView(this).apply {
+            setImageResource(android.R.drawable.ic_menu_delete)
+            setColorFilter(Color.WHITE)
+        }
+        val trashLp = LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt()).apply {
+            marginStart = (16 * dp).toInt()
+            marginEnd = (16 * dp).toInt()
+        }
+        deleteBg.addView(trash, trashLp)
+
+        if (parent != null && idx >= 0) {
+            // Place background directly under the row so it shows through as the row translates.
+            parent.addView(deleteBg, idx)
+        }
+
+        row.setOnTouchListener { v, ev ->
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = ev.rawX
+                    startY = ev.rawY
+                    swiping = false
+                    v.translationX = 0f
+                    deleteBg.visibility = View.GONE
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = ev.rawX - startX
+                    val dy = ev.rawY - startY
+                    if (!swiping) {
+                        if (abs(dx) > (8 * dp) && abs(dx) > abs(dy) * 1.5f) {
+                            swiping = true
+                            v.parent?.requestDisallowInterceptTouchEvent(true)
+                        }
+                    }
+                    if (swiping) {
+                        // Reveal delete bg and position icon opposite swipe direction.
+                        deleteBg.visibility = View.VISIBLE
+                        deleteBg.gravity = if (dx > 0) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
+                        v.translationX = dx
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (!swiping) return@setOnTouchListener false
+                    val dx = ev.rawX - startX
+                    val commitThresholdPx = v.width * 0.40f
+                    if (abs(dx) >= commitThresholdPx) {
+                        val dir = if (dx > 0) 1f else -1f
+                        v.animate().translationX(dir * v.width.toFloat()).setDuration(120).withEndAction {
+                            // Remove immediately with collapse animation so remaining rows slide up.
+                            collapseAndRemoveRecentRow(row, deleteBg)
+                            // Fire-and-forget server delete.
+                            deleteRecentServerJob(job.id, serverUrl)
+                        }.start()
+                    } else {
+                        v.animate().translationX(0f).setDuration(120).start()
+                        deleteBg.visibility = View.GONE
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun collapseAndRemoveRecentRow(row: View, bg: View) {
+        val parent = row.parent as? LinearLayout
+        if (parent == null) return
+
+        // Remove the divider after the row if present.
+        val rowIndex = parent.indexOfChild(row)
+        val divider = parent.getChildAt(rowIndex + 1)
+        val shouldRemoveDivider = divider != null && divider is View && divider.layoutParams?.height == (1 * resources.displayMetrics.density).toInt()
+
+        fun animateCollapse(v: View, onEnd: () -> Unit) {
+            val initialHeight = v.height
+            if (initialHeight <= 0) {
+                onEnd()
+                return
+            }
+            val anim = android.animation.ValueAnimator.ofInt(initialHeight, 0)
+            anim.duration = 150
+            anim.addUpdateListener { va ->
+                val lp = v.layoutParams
+                lp.height = va.animatedValue as Int
+                v.layoutParams = lp
+            }
+            anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    onEnd()
+                }
+            })
+            anim.start()
+        }
+
+        animateCollapse(row) {
+            parent.removeView(row)
+        }
+        if (shouldRemoveDivider) {
+            animateCollapse(divider) {
+                parent.removeView(divider)
+            }
+        }
+        // Remove the background container we inserted under the row.
+        parent.removeView(bg)
+    }
+
+    private fun deleteRecentServerJob(jobId: String, serverUrl: String) {
+        lifecycleScope.launch {
+            try {
+                val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+                withContext(Dispatchers.IO) {
+                    api.deleteJob(jobId)
+                }
+            } catch (e: Exception) {
+                Sentry.captureException(e)
+            } finally {
+                refreshRecentJobsUI()
+            }
         }
     }
 
@@ -448,9 +628,6 @@ class MainActivity : AppCompatActivity() {
     // Takeaways mode
     private var appMode: String = "condense" // "condense" or "takeaways"
     private val takeawaysTopValues = listOf("3", "5", "10", "auto")
-    private val takeawaysTopLabels = listOf("Top 3", "Top 5", "Top 10", "Auto")
-    private val takeawaysFormatValues = listOf("text", "audio")
-    private val takeawaysFormatLabels = listOf("Text", "Audio")
     private val prefsName = "nbj_prefs"
 
     private val KEY_CONDENSE_LOCALE = "condense_locale"
@@ -574,7 +751,8 @@ class MainActivity : AppCompatActivity() {
                 // progress is 0..110 representing 0.00x..1.10x? Existing UI expects 1.10x default.
                 // Keep compatible: store float in [0.00, 2.10] would be weird; instead map 0..110 to 0.0..2.10 is unknown.
                 // Use simple mapping to [0.50, 1.60] with 1.10 at 60.
-                val speed = 0.50f + (progress / 100f) * 1.10f
+                val rawSpeed = 0.50f + (progress / 100f) * 1.10f
+                val speed = (rawSpeed / 0.05f).roundToInt() * 0.05f
                 binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", speed)
                 if (!fromUser) return
                 if (suppressAutoSave || restoringVoiceSelections) return
@@ -592,50 +770,93 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Video mode (condense)
-        val videoModeAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, videoModeLabels)
-        videoModeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerVideoMode.adapter = videoModeAdapter
-        binding.spinnerVideoMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val value = videoModeValues.getOrNull(position) ?: return
-                if (suppressAutoSave || restoringVoiceSelections) return
-                prefs.edit().putString("video_mode", value).apply()
+        binding.toggleVideoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val value = when (checkedId) {
+                binding.btnVideoModeAudioOnly.id -> "audio_only"
+                binding.btnVideoModeSlideshow.id -> "slideshow"
+                else -> "slideshow"
             }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
+            prefs.edit().putString("video_mode", value).apply()
         }
 
-        // Takeaways spinners
-        val topAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysTopLabels)
-        topAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerTakeawaysTop.adapter = topAdapter
-        binding.spinnerTakeawaysTop.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val value = takeawaysTopValues.getOrNull(position) ?: return
-                if (suppressAutoSave || restoringVoiceSelections) return
-                prefs.edit().putString("takeaways_top", value).apply()
-            }
+        // Restore saved video mode selection
+        suppressAutoSave = true
+        val savedVideoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
+        when (savedVideoMode) {
+            "audio_only" -> binding.toggleVideoMode.check(binding.btnVideoModeAudioOnly.id)
+            else -> binding.toggleVideoMode.check(binding.btnVideoModeSlideshow.id)
+        }
+        suppressAutoSave = false
 
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        // Takeaways controls (buttons)
+        fun updateTakeawaysVoiceVisibility(formatValue: String) {
+            binding.layoutTakeawaysVoice.isVisible = (formatValue == "audio")
         }
 
-        val fmtAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, takeawaysFormatLabels)
-        fmtAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerTakeawaysFormat.adapter = fmtAdapter
-        binding.spinnerTakeawaysFormat.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (suppressAutoSave || restoringVoiceSelections) return
-                // Show/hide voice controls based on whether audio is selected.
-                val formatValue = takeawaysFormatValues.getOrNull(position) ?: "text"
-                binding.layoutTakeawaysVoice.isVisible = (formatValue == "audio")
-                prefs.edit().putString(KEY_TAKEAWAYS_FORMAT, formatValue).apply()
-                lifecycleScope.launch {
-                    apiLog(getServerUrl(), "takeaways_format_changed", mapOf("value" to formatValue))
-                }
+        fun readTakeawaysTopValueFromUI(): String {
+            return when (binding.toggleTakeawaysTop.checkedButtonId) {
+                binding.btnTakeawaysTop3.id -> "3"
+                binding.btnTakeawaysTop5.id -> "5"
+                binding.btnTakeawaysTop10.id -> "10"
+                binding.btnTakeawaysTopAuto.id -> "auto"
+                else -> "auto"
             }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+
+        fun readTakeawaysFormatValueFromUI(): String {
+            return when (binding.toggleTakeawaysFormat.checkedButtonId) {
+                binding.btnTakeawaysFormatAudio.id -> "audio"
+                binding.btnTakeawaysFormatText.id -> "text"
+                else -> "text"
+            }
+        }
+
+        binding.toggleTakeawaysTop.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
+            val value = when (checkedId) {
+                binding.btnTakeawaysTop3.id -> "3"
+                binding.btnTakeawaysTop5.id -> "5"
+                binding.btnTakeawaysTop10.id -> "10"
+                binding.btnTakeawaysTopAuto.id -> "auto"
+                else -> "auto"
+            }
+            prefs.edit().putString("takeaways_top", value).apply()
+        }
+
+        binding.toggleTakeawaysFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            val formatValue = when (checkedId) {
+                binding.btnTakeawaysFormatAudio.id -> "audio"
+                binding.btnTakeawaysFormatText.id -> "text"
+                else -> "text"
+            }
+            updateTakeawaysVoiceVisibility(formatValue)
+            if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
+            prefs.edit().putString(KEY_TAKEAWAYS_FORMAT, formatValue).apply()
+            lifecycleScope.launch {
+                apiLog(getServerUrl(), "takeaways_format_changed", mapOf("value" to formatValue))
+            }
+        }
+
+        // Restore saved takeaways selections
+        suppressAutoSave = true
+        val savedTop = prefs.getString("takeaways_top", "auto") ?: "auto"
+        when (savedTop) {
+            "3" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop3.id)
+            "5" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop5.id)
+            "10" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop10.id)
+            else -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTopAuto.id)
+        }
+        val savedFormat = prefs.getString(KEY_TAKEAWAYS_FORMAT, "text") ?: "text"
+        when (savedFormat) {
+            "audio" -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatAudio.id)
+            else -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatText.id)
+        }
+        updateTakeawaysVoiceVisibility(savedFormat)
+        suppressAutoSave = false
 
         // Persist voice selection changes.
         val voiceListener = object : AdapterView.OnItemSelectedListener {
@@ -821,25 +1042,34 @@ class MainActivity : AppCompatActivity() {
             binding.tvAggressivenessValue.text = aggressiveness.toString()
 
             val speechSpeed = prefsGetFloatLogged(prefs, "speech_speed", 1.00f, "loadSettingsToUI")
-            binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", speechSpeed)
+            val quantSpeechSpeed = (speechSpeed / 0.05f).roundToInt() * 0.05f
+            binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", quantSpeechSpeed)
             // Map back to progress using the same mapping used in listener.
-            val p = (((speechSpeed - 0.50f) / 1.10f) * 100f).toInt().coerceIn(0, 110)
+            val p = (((quantSpeechSpeed - 0.50f) / 1.10f) * 100f).toInt().coerceIn(0, 110)
             binding.seekbarSpeechSpeed.progress = p
 
             binding.switchPrependIntro.isChecked = prefsGetBooleanLogged(prefs, "prepend_intro", false, "loadSettingsToUI")
 
             val videoMode = prefsGetStringLogged(prefs, "video_mode", "slideshow", "loadSettingsToUI") ?: "slideshow"
-            val idx = videoModeValues.indexOf(videoMode).let { if (it >= 0) it else 0 }
-            binding.spinnerVideoMode.setSelection(idx)
+            when (videoMode) {
+                "audio_only" -> binding.toggleVideoMode.check(binding.btnVideoModeAudioOnly.id)
+                else -> binding.toggleVideoMode.check(binding.btnVideoModeSlideshow.id)
+            }
 
             val takeawaysTop = prefsGetStringLogged(prefs, "takeaways_top", "auto", "loadSettingsToUI") ?: "auto"
-            val topIdx = takeawaysTopValues.indexOf(takeawaysTop).let { if (it >= 0) it else 3 }
-            binding.spinnerTakeawaysTop.setSelection(topIdx)
+            when (takeawaysTop) {
+                "3" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop3.id)
+                "5" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop5.id)
+                "10" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop10.id)
+                else -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTopAuto.id)
+            }
 
             val takeawaysFormat = prefsGetStringLogged(prefs, KEY_TAKEAWAYS_FORMAT, "text", "loadSettingsToUI") ?: "text"
-            val fmtIdx = takeawaysFormatValues.indexOf(takeawaysFormat).let { if (it >= 0) it else 0 }
-            binding.spinnerTakeawaysFormat.setSelection(fmtIdx)
             binding.layoutTakeawaysVoice.isVisible = (takeawaysFormat == "audio")
+            when (takeawaysFormat) {
+                "audio" -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatAudio.id)
+                else -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatText.id)
+            }
         } finally {
             suppressAutoSave = false
             sentryBreadcrumb("settings:loadSettingsToUI:end")
@@ -1091,7 +1321,158 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshRecentJobsUI() {
-        // No-op: recent jobs UI is optional.
+        lifecycleScope.launch {
+            try {
+                val api = createApi()
+                val serverUrl = getServerUrl()
+
+                val jobs = withContext(Dispatchers.IO) {
+                    api.getJobs().jobs
+                }
+
+                val sorted = jobs
+                    .sortedByDescending { parseIsoToEpochMs(it.created_at) }
+                    .take(10)
+
+                renderRecentJobs(sorted, serverUrl)
+            } catch (e: Exception) {
+                Sentry.captureException(e)
+            }
+        }
+    }
+
+    private fun renderRecentJobs(jobs: List<JobResponse>, serverUrl: String) {
+        val container = binding.layoutRecentJobs
+        container.removeAllViews()
+
+        if (jobs.isEmpty()) {
+            binding.tvRecentJobsHeader.visibility = View.GONE
+            return
+        }
+        binding.tvRecentJobsHeader.visibility = View.VISIBLE
+
+        val dp = resources.displayMetrics.density
+        val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.US)
+
+        for (job in jobs) {
+            val createdAt = parseIsoToEpochMs(job.created_at)
+            val displayTitle = getRecentJobDisplayTitle(job)
+            val badge = getRecentJobBadge(job)
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (10 * dp).toInt(), 0, (10 * dp).toInt())
+                isClickable = true
+                isFocusable = true
+                val tv = TypedValue()
+                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                setBackgroundResource(tv.resourceId)
+                setOnClickListener {
+                    openRecentServerJob(job, serverUrl)
+                }
+            }
+
+            attachSwipeToDelete(row, job, serverUrl)
+
+            val badgeView = TextView(this).apply {
+                text = badge.badgeText
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTypeface(null, Typeface.BOLD)
+                setTextColor(0xFFFFFFFF.toInt())
+                setBackgroundColor(badge.bgColor)
+                setPadding((4 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).also { it.marginEnd = (8 * dp).toInt() }
+            }
+
+            val textCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleView = TextView(this).apply {
+                text = displayTitle
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(0xFF212121.toInt())
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+
+            val timeView = TextView(this).apply {
+                text = createdAt?.let { dateFormat.format(Date(it)) } ?: ""
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                setTextColor(0xFF757575.toInt())
+            }
+
+            textCol.addView(titleView)
+            textCol.addView(timeView)
+
+            row.addView(badgeView)
+            row.addView(textCol)
+            container.addView(row)
+
+            if (job != jobs.last()) {
+                val divider = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        (1 * dp).toInt()
+                    )
+                    setBackgroundColor(0xFFEEEEEE.toInt())
+                }
+                container.addView(divider)
+            }
+        }
+    }
+
+    private fun openRecentServerJob(job: JobResponse, serverUrl: String) {
+        lifecycleScope.launch {
+            try {
+                val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+                val artifacts = withContext(Dispatchers.IO) {
+                    api.getArtifacts(job.id).artifacts
+                }
+                val renderUrl = artifacts.firstOrNull()?.render_url
+                val abs = toAbsoluteUrl(serverUrl, renderUrl)
+                if (abs.isNullOrBlank()) {
+                    Toast.makeText(this@MainActivity, "No render URL available", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = Uri.parse(abs)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Sentry.captureException(e)
+                Toast.makeText(this@MainActivity, "No browser found.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun parseIsoToEpochMs(iso: String?): Long? {
+        if (iso.isNullOrBlank()) return null
+        return try {
+            val patterns = listOf(
+                "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                "yyyy-MM-dd'T'HH:mm:ssX",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss'Z'"
+            )
+            for (p in patterns) {
+                try {
+                    val sdf = SimpleDateFormat(p, Locale.US)
+                    sdf.parse(iso)?.time?.let { return it }
+                } catch (_: Exception) {
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun autoSaveSettings(forceCommit: Boolean = false) {
@@ -1105,13 +1486,27 @@ class MainActivity : AppCompatActivity() {
         editor.putInt("aggressiveness", aggressiveness)
         editor.putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
 
-        val videoMode = videoModeValues.getOrNull(binding.spinnerVideoMode.selectedItemPosition) ?: "slideshow"
+        val videoMode = when (binding.toggleVideoMode.checkedButtonId) {
+            binding.btnVideoModeAudioOnly.id -> "audio_only"
+            binding.btnVideoModeSlideshow.id -> "slideshow"
+            else -> "slideshow"
+        }
         editor.putString("video_mode", videoMode)
 
-        val takeawaysTop = takeawaysTopValues.getOrNull(binding.spinnerTakeawaysTop.selectedItemPosition) ?: "auto"
+        val takeawaysTop = when (binding.toggleTakeawaysTop.checkedButtonId) {
+            binding.btnTakeawaysTop3.id -> "3"
+            binding.btnTakeawaysTop5.id -> "5"
+            binding.btnTakeawaysTop10.id -> "10"
+            binding.btnTakeawaysTopAuto.id -> "auto"
+            else -> "auto"
+        }
         editor.putString("takeaways_top", takeawaysTop)
 
-        val takeawaysFormat = takeawaysFormatValues.getOrNull(binding.spinnerTakeawaysFormat.selectedItemPosition) ?: "text"
+        val takeawaysFormat = when (binding.toggleTakeawaysFormat.checkedButtonId) {
+            binding.btnTakeawaysFormatAudio.id -> "audio"
+            binding.btnTakeawaysFormatText.id -> "text"
+            else -> "text"
+        }
         editor.putString("takeaways_format", takeawaysFormat)
 
         val locale = binding.spinnerLocale.selectedItem as? String
@@ -1821,10 +2216,20 @@ class MainActivity : AppCompatActivity() {
         val clientId = ClientIdentity.getOrCreate(this)
 
         // Get takeaways settings
-        val topValue = takeawaysTopValues.getOrNull(binding.spinnerTakeawaysTop.selectedItemPosition) ?: "auto"
+        val topValue = when (binding.toggleTakeawaysTop.checkedButtonId) {
+            binding.btnTakeawaysTop3.id -> "3"
+            binding.btnTakeawaysTop5.id -> "5"
+            binding.btnTakeawaysTop10.id -> "10"
+            binding.btnTakeawaysTopAuto.id -> "auto"
+            else -> "auto"
+        }
         val top = if (topValue == "auto") null else topValue.toIntOrNull()
 
-        val format = takeawaysFormatValues.getOrNull(binding.spinnerTakeawaysFormat.selectedItemPosition) ?: "text"
+        val format = when (binding.toggleTakeawaysFormat.checkedButtonId) {
+            binding.btnTakeawaysFormatAudio.id -> "audio"
+            binding.btnTakeawaysFormatText.id -> "text"
+            else -> "text"
+        }
 
         val voice = if (format == "audio") {
             val savedVoice = prefs.getString("takeaways_voice", null)
