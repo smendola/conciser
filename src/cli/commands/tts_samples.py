@@ -7,7 +7,7 @@ from ...config import get_settings
 from ..app import cli
 
 
-@cli.command(name='tts-samples')
+@cli.command(name='voice-samples')
 @click.option(
     '--provider',
     type=click.Choice(['edge', 'elevenlabs', 'azure']),
@@ -22,8 +22,8 @@ from ..app import cli
 @click.option(
     '--output-dir', '-o',
     type=click.Path(),
-    default='tts_samples',
-    help='Output directory for samples (default: tts_samples)'
+    default='voice_samples',
+    help='Output directory for samples (default: voice_samples)'
 )
 @click.option(
     '--rate', '-r',
@@ -35,7 +35,12 @@ from ..app import cli
     default='en',
     help='Language filter: prefix (e.g., "en") or comma-separated locales (e.g., "en-US,en-GB,en-IN")'
 )
-def tts_samples(provider, file, output_dir, rate, lang):
+@click.option(
+    '--resume',
+    is_flag=True,
+    help='Skip voices whose output already exists on disk'
+)
+def tts_samples(provider, file, output_dir, rate, lang, resume):
     """
     Generate TTS samples for Edge TTS voices.
 
@@ -45,22 +50,22 @@ def tts_samples(provider, file, output_dir, rate, lang):
     Examples:
 
         # Generate samples for all English voices with default text
-        nbj tts-samples
+        nbj voice-samples
 
         # Use custom sample text from file
-        nbj tts-samples -f my_sample.txt
+        nbj voice-samples -f my_sample.txt
 
         # Only test en-GB voices
-        nbj tts-samples --lang=en-GB
+        nbj voice-samples --lang=en-GB
 
         # Test multiple specific locales
-        nbj tts-samples --lang=en-US,en-GB,en-IN
+        nbj voice-samples --lang=en-US,en-GB,en-IN
 
         # Test all Spanish voices
-        nbj tts-samples --lang=es
+        nbj voice-samples --lang=es
 
         # Custom output directory and speech rate
-        nbj tts-samples -o voice_samples -r +20%
+        nbj voice-samples -o voice_samples -r +20%
     """
     # Suppress httpx INFO logs
     import logging as stdlib_logging
@@ -68,13 +73,26 @@ def tts_samples(provider, file, output_dir, rate, lang):
 
     DEFAULT_SAMPLE_TEXT = '"To be, or not to be. That is the question."'
 
-    def extract_voice_name(full_voice_id: str) -> str:
-        """Extract friendly name from full voice ID."""
-        parts = full_voice_id.split('-')
-        if len(parts) >= 3:
-            name = parts[-1].replace('Neural', '').replace('Multilingual', '')
-            return name
+    def locale_dir_parts(locale: str) -> tuple[str, str]:
+        parts = (locale or '').split('-', 1)
+        if len(parts) == 2 and parts[0] and parts[1]:
+            return parts[0], parts[1]
+        return (locale or 'unknown'), 'unknown'
+
+    def voice_dir_name(locale: str, full_voice_id: str) -> str:
+        """Directory name for a voice: full voice ID minus the locale prefix."""
+        prefix = f"{locale}-"
+        if full_voice_id.startswith(prefix):
+            return full_voice_id[len(prefix):]
         return full_voice_id
+
+    def intro_voice_name(locale: str, full_voice_id: str) -> str:
+        """Friendly first-name-only for spoken intro, derived from full voice ID."""
+        base = voice_dir_name(locale or 'unknown', full_voice_id)
+        for token in ("Multilingual", "Expressive", "Turbo", "Neural"):
+            base = base.replace(token, "")
+        base = base.strip()
+        return (base.split(" ", 1)[0] or base) if base else full_voice_id
 
     # Load sample text
     if file:
@@ -190,6 +208,7 @@ def tts_samples(provider, file, output_dir, rate, lang):
     # Generate samples
     success_count = 0
     error_count = 0
+    skipped_count = 0
     total_voices = len(filtered_voices)
 
     for idx, (group_name, voices) in enumerate(sorted(voices_by_group.items()), 1):
@@ -202,24 +221,39 @@ def tts_samples(provider, file, output_dir, rate, lang):
 
         for voice in sorted(voices, key=lambda v: v['name']):
             if provider in ['edge', 'azure']:
+                locale = voice.get('locale') or ''
                 full_voice_id = voice['name']
-                voice_name = extract_voice_name(full_voice_id)
+                voice_name = full_voice_id
                 gender = voice.get('gender', 'Unknown')
                 voice_id_for_generation = full_voice_id
+                spoken_name = intro_voice_name(locale, full_voice_id)
             else:
+                locale = 'unknown'
                 voice_id_for_generation = voice['voice_id']
                 voice_name = voice.get('name') or voice_id_for_generation
                 gender = voice.get('labels', {}).get('gender', 'Unknown') if isinstance(voice.get('labels'), dict) else 'Unknown'
+                spoken_name = voice_name
 
             # Build full text with introduction
-            intro = f"Hello, I'm {voice_name}, and this is what my voice sounds like. "
+            intro = f"Hello, I'm {spoken_name}, and this is what my voice sounds like. "
             full_text = intro + sample_text
 
-            # Output filename
+            # Output directory: provider/lang/country
+            lang_part, country_part = locale_dir_parts(locale)
+            output_dir_path = provider_output_path / lang_part / country_part
+            output_dir_path.mkdir(parents=True, exist_ok=True)
+
+            # Output filename: voice name minus locale prefix
             import re
-            safe_voice = re.sub(r'[^a-zA-Z0-9._-]+', '_', str(voice_name)).strip('_')
-            output_filename = f"{safe_voice or 'voice'}.mp3"
-            output_file = provider_output_path / output_filename
+            voice_file_stem = voice_dir_name(locale or 'unknown', str(voice_name))
+            safe_stem = re.sub(r'[^a-zA-Z0-9._-]+', '_', str(voice_file_stem)).strip('_')
+            output_filename = f"{safe_stem or 'voice'}.mp3"
+            output_file = output_dir_path / output_filename
+
+            if resume and output_file.exists():
+                skipped_count += 1
+                print(f"  [{success_count + error_count + skipped_count}/{total_voices}] {voice_name} ({gender})... {Fore.YELLOW}skipped{Style.RESET_ALL}")
+                continue
 
             # Handle collisions (e.g., duplicate friendly names)
             if output_file.exists():
@@ -227,7 +261,7 @@ def tts_samples(provider, file, output_dir, rate, lang):
                 suffix = output_file.suffix
                 counter = 2
                 while True:
-                    candidate = provider_output_path / f"{stem}_{counter}{suffix}"
+                    candidate = output_dir_path / f"{stem}_{counter}{suffix}"
                     if not candidate.exists():
                         output_file = candidate
                         break
@@ -265,5 +299,6 @@ def tts_samples(provider, file, output_dir, rate, lang):
     print(f"  Total voices: {total_voices}")
     print(f"  Successful: {Fore.GREEN}{success_count}{Style.RESET_ALL}")
     print(f"  Failed: {Fore.RED}{error_count}{Style.RESET_ALL}")
+    print(f"  Skipped: {Fore.YELLOW}{skipped_count}{Style.RESET_ALL}")
     print(f"  Output directory: {provider_output_path}")
     print()

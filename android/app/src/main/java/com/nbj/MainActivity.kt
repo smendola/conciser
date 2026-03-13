@@ -832,8 +832,8 @@ class MainActivity : AppCompatActivity() {
             val idx = videoModeValues.indexOf(videoMode).let { if (it >= 0) it else 0 }
             binding.spinnerVideoMode.setSelection(idx)
 
-            val takeawaysTop = prefsGetStringLogged(prefs, "takeaways_top", "5", "loadSettingsToUI") ?: "5"
-            val topIdx = takeawaysTopValues.indexOf(takeawaysTop).let { if (it >= 0) it else 1 }
+            val takeawaysTop = prefsGetStringLogged(prefs, "takeaways_top", "auto", "loadSettingsToUI") ?: "auto"
+            val topIdx = takeawaysTopValues.indexOf(takeawaysTop).let { if (it >= 0) it else 3 }
             binding.spinnerTakeawaysTop.setSelection(topIdx)
 
             val takeawaysFormat = prefsGetStringLogged(prefs, KEY_TAKEAWAYS_FORMAT, "text", "loadSettingsToUI") ?: "text"

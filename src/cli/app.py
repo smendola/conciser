@@ -30,7 +30,7 @@ from .commands import show_script as _show_script  # noqa: E402,F401
 from .commands import takeaways as _takeaways  # noqa: E402,F401
 from .commands import transcript as _transcript  # noqa: E402,F401
 from .commands import tts as _tts  # noqa: E402,F401
-from .commands import tts_samples as _tts_samples  # noqa: E402,F401
+from .commands import tts_samples as _voice_samples  # noqa: E402,F401
 from .commands import voices as _voices  # noqa: E402,F401
 from .commands import start as _start  # noqa: E402,F401
 from .commands import stop as _stop  # noqa: E402,F401

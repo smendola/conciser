@@ -34,7 +34,6 @@ yt-cookies.txt
 build-settings.json
 
 test_outputs/
-tts_samples/
 videos.txt
 voice_samples/
 condenser_chains.json

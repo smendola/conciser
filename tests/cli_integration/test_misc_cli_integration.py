@@ -190,7 +190,7 @@ def test_tts_samples_edge_lang_prefix(runner, monkeypatch, tmp_path):
 
     result = runner.invoke(
         cli,
-        ["tts-samples", "--provider=edge", "--lang=en", "--output-dir", str(tmp_path / "samples")],
+        ["voice-samples", "--provider=edge", "--lang=en", "--output-dir", str(tmp_path / "samples")],
     )
 
     assert result.exit_code == 0
@@ -201,10 +201,36 @@ def test_tts_samples_azure_missing_credentials(runner, monkeypatch, settings_fac
     settings = settings_factory(azure_speech_key="", azure_speech_region="")
     monkeypatch.setattr(tts_samples_module, "get_settings", lambda: settings)
 
-    result = runner.invoke(cli, ["tts-samples", "--provider=azure"])
+    result = runner.invoke(cli, ["voice-samples", "--provider=azure"])
 
     assert result.exit_code == 0
     assert "AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set" in result.output
+
+
+def test_voice_samples_resume_skips_existing(runner, monkeypatch, tmp_path):
+    class FakeEdgeTTS:
+        def list_voices(self):
+            return [
+                {"locale": "en-US", "name": "en-US-AnaNeural", "gender": "Female"},
+            ]
+
+        def generate_speech(self, **kwargs):
+            raise AssertionError("generate_speech should not be called when --resume is set and output exists")
+
+    monkeypatch.setattr("src.modules.edge_tts.EdgeTTS", FakeEdgeTTS)
+
+    out_dir = tmp_path / "samples"
+    existing_file = out_dir / "edge" / "en" / "US" / "AnaNeural.mp3"
+    existing_file.parent.mkdir(parents=True, exist_ok=True)
+    existing_file.write_text("audio", encoding="utf-8")
+
+    result = runner.invoke(
+        cli,
+        ["voice-samples", "--provider=edge", "--lang=en", "--output-dir", str(out_dir), "--resume"],
+    )
+
+    assert result.exit_code == 0
+    assert "skipped" in result.output
 
 
 def test_init_success(runner, monkeypatch, settings_factory):
