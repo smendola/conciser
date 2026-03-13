@@ -1102,17 +1102,24 @@ class CondenserPipeline:
             '-i', str(audio_path),
             '-map', '0:v:0',
             '-map', '1:a:0',
+            '-vsync', '2',
+            '-fflags', '+genpts',
             '-c:v', 'libx264',       # re-encode (not copy) to preserve keyframes and movflags
             '-pix_fmt', 'yuv420p',
             '-g', '1',
             '-movflags', '+faststart',
             '-c:a', 'aac',
             '-b:a', '192k',
+            '-max_muxing_queue_size', '4096',
             '-shortest',
             str(output_path)
         ]
 
-        subprocess.run(cmd, check=True, capture_output=True)
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg audio mux failed: {e.stderr}")
+            raise RuntimeError(f"Failed to mux slideshow video with audio: {e.stderr}")
         logger.info(f"Created slideshow video with {len(frame_timings)} scene-synchronized frames")
         logger.info(f"Extracted frames saved to: {frames_dir}")
 

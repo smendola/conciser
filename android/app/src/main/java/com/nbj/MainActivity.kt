@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.graphics.Color
 import android.view.View
 import android.util.TypedValue
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.LinearLayout
@@ -102,39 +103,13 @@ class MainActivity : AppCompatActivity() {
         return videoId ?: job.id
     }
 
-    private fun attachSwipeToDelete(row: View, job: JobResponse, serverUrl: String) {
+    private fun attachSwipeToDelete(row: View, deleteBg: LinearLayout, job: JobResponse, serverUrl: String) {
         val dp = resources.displayMetrics.density
         var startX = 0f
         var startY = 0f
         var swiping = false
-
-        // Red background + white trash icon, revealed behind the swiped row.
-        val parent = row.parent as? LinearLayout
-        val idx = parent?.indexOfChild(row) ?: -1
-        val deleteBg = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#d32f2f"))
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-            )
-            visibility = View.GONE
-        }
-        val trash = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_menu_delete)
-            setColorFilter(Color.WHITE)
-        }
-        val trashLp = LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt()).apply {
-            marginStart = (16 * dp).toInt()
-            marginEnd = (16 * dp).toInt()
-        }
-        deleteBg.addView(trash, trashLp)
-
-        if (parent != null && idx >= 0) {
-            // Place background directly under the row so it shows through as the row translates.
-            parent.addView(deleteBg, idx)
-        }
+        // Start hidden until swipe begins.
+        deleteBg.visibility = View.GONE
 
         row.setOnTouchListener { v, ev ->
             when (ev.actionMasked) {
@@ -160,6 +135,9 @@ class MainActivity : AppCompatActivity() {
                         deleteBg.visibility = View.VISIBLE
                         deleteBg.gravity = if (dx > 0) Gravity.END or Gravity.CENTER_VERTICAL else Gravity.START or Gravity.CENTER_VERTICAL
                         v.translationX = dx
+                        // While swiping, disable selectable ripple/gray press states.
+                        v.isPressed = false
+                        v.isActivated = false
                         true
                     } else {
                         false
@@ -173,7 +151,10 @@ class MainActivity : AppCompatActivity() {
                         val dir = if (dx > 0) 1f else -1f
                         v.animate().translationX(dir * v.width.toFloat()).setDuration(120).withEndAction {
                             // Remove immediately with collapse animation so remaining rows slide up.
-                            collapseAndRemoveRecentRow(row, deleteBg)
+                            val parent = v.parent as? android.widget.FrameLayout
+                            if (parent != null) {
+                                collapseAndRemoveRecentRowContainer(parent)
+                            }
                             // Fire-and-forget server delete.
                             deleteRecentServerJob(job.id, serverUrl)
                         }.start()
@@ -188,46 +169,41 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun collapseAndRemoveRecentRow(row: View, bg: View) {
-        val parent = row.parent as? LinearLayout
-        if (parent == null) return
+    private fun collapseAndRemoveRecentRowContainer(container: android.widget.FrameLayout) {
+        val parent = container.parent as? LinearLayout ?: return
 
-        // Remove the divider after the row if present.
-        val rowIndex = parent.indexOfChild(row)
-        val divider = parent.getChildAt(rowIndex + 1)
-        val shouldRemoveDivider = divider != null && divider is View && divider.layoutParams?.height == (1 * resources.displayMetrics.density).toInt()
+        val containerIndex = parent.indexOfChild(container)
+        val divider = parent.getChildAt(containerIndex + 1)
+        val dividerHeightPx = (1 * resources.displayMetrics.density).toInt()
+        val shouldRemoveDivider = divider != null && divider.layoutParams?.height == dividerHeightPx
 
         fun animateCollapse(v: View, onEnd: () -> Unit) {
-            val initialHeight = v.height
-            if (initialHeight <= 0) {
-                onEnd()
-                return
-            }
-            val anim = android.animation.ValueAnimator.ofInt(initialHeight, 0)
-            anim.duration = 150
-            anim.addUpdateListener { va ->
-                val lp = v.layoutParams
-                lp.height = va.animatedValue as Int
-                v.layoutParams = lp
-            }
-            anim.addListener(object : android.animation.AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: android.animation.Animator) {
+            v.post {
+                val initialHeight = v.height
+                if (initialHeight <= 0) {
                     onEnd()
+                    return@post
                 }
-            })
-            anim.start()
+                val anim = android.animation.ValueAnimator.ofInt(initialHeight, 0)
+                anim.duration = 150
+                anim.addUpdateListener { va ->
+                    val lp = v.layoutParams
+                    lp.height = va.animatedValue as Int
+                    v.layoutParams = lp
+                }
+                anim.addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        onEnd()
+                    }
+                })
+                anim.start()
+            }
         }
 
-        animateCollapse(row) {
-            parent.removeView(row)
-        }
+        animateCollapse(container) { parent.removeView(container) }
         if (shouldRemoveDivider) {
-            animateCollapse(divider) {
-                parent.removeView(divider)
-            }
+            animateCollapse(divider) { parent.removeView(divider) }
         }
-        // Remove the background container we inserted under the row.
-        parent.removeView(bg)
     }
 
     private fun deleteRecentServerJob(jobId: String, serverUrl: String) {
@@ -492,9 +468,8 @@ class MainActivity : AppCompatActivity() {
             )
             payload.putAll(data)
 
-            val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
             withContext(Dispatchers.IO) {
-                apiLogPost(serverUrl, api, payload)
+                apiLogPost(serverUrl, payload)
             }
         } catch (_: Exception) {
         }
@@ -551,8 +526,10 @@ class MainActivity : AppCompatActivity() {
     private fun openRecentJob(job: RecentJob) {
         lifecycleScope.launch {
             try {
-                val api = ConciserApi.createService(job.serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
-                val artifacts = api.getArtifacts(job.jobId).artifacts
+                val artifacts = ConciserApi
+                    .createService(job.serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+                    .getArtifacts(job.jobId)
+                    .artifacts
                 val renderUrl = artifacts.firstOrNull()?.render_url
                 val abs = toAbsoluteUrl(job.serverUrl, renderUrl)
                 if (abs.isNullOrBlank()) {
@@ -572,7 +549,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun apiLogPost(serverUrl: String, api: ConciserApiService, payload: Map<String, Any?>) {
+    private fun apiLogPost(serverUrl: String, payload: Map<String, Any?>) {
         try {
             val json = Gson().toJson(payload)
             val request = okhttp3.Request.Builder()
@@ -639,6 +616,15 @@ class MainActivity : AppCompatActivity() {
     private var restoringVoiceSelections = false
     private var blockVoiceSelectionCallbacksUntilMs = 0L
     private var blockTakeawaysVoicePersistUntilMs = 0L
+
+    private fun resetReadyStateDueToSettingsChange(source: String) {
+        if (suppressAutoSave || restoringVoiceSelections) return
+        if (currentState == AppState.NO_URL || currentState == AppState.READY) return
+        sentryBreadcrumb("ui:settings_changed_reset_state", mapOf("source" to source, "from" to currentState.name))
+        isPolling = false
+        currentJobId = null
+        updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
+    }
 
     private var condenseLocaleTouched = false
     private var condenseVoiceTouched = false
@@ -739,6 +725,7 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 if (suppressAutoSave || restoringVoiceSelections) return
                 prefs.edit().putInt("aggressiveness", level).apply()
+                resetReadyStateDueToSettingsChange("condense_aggressiveness")
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -757,6 +744,7 @@ class MainActivity : AppCompatActivity() {
                 if (!fromUser) return
                 if (suppressAutoSave || restoringVoiceSelections) return
                 prefs.edit().putFloat("speech_speed", speed).apply()
+                resetReadyStateDueToSettingsChange("condense_speech_speed")
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
@@ -767,6 +755,7 @@ class MainActivity : AppCompatActivity() {
         binding.switchPrependIntro.setOnCheckedChangeListener { _, isChecked ->
             if (suppressAutoSave || restoringVoiceSelections) return@setOnCheckedChangeListener
             prefs.edit().putBoolean("prepend_intro", isChecked).apply()
+            resetReadyStateDueToSettingsChange("condense_prepend_intro")
         }
 
         // Video mode (condense)
@@ -779,6 +768,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
             prefs.edit().putString("video_mode", value).apply()
+            resetReadyStateDueToSettingsChange("condense_video_mode")
         }
 
         // Restore saved video mode selection
@@ -824,6 +814,7 @@ class MainActivity : AppCompatActivity() {
                 else -> "auto"
             }
             prefs.edit().putString("takeaways_top", value).apply()
+            resetReadyStateDueToSettingsChange("takeaways_top")
         }
 
         binding.toggleTakeawaysFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
@@ -836,6 +827,7 @@ class MainActivity : AppCompatActivity() {
             updateTakeawaysVoiceVisibility(formatValue)
             if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
             prefs.edit().putString(KEY_TAKEAWAYS_FORMAT, formatValue).apply()
+            resetReadyStateDueToSettingsChange("takeaways_format")
             lifecycleScope.launch {
                 apiLog(getServerUrl(), "takeaways_format_changed", mapOf("value" to formatValue))
             }
@@ -885,6 +877,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 prefs.edit().putString(KEY_CONDENSE_VOICE, voiceId).apply()
                 condenseVoiceTouched = false
+                resetReadyStateDueToSettingsChange("condense_voice")
                 sentryBreadcrumb(
                     "prefs:write:condense_voice",
                     mapOf(
@@ -930,6 +923,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 prefs.edit().putString(KEY_TAKEAWAYS_VOICE, voiceId).apply()
                 takeawaysVoiceTouched = false
+                resetReadyStateDueToSettingsChange("takeaways_voice")
                 sentryBreadcrumb(
                     "prefs:write:takeaways_voice",
                     mapOf(
@@ -977,6 +971,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 prefs.edit().putString(KEY_CONDENSE_LOCALE, selectedLocale).apply()
                 condenseLocaleTouched = false
+                resetReadyStateDueToSettingsChange("condense_locale")
                 sentryBreadcrumb(
                     "prefs:write:condense_locale",
                     mapOf("key" to KEY_CONDENSE_LOCALE, "value" to selectedLocale)
@@ -1013,6 +1008,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 prefs.edit().putString(KEY_TAKEAWAYS_LOCALE, selectedLocale).apply()
                 takeawaysLocaleTouched = false
+
+                resetReadyStateDueToSettingsChange("takeaways_locale")
 
                 sentryBreadcrumb(
                     "prefs:write:takeaways_locale",
@@ -1351,7 +1348,6 @@ class MainActivity : AppCompatActivity() {
         }
         binding.tvRecentJobsHeader.visibility = View.VISIBLE
 
-        val dp = resources.displayMetrics.density
         val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.US)
 
         for (job in jobs) {
@@ -1359,10 +1355,39 @@ class MainActivity : AppCompatActivity() {
             val displayTitle = getRecentJobDisplayTitle(job)
             val badge = getRecentJobBadge(job)
 
+            val swipeContainer = android.widget.FrameLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            val deleteBg = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setBackgroundColor(Color.parseColor("#d32f2f"))
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+
+            val trash = ImageView(this).apply {
+                setImageResource(android.R.drawable.ic_menu_delete)
+                // User requested red trash icon.
+                setColorFilter(Color.parseColor("#b71c1c"))
+            }
+            val density = resources.displayMetrics.density
+            val trashLp = LinearLayout.LayoutParams((18 * density).toInt(), (18 * density).toInt()).apply {
+                marginStart = (16 * density).toInt()
+                marginEnd = (16 * density).toInt()
+            }
+            deleteBg.addView(trash, trashLp)
+
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, (10 * dp).toInt(), 0, (10 * dp).toInt())
+                setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
                 isClickable = true
                 isFocusable = true
                 val tv = TypedValue()
@@ -1373,7 +1398,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            attachSwipeToDelete(row, job, serverUrl)
+            // Swipe gesture applies to the row content and reveals deleteBg beneath.
+            attachSwipeToDelete(row, deleteBg, job, serverUrl)
 
             val badgeView = TextView(this).apply {
                 text = badge.badgeText
@@ -1381,11 +1407,11 @@ class MainActivity : AppCompatActivity() {
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFFFFFFFF.toInt())
                 setBackgroundColor(badge.bgColor)
-                setPadding((4 * dp).toInt(), (2 * dp).toInt(), (4 * dp).toInt(), (2 * dp).toInt())
+                setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.marginEnd = (8 * dp).toInt() }
+                ).also { it.marginEnd = (8 * density).toInt() }
             }
 
             val textCol = LinearLayout(this).apply {
@@ -1412,13 +1438,16 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(badgeView)
             row.addView(textCol)
-            container.addView(row)
+
+            swipeContainer.addView(deleteBg)
+            swipeContainer.addView(row)
+            container.addView(swipeContainer)
 
             if (job != jobs.last()) {
                 val divider = View(this).apply {
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        (1 * dp).toInt()
+                        (1 * density).toInt()
                     )
                     setBackgroundColor(0xFFEEEEEE.toInt())
                 }
@@ -2301,14 +2330,32 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateJobUI(job: JobResponse) {
         when (job.status) {
+            "queued" -> {
+                updateUI(
+                    AppState.PROCESSING,
+                    statusText = "Queued...\nJob ID: ${job.id}",
+                    progressText = job.progress
+                )
+            }
             "processing" -> {
-                updateUI(AppState.PROCESSING, statusText = "Processing video...\nJob ID: ${job.id}")
+                updateUI(
+                    AppState.PROCESSING,
+                    statusText = "Processing video...\nJob ID: ${job.id}",
+                    progressText = job.progress
+                )
             }
             "completed" -> {
                 updateUI(AppState.COMPLETED, statusText = "✅ Ready!\nJob ID: ${job.id}")
             }
             "error" -> {
                 updateUI(AppState.ERROR, statusText = "Processing failed: ${job.error ?: "Unknown error"}")
+            }
+            else -> {
+                updateUI(
+                    AppState.PROCESSING,
+                    statusText = "${job.status}\nJob ID: ${job.id}",
+                    progressText = job.progress
+                )
             }
         }
     }
