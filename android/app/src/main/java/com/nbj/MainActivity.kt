@@ -50,6 +50,259 @@ class MainActivity : AppCompatActivity() {
 
     private val logTag = "MetadataCache"
 
+    private val EXPECTED_CONDENSE_LOCALE = "en-US"
+    private val EXPECTED_CONDENSE_VOICE_ID = "en-US-TonyNeural"
+    private val EXPECTED_CONDENSE_VOICE_LABEL = "Tony"
+    private val EXPECTED_TAKEAWAYS_LOCALE = "en-GB"
+    private val EXPECTED_TAKEAWAYS_VOICE_ID = "en-GB-OliverNeural"
+    private val EXPECTED_TAKEAWAYS_VOICE_LABEL = "Oliver"
+
+    private fun verboseLangVoiceLoggingEnabled(): Boolean {
+        return try {
+            BuildConfig.SENTRY_VERBOSE_LANG_VOICE_LOGGING
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun sentryBreadcrumb(
+        what: String,
+        extras: Map<String, Any?> = emptyMap(),
+        level: SentryLevel = SentryLevel.INFO
+    ) {
+        try {
+            if (!verboseLangVoiceLoggingEnabled()) return
+            val prefs = try {
+                getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            } catch (_: Exception) {
+                null
+            }
+
+            val merged = linkedMapOf<String, Any?>(
+                "what" to what,
+                "ts" to System.currentTimeMillis(),
+                "thread" to Thread.currentThread().name,
+                "appMode" to appMode,
+                "currentState" to currentState.name,
+                "voicesCount" to voices.size,
+                "strategiesCount" to strategies.size,
+                "blockVoiceSelectionCallbacksUntilMs" to blockVoiceSelectionCallbacksUntilMs,
+                "blockTakeawaysVoicePersistUntilMs" to blockTakeawaysVoicePersistUntilMs,
+                "suppressAutoSave" to suppressAutoSave,
+                "restoringVoiceSelections" to restoringVoiceSelections,
+                "spinnerLocale_selected" to (runCatching { binding.spinnerLocale.selectedItem?.toString() }.getOrNull()),
+                "spinnerVoice_pos" to (runCatching { binding.spinnerVoice.selectedItemPosition }.getOrNull()),
+                "spinnerVoice_selected" to (runCatching { binding.spinnerVoice.selectedItem?.toString() }.getOrNull()),
+                "spinnerTakeawaysLocale_selected" to (runCatching { binding.spinnerTakeawaysLocale.selectedItem?.toString() }.getOrNull()),
+                "spinnerTakeawaysVoice_pos" to (runCatching { binding.spinnerTakeawaysVoice.selectedItemPosition }.getOrNull()),
+                "spinnerTakeawaysVoice_selected" to (runCatching { binding.spinnerTakeawaysVoice.selectedItem?.toString() }.getOrNull()),
+                "prefs_server_url" to (prefs?.getString("server_url", null)),
+                "prefs_condense_locale" to (prefs?.getString(KEY_CONDENSE_LOCALE, null)),
+                "prefs_condense_voice" to (prefs?.getString(KEY_CONDENSE_VOICE, null)),
+                "prefs_takeaways_locale" to (prefs?.getString(KEY_TAKEAWAYS_LOCALE, null)),
+                "prefs_takeaways_voice" to (prefs?.getString(KEY_TAKEAWAYS_VOICE, null)),
+                "prefs_takeaways_format" to (prefs?.getString(KEY_TAKEAWAYS_FORMAT, null)),
+            )
+            for ((k, v) in extras) merged[k] = v
+
+            Sentry.withScope { scope ->
+                scope.level = level
+                scope.setContexts("voice_locale_debug", merged)
+                scope.setExtra("voice_locale_debug_json", Gson().toJson(merged))
+                scope.setExtra("voice_locale_debug_keys", merged.keys.joinToString(","))
+                Sentry.captureMessage(what)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun voiceIdToFriendlyLabel(voiceId: String?): String? {
+        if (voiceId.isNullOrBlank()) return null
+        val v = voices.firstOrNull { it.name == voiceId }
+        val friendly = v?.friendly_name?.ifBlank { null }
+        if (!friendly.isNullOrBlank()) return friendly
+        return voiceId
+    }
+
+    private fun isPlaceholderLocale(value: String?): Boolean {
+        val v = value?.trim().orEmpty()
+        if (v.isBlank()) return true
+        return v.equals("Loading...", ignoreCase = true)
+    }
+
+    private fun isPlaceholderVoiceSelectionText(value: String?): Boolean {
+        val v = value?.trim().orEmpty()
+        if (v.isBlank()) return true
+        return v.equals("Select language", ignoreCase = true) ||
+            v.equals("Select voice", ignoreCase = true) ||
+            v.equals("Failed to load voices", ignoreCase = true) ||
+            v.equals("Loading...", ignoreCase = true)
+    }
+
+    private fun blockedPrefWrite(marker: String, where: String, extras: Map<String, Any?> = emptyMap()) {
+        val merged = LinkedHashMap<String, Any?>(extras.size + 2)
+        merged.putAll(extras)
+        merged["blocked_where"] = where
+        merged["blocked_marker"] = marker
+        sentryErrorMessage(marker, merged)
+        sentryErrorWithStack(marker, merged)
+    }
+
+    private fun expectedInvariantOk(
+        condenseLocale: String?,
+        condenseVoiceId: String?,
+        takeawaysLocale: String?,
+        takeawaysVoiceId: String?
+    ): Boolean {
+        val cLocOk = condenseLocale == EXPECTED_CONDENSE_LOCALE
+        val cVoiceOk = if (voices.isNotEmpty()) {
+            voiceIdToFriendlyLabel(condenseVoiceId) == EXPECTED_CONDENSE_VOICE_LABEL
+        } else {
+            condenseVoiceId == EXPECTED_CONDENSE_VOICE_ID
+        }
+        val tLocOk = takeawaysLocale == EXPECTED_TAKEAWAYS_LOCALE
+        val tVoiceOk = if (voices.isNotEmpty()) {
+            voiceIdToFriendlyLabel(takeawaysVoiceId) == EXPECTED_TAKEAWAYS_VOICE_LABEL
+        } else {
+            takeawaysVoiceId == EXPECTED_TAKEAWAYS_VOICE_ID
+        }
+        return cLocOk && cVoiceOk && tLocOk && tVoiceOk
+    }
+
+    private fun sentryErrorWithStack(what: String, extras: Map<String, Any?> = emptyMap()) {
+        try {
+            val stack = Thread.currentThread().stackTrace
+                .joinToString("\n") { it.toString() }
+            val merged = LinkedHashMap<String, Any?>(extras.size + 2)
+            merged.putAll(extras)
+            merged["stacktrace"] = stack
+            merged["stacktrace_len"] = stack.length
+
+            Sentry.withScope { scope ->
+                scope.level = SentryLevel.ERROR
+                scope.setExtra("voice_locale_debug_json", Gson().toJson(merged))
+                scope.setContexts("voice_locale_debug", merged)
+                Sentry.captureMessage(what)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun sentryErrorMessage(what: String, extras: Map<String, Any?> = emptyMap()) {
+        try {
+            Sentry.withScope { scope ->
+                scope.level = SentryLevel.ERROR
+                scope.setExtra("voice_locale_debug_json", Gson().toJson(extras))
+                scope.setContexts("voice_locale_debug", extras)
+                Sentry.captureMessage(what)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun assertExpectedInvariant(where: String) {
+        try {
+            if (!verboseLangVoiceLoggingEnabled()) return
+            val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+            val cLoc = prefs.getString(KEY_CONDENSE_LOCALE, null)
+            val cVoice = prefs.getString(KEY_CONDENSE_VOICE, null)
+            val tLoc = prefs.getString(KEY_TAKEAWAYS_LOCALE, null)
+            val tVoice = prefs.getString(KEY_TAKEAWAYS_VOICE, null)
+            val ok = expectedInvariantOk(cLoc, cVoice, tLoc, tVoice)
+            if (!ok) {
+                val extras = linkedMapOf<String, Any?>(
+                    "where" to where,
+                    "expected_condense_locale" to EXPECTED_CONDENSE_LOCALE,
+                    "expected_condense_voice_id" to EXPECTED_CONDENSE_VOICE_ID,
+                    "expected_condense_voice_label" to EXPECTED_CONDENSE_VOICE_LABEL,
+                    "expected_takeaways_locale" to EXPECTED_TAKEAWAYS_LOCALE,
+                    "expected_takeaways_voice_id" to EXPECTED_TAKEAWAYS_VOICE_ID,
+                    "expected_takeaways_voice_label" to EXPECTED_TAKEAWAYS_VOICE_LABEL,
+                    "actual_condense_locale" to cLoc,
+                    "actual_condense_voice_id" to cVoice,
+                    "actual_condense_voice_label" to voiceIdToFriendlyLabel(cVoice),
+                    "actual_takeaways_locale" to tLoc,
+                    "actual_takeaways_voice_id" to tVoice,
+                    "actual_takeaways_voice_label" to voiceIdToFriendlyLabel(tVoice),
+                    "invariant_mode" to if (voices.isNotEmpty()) "friendly_label" else "voice_id",
+                    "spinner_condense_locale" to runCatching { binding.spinnerLocale.selectedItem?.toString() }.getOrNull(),
+                    "spinner_condense_voice" to runCatching { binding.spinnerVoice.selectedItem?.toString() }.getOrNull(),
+                    "spinner_takeaways_locale" to runCatching { binding.spinnerTakeawaysLocale.selectedItem?.toString() }.getOrNull(),
+                    "spinner_takeaways_voice" to runCatching { binding.spinnerTakeawaysVoice.selectedItem?.toString() }.getOrNull(),
+                    "spinner_takeaways_voice_pos" to runCatching { binding.spinnerTakeawaysVoice.selectedItemPosition }.getOrNull(),
+                    "suppressAutoSave" to suppressAutoSave,
+                    "restoringVoiceSelections" to restoringVoiceSelections,
+                    "blockVoiceSelectionCallbacksUntilMs" to blockVoiceSelectionCallbacksUntilMs,
+                    "blockTakeawaysVoicePersistUntilMs" to blockTakeawaysVoicePersistUntilMs,
+                    "voicesCount" to voices.size,
+                    "thread" to Thread.currentThread().name,
+                    "ts" to System.currentTimeMillis()
+                )
+
+                val condenseVoiceOk = if (voices.isNotEmpty()) {
+                    voiceIdToFriendlyLabel(cVoice) == EXPECTED_CONDENSE_VOICE_LABEL
+                } else {
+                    cVoice == EXPECTED_CONDENSE_VOICE_ID
+                }
+                val takeawaysVoiceOk = if (voices.isNotEmpty()) {
+                    voiceIdToFriendlyLabel(tVoice) == EXPECTED_TAKEAWAYS_VOICE_LABEL
+                } else {
+                    tVoice == EXPECTED_TAKEAWAYS_VOICE_ID
+                }
+                val condenseLocaleOk = cLoc == EXPECTED_CONDENSE_LOCALE
+                val takeawaysLocaleOk = tLoc == EXPECTED_TAKEAWAYS_LOCALE
+
+                val marker = when {
+                    !condenseVoiceOk -> "NOT TONY"
+                    !takeawaysVoiceOk -> "NOT OLIVER"
+                    !condenseLocaleOk -> "NOT en-US"
+                    !takeawaysLocaleOk -> "NOT en-GB"
+                    else -> "UNEXPECTED"
+                }
+                extras["marker"] = marker
+
+                sentryErrorMessage(marker, extras)
+                sentryErrorWithStack(marker, extras)
+            }
+        } catch (e: Exception) {
+            sentryErrorWithStack("INVARIANT_CHECK_FAILED:$where", mapOf("error" to (e.message ?: "")))
+        }
+    }
+
+    private fun prefsGetStringLogged(prefs: android.content.SharedPreferences, key: String, def: String? = null, where: String): String? {
+        val v = prefs.getString(key, def)
+        sentryBreadcrumb("prefs:read:string", mapOf("where" to where, "key" to key, "value" to v))
+        assertExpectedInvariant("prefs:read:$where:$key")
+        return v
+    }
+
+    private fun prefsGetIntLogged(prefs: android.content.SharedPreferences, key: String, def: Int, where: String): Int {
+        val v = prefs.getInt(key, def)
+        sentryBreadcrumb("prefs:read:int", mapOf("where" to where, "key" to key, "value" to v))
+        assertExpectedInvariant("prefs:read:$where:$key")
+        return v
+    }
+
+    private fun prefsGetFloatLogged(prefs: android.content.SharedPreferences, key: String, def: Float, where: String): Float {
+        val v = prefs.getFloat(key, def)
+        sentryBreadcrumb("prefs:read:float", mapOf("where" to where, "key" to key, "value" to v))
+        assertExpectedInvariant("prefs:read:$where:$key")
+        return v
+    }
+
+    private fun prefsGetBooleanLogged(prefs: android.content.SharedPreferences, key: String, def: Boolean, where: String): Boolean {
+        val v = prefs.getBoolean(key, def)
+        sentryBreadcrumb("prefs:read:boolean", mapOf("where" to where, "key" to key, "value" to v))
+        assertExpectedInvariant("prefs:read:$where:$key")
+        return v
+    }
+
+    private fun prefsPutStringLogged(prefs: android.content.SharedPreferences, key: String, value: String?, where: String) {
+        sentryBreadcrumb("prefs:write:string", mapOf("where" to where, "key" to key, "value" to value))
+        prefs.edit().putString(key, value).apply()
+        assertExpectedInvariant("prefs:write:$where:$key")
+    }
+
     private suspend fun apiLog(serverUrl: String, event: String, data: Map<String, Any?> = emptyMap()) {
         try {
             val payload = mutableMapOf<String, Any?>(
@@ -210,10 +463,28 @@ class MainActivity : AppCompatActivity() {
     private var blockVoiceSelectionCallbacksUntilMs = 0L
     private var blockTakeawaysVoicePersistUntilMs = 0L
 
+    private var condenseLocaleTouched = false
+    private var condenseVoiceTouched = false
+    private var takeawaysLocaleTouched = false
+    private var takeawaysVoiceTouched = false
+
     private fun migratePrefsKeysIfNeeded() {
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val editor = prefs.edit()
         var changed = false
+
+        sentryBreadcrumb(
+            "prefs:migrate:start",
+            mapOf(
+                "has_locale" to prefs.contains("locale"),
+                "has_voice" to prefs.contains("voice"),
+                "has_condense_locale" to prefs.contains(KEY_CONDENSE_LOCALE),
+                "has_condense_voice" to prefs.contains(KEY_CONDENSE_VOICE),
+                "has_takeaways_locale" to prefs.contains(KEY_TAKEAWAYS_LOCALE),
+                "has_takeaways_voice" to prefs.contains(KEY_TAKEAWAYS_VOICE),
+                "has_takeaways_format" to prefs.contains(KEY_TAKEAWAYS_FORMAT)
+            )
+        )
 
         if (!prefs.contains(KEY_CONDENSE_LOCALE) && prefs.contains("locale")) {
             editor.putString(KEY_CONDENSE_LOCALE, prefs.getString("locale", null))
@@ -237,7 +508,14 @@ class MainActivity : AppCompatActivity() {
             changed = true
         }
 
-        if (changed) editor.apply()
+        if (changed) {
+            editor.apply()
+            sentryBreadcrumb("prefs:migrate:applied")
+            assertExpectedInvariant("prefs:migrate:applied")
+        } else {
+            sentryBreadcrumb("prefs:migrate:no_changes")
+            assertExpectedInvariant("prefs:migrate:no_changes")
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -247,6 +525,33 @@ class MainActivity : AppCompatActivity() {
     private fun setupSettingsControls() {
         // Keep this wiring minimal but functional: persist key settings to SharedPreferences.
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+        sentryBreadcrumb(
+            "ui:setupSettingsControls",
+            mapOf(
+                "spinnerLocale_id" to binding.spinnerLocale.id,
+                "spinnerVoice_id" to binding.spinnerVoice.id,
+                "spinnerTakeawaysLocale_id" to binding.spinnerTakeawaysLocale.id,
+                "spinnerTakeawaysVoice_id" to binding.spinnerTakeawaysVoice.id
+            )
+        )
+
+        binding.spinnerLocale.setOnTouchListener { _, _ ->
+            condenseLocaleTouched = true
+            false
+        }
+        binding.spinnerVoice.setOnTouchListener { _, _ ->
+            condenseVoiceTouched = true
+            false
+        }
+        binding.spinnerTakeawaysLocale.setOnTouchListener { _, _ ->
+            takeawaysLocaleTouched = true
+            false
+        }
+        binding.spinnerTakeawaysVoice.setOnTouchListener { _, _ ->
+            takeawaysVoiceTouched = true
+            false
+        }
 
         // Aggressiveness
         binding.seekbarAggressiveness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -335,10 +640,38 @@ class MainActivity : AppCompatActivity() {
         // Persist voice selection changes.
         val voiceListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sentryBreadcrumb(
+                    "ui:condense_voice:onItemSelected",
+                    mapOf(
+                        "position" to position,
+                        "id" to id,
+                        "fromUser_blocked" to (suppressAutoSave || restoringVoiceSelections),
+                        "parentClass" to (parent?.javaClass?.name ?: ""),
+                        "selectedText" to (parent?.getItemAtPosition(position)?.toString())
+                    )
+                )
                 if (suppressAutoSave || restoringVoiceSelections) return
+                if (!condenseVoiceTouched) return
                 val selectedLocale = binding.spinnerLocale.selectedItem as? String
                 val voiceId = getSelectedVoiceOption(binding.spinnerVoice, selectedLocale)?.id ?: return
+                if (isPlaceholderLocale(selectedLocale) || voiceId.isBlank() || voiceId == "Loading...") {
+                    blockedPrefWrite(
+                        "BLOCKED_WRITE_CONDENSE_VOICE",
+                        "ui:condense_voice:onItemSelected",
+                        mapOf("selectedLocale" to selectedLocale, "voiceId" to voiceId)
+                    )
+                    return
+                }
                 prefs.edit().putString(KEY_CONDENSE_VOICE, voiceId).apply()
+                condenseVoiceTouched = false
+                sentryBreadcrumb(
+                    "prefs:write:condense_voice",
+                    mapOf(
+                        "key" to KEY_CONDENSE_VOICE,
+                        "value" to voiceId,
+                        "selectedLocale" to selectedLocale
+                    )
+                )
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -349,11 +682,41 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 // Don't save while we're restoring, but allow normal user selection even if
                 // suppressAutoSave is being used for unrelated bulk UI updates.
+                sentryBreadcrumb(
+                    "ui:takeaways_voice:onItemSelected",
+                    mapOf(
+                        "position" to position,
+                        "id" to id,
+                        "blocked_restoring" to restoringVoiceSelections,
+                        "blocked_time" to (SystemClock.elapsedRealtime() < blockTakeawaysVoicePersistUntilMs),
+                        "blockTakeawaysVoicePersistUntilMs" to blockTakeawaysVoicePersistUntilMs,
+                        "nowMs" to SystemClock.elapsedRealtime(),
+                        "selectedText" to (parent?.getItemAtPosition(position)?.toString())
+                    )
+                )
                 if (restoringVoiceSelections) return
                 if (SystemClock.elapsedRealtime() < blockTakeawaysVoicePersistUntilMs) return
+                if (!takeawaysVoiceTouched) return
                 val selectedLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
                 val voiceId = getSelectedVoiceOption(binding.spinnerTakeawaysVoice, selectedLocale)?.id ?: return
+                if (isPlaceholderLocale(selectedLocale) || voiceId.isBlank() || voiceId == "Loading...") {
+                    blockedPrefWrite(
+                        "BLOCKED_WRITE_TAKEAWAYS_VOICE",
+                        "ui:takeaways_voice:onItemSelected",
+                        mapOf("selectedLocale" to selectedLocale, "voiceId" to voiceId)
+                    )
+                    return
+                }
                 prefs.edit().putString(KEY_TAKEAWAYS_VOICE, voiceId).apply()
+                takeawaysVoiceTouched = false
+                sentryBreadcrumb(
+                    "prefs:write:takeaways_voice",
+                    mapOf(
+                        "key" to KEY_TAKEAWAYS_VOICE,
+                        "value" to voiceId,
+                        "selectedLocale" to selectedLocale
+                    )
+                )
                 lifecycleScope.launch {
                     apiLog(
                         getServerUrl(),
@@ -370,20 +733,70 @@ class MainActivity : AppCompatActivity() {
         // Persist locale selections.
         binding.spinnerLocale.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sentryBreadcrumb(
+                    "ui:condense_locale:onItemSelected",
+                    mapOf(
+                        "position" to position,
+                        "blocked_time" to (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs),
+                        "blocked_flags" to (suppressAutoSave || restoringVoiceSelections),
+                        "selectedLocale" to (parent?.getItemAtPosition(position)?.toString())
+                    )
+                )
                 if (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs) return
                 val selectedLocale = parent?.getItemAtPosition(position)?.toString() ?: return
                 if (suppressAutoSave || restoringVoiceSelections) return
+                if (!condenseLocaleTouched) return
+                if (isPlaceholderLocale(selectedLocale)) {
+                    blockedPrefWrite(
+                        "BLOCKED_WRITE_CONDENSE_LOCALE",
+                        "ui:condense_locale:onItemSelected",
+                        mapOf("selectedLocale" to selectedLocale, "position" to position)
+                    )
+                    return
+                }
                 prefs.edit().putString(KEY_CONDENSE_LOCALE, selectedLocale).apply()
+                condenseLocaleTouched = false
+                sentryBreadcrumb(
+                    "prefs:write:condense_locale",
+                    mapOf("key" to KEY_CONDENSE_LOCALE, "value" to selectedLocale)
+                )
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
         binding.spinnerTakeawaysLocale.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                sentryBreadcrumb(
+                    "ui:takeaways_locale:onItemSelected",
+                    mapOf(
+                        "position" to position,
+                        "blocked_time" to (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs),
+                        "blocked_restoring" to restoringVoiceSelections,
+                        "selectedLocale" to (parent?.getItemAtPosition(position)?.toString())
+                    )
+                )
                 if (SystemClock.elapsedRealtime() < blockVoiceSelectionCallbacksUntilMs) return
                 val selectedLocale = parent?.getItemAtPosition(position)?.toString() ?: return
                 if (restoringVoiceSelections) return
+                if (!takeawaysLocaleTouched) {
+                    populateTakeawaysVoiceSpinnerForLocale(selectedLocale)
+                    return
+                }
+                if (isPlaceholderLocale(selectedLocale)) {
+                    blockedPrefWrite(
+                        "BLOCKED_WRITE_TAKEAWAYS_LOCALE",
+                        "ui:takeaways_locale:onItemSelected",
+                        mapOf("selectedLocale" to selectedLocale, "position" to position)
+                    )
+                    return
+                }
                 prefs.edit().putString(KEY_TAKEAWAYS_LOCALE, selectedLocale).apply()
+                takeawaysLocaleTouched = false
+
+                sentryBreadcrumb(
+                    "prefs:write:takeaways_locale",
+                    mapOf("key" to KEY_TAKEAWAYS_LOCALE, "value" to selectedLocale)
+                )
 
                 // Also refresh voice list immediately when locale changes.
                 populateTakeawaysVoiceSpinnerForLocale(selectedLocale)
@@ -399,34 +812,38 @@ class MainActivity : AppCompatActivity() {
     private fun loadSettingsToUI() {
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
+        sentryBreadcrumb("settings:loadSettingsToUI:start")
+
         suppressAutoSave = true
         try {
-            val aggressiveness = prefs.getInt("aggressiveness", 5).coerceIn(1, 10)
+            val aggressiveness = prefsGetIntLogged(prefs, "aggressiveness", 5, "loadSettingsToUI").coerceIn(1, 10)
             binding.seekbarAggressiveness.progress = aggressiveness - 1
             binding.tvAggressivenessValue.text = aggressiveness.toString()
 
-            val speechSpeed = prefs.getFloat("speech_speed", 1.00f)
+            val speechSpeed = prefsGetFloatLogged(prefs, "speech_speed", 1.00f, "loadSettingsToUI")
             binding.tvSpeechSpeedValue.text = String.format(Locale.US, "%.2fx", speechSpeed)
             // Map back to progress using the same mapping used in listener.
             val p = (((speechSpeed - 0.50f) / 1.10f) * 100f).toInt().coerceIn(0, 110)
             binding.seekbarSpeechSpeed.progress = p
 
-            binding.switchPrependIntro.isChecked = prefs.getBoolean("prepend_intro", false)
+            binding.switchPrependIntro.isChecked = prefsGetBooleanLogged(prefs, "prepend_intro", false, "loadSettingsToUI")
 
-            val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
+            val videoMode = prefsGetStringLogged(prefs, "video_mode", "slideshow", "loadSettingsToUI") ?: "slideshow"
             val idx = videoModeValues.indexOf(videoMode).let { if (it >= 0) it else 0 }
             binding.spinnerVideoMode.setSelection(idx)
 
-            val takeawaysTop = prefs.getString("takeaways_top", "5") ?: "5"
+            val takeawaysTop = prefsGetStringLogged(prefs, "takeaways_top", "5", "loadSettingsToUI") ?: "5"
             val topIdx = takeawaysTopValues.indexOf(takeawaysTop).let { if (it >= 0) it else 1 }
             binding.spinnerTakeawaysTop.setSelection(topIdx)
 
-            val takeawaysFormat = prefs.getString(KEY_TAKEAWAYS_FORMAT, "text") ?: "text"
+            val takeawaysFormat = prefsGetStringLogged(prefs, KEY_TAKEAWAYS_FORMAT, "text", "loadSettingsToUI") ?: "text"
             val fmtIdx = takeawaysFormatValues.indexOf(takeawaysFormat).let { if (it >= 0) it else 0 }
             binding.spinnerTakeawaysFormat.setSelection(fmtIdx)
             binding.layoutTakeawaysVoice.isVisible = (takeawaysFormat == "audio")
         } finally {
             suppressAutoSave = false
+            sentryBreadcrumb("settings:loadSettingsToUI:end")
+            assertExpectedInvariant("loadSettingsToUI:end")
         }
     }
 
@@ -457,6 +874,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun populateCondenseLocaleSpinner() {
+        sentryBreadcrumb("ui:populateCondenseLocaleSpinner:start")
         val localeItems = availableLocaleItems()
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, localeItems)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -478,10 +896,16 @@ class MainActivity : AppCompatActivity() {
             }
         } finally {
             suppressAutoSave = false
+            sentryBreadcrumb(
+                "ui:populateCondenseLocaleSpinner:end",
+                mapOf("localeItemsCount" to localeItems.size, "selected" to binding.spinnerLocale.selectedItem?.toString())
+            )
+            assertExpectedInvariant("populateCondenseLocaleSpinner:end")
         }
     }
 
     private fun populateTakeawaysLocaleSpinner() {
+        sentryBreadcrumb("ui:populateTakeawaysLocaleSpinner:start")
         val localeItems = availableLocaleItems()
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, localeItems)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -503,10 +927,16 @@ class MainActivity : AppCompatActivity() {
             }
         } finally {
             suppressAutoSave = false
+            sentryBreadcrumb(
+                "ui:populateTakeawaysLocaleSpinner:end",
+                mapOf("localeItemsCount" to localeItems.size, "selected" to binding.spinnerTakeawaysLocale.selectedItem?.toString())
+            )
+            assertExpectedInvariant("populateTakeawaysLocaleSpinner:end")
         }
     }
 
     private fun populateCondenseVoiceSpinnerForLocale(localeTag: String) {
+        sentryBreadcrumb("ui:populateCondenseVoiceSpinnerForLocale:start", mapOf("localeTag" to localeTag))
         val options = voices
             .filter { it.locale.equals(localeTag, ignoreCase = true) }
             .map {
@@ -527,9 +957,16 @@ class MainActivity : AppCompatActivity() {
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options.map { it.displayName })
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerVoice.adapter = adapter
+
+        sentryBreadcrumb(
+            "ui:populateCondenseVoiceSpinnerForLocale:end",
+            mapOf("localeTag" to localeTag, "optionsCount" to options.size)
+        )
+        assertExpectedInvariant("populateCondenseVoiceSpinnerForLocale:end")
     }
 
     private fun populateTakeawaysVoiceSpinnerForLocale(localeTag: String) {
+        sentryBreadcrumb("ui:populateTakeawaysVoiceSpinnerForLocale:start", mapOf("localeTag" to localeTag))
         blockTakeawaysVoicePersistUntilMs = SystemClock.elapsedRealtime() + 1500L
         val options = voices
             .filter { it.locale.equals(localeTag, ignoreCase = true) }
@@ -551,6 +988,16 @@ class MainActivity : AppCompatActivity() {
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options.map { it.displayName })
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerTakeawaysVoice.adapter = adapter
+
+        sentryBreadcrumb(
+            "ui:populateTakeawaysVoiceSpinnerForLocale:end",
+            mapOf(
+                "localeTag" to localeTag,
+                "optionsCount" to options.size,
+                "blockTakeawaysVoicePersistUntilMs" to blockTakeawaysVoicePersistUntilMs
+            )
+        )
+        assertExpectedInvariant("populateTakeawaysVoiceSpinnerForLocale:end")
     }
 
     private fun restoreLocaleAndVoiceSelection(
@@ -561,6 +1008,14 @@ class MainActivity : AppCompatActivity() {
     ) {
         // Best-effort restore: if options exist, try to select saved values.
         try {
+            sentryBreadcrumb(
+                "ui:restoreLocaleAndVoiceSelection:start",
+                mapOf(
+                    "savedLocale" to savedLocale,
+                    "savedVoice" to savedVoice,
+                    "isTakeaways" to (voiceSpinner === binding.spinnerTakeawaysVoice)
+                )
+            )
             if (!savedLocale.isNullOrBlank()) {
                 val adapter = localeSpinner.adapter
                 for (i in 0 until adapter.count) {
@@ -606,7 +1061,26 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+
+            sentryBreadcrumb(
+                "ui:restoreLocaleAndVoiceSelection:end",
+                mapOf(
+                    "selectedLocale" to localeSpinner.selectedItem?.toString(),
+                    "selectedVoice" to voiceSpinner.selectedItem?.toString(),
+                    "selectedVoicePos" to voiceSpinner.selectedItemPosition,
+                    "isTakeaways" to (voiceSpinner === binding.spinnerTakeawaysVoice)
+                )
+            )
+            assertExpectedInvariant("restoreLocaleAndVoiceSelection:end")
         } catch (_: Exception) {
+            sentryErrorWithStack(
+                "ui:restoreLocaleAndVoiceSelection:exception",
+                mapOf(
+                    "savedLocale" to savedLocale,
+                    "savedVoice" to savedVoice,
+                    "isTakeaways" to (voiceSpinner === binding.spinnerTakeawaysVoice)
+                )
+            )
         }
     }
 
@@ -625,6 +1099,8 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
         val editor = prefs.edit()
 
+        sentryBreadcrumb("settings:autoSaveSettings:start", mapOf("forceCommit" to forceCommit))
+
         val aggressiveness = binding.seekbarAggressiveness.progress + 1
         editor.putInt("aggressiveness", aggressiveness)
         editor.putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
@@ -639,15 +1115,61 @@ class MainActivity : AppCompatActivity() {
         editor.putString("takeaways_format", takeawaysFormat)
 
         val locale = binding.spinnerLocale.selectedItem as? String
-        if (!locale.isNullOrBlank()) editor.putString(KEY_CONDENSE_LOCALE, locale)
+        if (!locale.isNullOrBlank()) {
+            if (isPlaceholderLocale(locale)) {
+                blockedPrefWrite(
+                    "BLOCKED_WRITE_CONDENSE_LOCALE",
+                    "settings:autoSaveSettings",
+                    mapOf("selectedLocale" to locale)
+                )
+            } else {
+                sentryBreadcrumb("prefs:write:condense_locale:autoSave", mapOf("value" to locale))
+                editor.putString(KEY_CONDENSE_LOCALE, locale)
+            }
+        }
         val takeawaysLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
-        if (!takeawaysLocale.isNullOrBlank()) editor.putString(KEY_TAKEAWAYS_LOCALE, takeawaysLocale)
+        if (!takeawaysLocale.isNullOrBlank()) {
+            if (isPlaceholderLocale(takeawaysLocale)) {
+                blockedPrefWrite(
+                    "BLOCKED_WRITE_TAKEAWAYS_LOCALE",
+                    "settings:autoSaveSettings",
+                    mapOf("selectedLocale" to takeawaysLocale)
+                )
+            } else {
+                sentryBreadcrumb("prefs:write:takeaways_locale:autoSave", mapOf("value" to takeawaysLocale))
+                editor.putString(KEY_TAKEAWAYS_LOCALE, takeawaysLocale)
+            }
+        }
 
         // Only save voice if it looks like a real voice id.
-        getSelectedVoiceOption(binding.spinnerVoice, locale)?.id?.let { editor.putString(KEY_CONDENSE_VOICE, it) }
-        getSelectedVoiceOption(binding.spinnerTakeawaysVoice, takeawaysLocale)?.id?.let { editor.putString(KEY_TAKEAWAYS_VOICE, it) }
+        getSelectedVoiceOption(binding.spinnerVoice, locale)?.id?.let {
+            if (isPlaceholderLocale(locale) || it.isBlank() || it == "Loading...") {
+                blockedPrefWrite(
+                    "BLOCKED_WRITE_CONDENSE_VOICE",
+                    "settings:autoSaveSettings",
+                    mapOf("selectedLocale" to locale, "voiceId" to it)
+                )
+            } else {
+                sentryBreadcrumb("prefs:write:condense_voice:autoSave", mapOf("value" to it, "locale" to locale))
+                editor.putString(KEY_CONDENSE_VOICE, it)
+            }
+        }
+        getSelectedVoiceOption(binding.spinnerTakeawaysVoice, takeawaysLocale)?.id?.let {
+            if (isPlaceholderLocale(takeawaysLocale) || it.isBlank() || it == "Loading...") {
+                blockedPrefWrite(
+                    "BLOCKED_WRITE_TAKEAWAYS_VOICE",
+                    "settings:autoSaveSettings",
+                    mapOf("selectedLocale" to takeawaysLocale, "voiceId" to it)
+                )
+            } else {
+                sentryBreadcrumb("prefs:write:takeaways_voice:autoSave", mapOf("value" to it, "locale" to takeawaysLocale))
+                editor.putString(KEY_TAKEAWAYS_VOICE, it)
+            }
+        }
 
         if (forceCommit) editor.commit() else editor.apply()
+        sentryBreadcrumb("settings:autoSaveSettings:end", mapOf("forceCommit" to forceCommit))
+        assertExpectedInvariant("autoSaveSettings:end")
     }
 
     private data class _VoiceOption(val id: String)
@@ -694,7 +1216,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvBuildInfo.text = "Build: ${BuildConfig.BUILD_VERSION}"
 
+        sentryBreadcrumb("lifecycle:onCreate")
+
         migratePrefsKeysIfNeeded()
+
+        assertExpectedInvariant("after_migrate_onCreate")
 
         suppressAutoSave = true
         setupSettingsControls()
@@ -705,6 +1231,8 @@ class MainActivity : AppCompatActivity() {
         fetchVoicesAndStrategiesIfMissing()
         setupUI()
         handleIntent(intent)
+
+        assertExpectedInvariant("end_onCreate")
     }
 
     private fun getServerCacheKeyPrefix(serverUrl: String): String = "serverCache:$serverUrl"
@@ -897,18 +1425,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (haveVoices && haveStrategies) return
 
-        // Set loading states
-        val loadingLocaleAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Loading..."))
-        loadingLocaleAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerLocale.adapter = loadingLocaleAdapter
-        binding.spinnerTakeawaysLocale.adapter = loadingLocaleAdapter
-
-        val loadingVoiceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf("Select language"))
-        loadingVoiceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.spinnerVoice.adapter = loadingVoiceAdapter
-        binding.spinnerTakeawaysVoice.adapter = loadingVoiceAdapter
-
-        binding.tvStrategyDesc.text = "Loading..."
+        setSettingsEnabled(false, "metadata_loading")
 
         lifecycleScope.launch {
             ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
@@ -978,6 +1495,7 @@ class MainActivity : AppCompatActivity() {
             val prefs2 = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
             val haveVoicesNow = prefs2.contains(getVoicesCacheKey(serverUrl, userLanguage))
             val haveStrategiesNow = prefs2.contains(getStrategiesCacheKey(serverUrl))
+            setSettingsEnabled(haveVoicesNow && haveStrategiesNow, "metadata_loaded")
             if (!haveVoicesNow) {
                 val fallback = ArrayAdapter(this, android.R.layout.simple_spinner_item, listOf(userLanguage))
                 fallback.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -991,6 +1509,17 @@ class MainActivity : AppCompatActivity() {
             if (!haveStrategiesNow) {
                 binding.tvStrategyDesc.text = "Failed to load"
             }
+        }
+    }
+
+    private fun setSettingsEnabled(enabled: Boolean, reason: String) {
+        try {
+            binding.cardCondenseSettings.isEnabled = enabled
+            binding.cardTakeawaysSettings.isEnabled = enabled
+            binding.cardCondenseSettings.alpha = if (enabled) 1.0f else 0.4f
+            binding.cardTakeawaysSettings.alpha = if (enabled) 1.0f else 0.4f
+            sentryBreadcrumb("ui:settings_enabled", mapOf("enabled" to enabled, "reason" to reason))
+        } catch (_: Exception) {
         }
     }
 
@@ -1399,8 +1928,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getServerUrl(): String =
-        getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-            .getString("server_url", ConciserApi.DEFAULT_URL) ?: ConciserApi.DEFAULT_URL
+        getSharedPreferences(prefsName, Context.MODE_PRIVATE).let { prefs ->
+            prefsGetStringLogged(prefs, "server_url", ConciserApi.DEFAULT_URL, "getServerUrl") ?: ConciserApi.DEFAULT_URL
+        }
 
     private fun convertSpeedToRate(speed: Float): String {
         val percentage = ((speed - 1.0f) * 100).roundToInt()

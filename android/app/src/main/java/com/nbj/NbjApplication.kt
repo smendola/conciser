@@ -3,8 +3,13 @@ package com.nbj
 import android.app.Application
 import android.util.Log
 import io.sentry.Sentry
+import io.sentry.SentryLevel
 import io.sentry.android.core.SentryAndroid
 import io.sentry.android.core.SentryAndroidOptions
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class NbjApplication : Application() {
 
@@ -18,8 +23,10 @@ class NbjApplication : Application() {
                     options.dsn = BuildConfig.SENTRY_DSN
                     options.environment = if (BuildConfig.DEBUG) "debug" else "production"
                     options.release = "nbj-condenser@${BuildConfig.BUILD_VERSION}"
-                    options.isDebug = BuildConfig.DEBUG
-                    options.tracesSampleRate = if (BuildConfig.DEBUG) 1.0 else 0.1
+                    options.isDebug = true
+                    options.tracesSampleRate = 1.0
+                    options.profilesSampleRate = 1.0
+                    options.maxBreadcrumbs = 5000
                 }
                 Log.i("NbjApplication", "Sentry initialized successfully")
 
@@ -29,11 +36,31 @@ class NbjApplication : Application() {
                     scope.setExtra("app_name", "nbj-condenser")
                     scope.setTag("build", BuildConfig.BUILD_VERSION)
                 }
+
+                // Flush early so you can confirm Sentry is actually delivering events.
+                Sentry.flush(5000)
+
+                // During debugging: periodically flush so high-volume events are less likely to
+                // sit in memory while you're clicking around.
+                startPeriodicSentryFlush()
             } catch (e: Exception) {
                 Log.e("NbjApplication", "Failed to initialize Sentry", e)
             }
         } else {
             Log.w("NbjApplication", "Sentry DSN not configured - logging disabled")
+        }
+    }
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun startPeriodicSentryFlush() {
+        GlobalScope.launch {
+            while (true) {
+                try {
+                    delay(3000)
+                    Sentry.flush(2000)
+                } catch (_: Exception) {
+                }
+            }
         }
     }
 }

@@ -41,6 +41,10 @@ android {
         // Inject Sentry DSN from environment or build-settings.json
         def sentryDsn = System.getenv('SENTRY_DSN') ?: (settingsJson?.sentry_dsn ?: '')
         buildConfigField "String", "SENTRY_DSN", "\"${sentryDsn}\""
+
+        // Gate verbose voice/locale/prefs Sentry logging (default off)
+        def verboseLangVoice = (settingsJson?.sentry_verbose_lang_voice_logging ?: false)
+        buildConfigField "boolean", "SENTRY_VERBOSE_LANG_VOICE_LOGGING", "${verboseLangVoice}"
     }
 
     signingConfigs {
