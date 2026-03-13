@@ -8,15 +8,7 @@ from colorama import Fore, Style
 from ..app import cli
 
 
-@cli.command()
-@click.option(
-    '-f',
-    '--force',
-    is_flag=True,
-    default=False,
-    help='Force kill the server (SIGKILL) if it does not stop gracefully.',
-)
-def stop(force: bool) -> None:
+def stop_server(force: bool) -> None:
     repo_root = Path(__file__).resolve().parents[3]
     pid_path = repo_root / 'nbj.pid'
 
@@ -62,3 +54,15 @@ def stop(force: bool) -> None:
         pid_path.unlink()
     except OSError:
         pass
+
+
+@cli.command()
+@click.option(
+    '-f',
+    '--force',
+    is_flag=True,
+    default=False,
+    help='Force kill the server (SIGKILL) if it does not stop gracefully.',
+)
+def stop(force: bool) -> None:
+    stop_server(force=force)

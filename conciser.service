@@ -1,0 +1,13 @@
+[Unit]
+Description=NBJ Condenser Server
+After=network.target
+
+[Service]
+Type=simple
+User=sal
+WorkingDirectory=/home/sal/conciser
+ExecStart=/home/sal/conciser/venv/bin/nbj start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

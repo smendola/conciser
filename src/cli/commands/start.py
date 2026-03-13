@@ -7,6 +7,7 @@ import click
 from colorama import Fore, Style
 
 from ..app import cli
+from .stop import stop_server
 
 
 @cli.command(
@@ -27,8 +28,15 @@ from ..app import cli
     default=False,
     help='Enable/disable the Flask/Werkzeug auto-reloader. Off by default.',
 )
+@click.option(
+    '-r',
+    '--restart',
+    is_flag=True,
+    default=False,
+    help='Stop the running server first, then start it again.',
+)
 @click.pass_context
-def start(ctx: click.Context, detach: bool, reload: bool) -> None:
+def start(ctx: click.Context, detach: bool, reload: bool, restart: bool) -> None:
     repo_root = Path(__file__).resolve().parents[3]
     server_app = repo_root / 'server' / 'app.py'
     log_path = repo_root / 'nbj.log'
@@ -42,6 +50,10 @@ def start(ctx: click.Context, detach: bool, reload: bool) -> None:
     cmd = [python_exe, str(server_app), *ctx.args]
 
     try:
+        if restart:
+            if pid_path.exists():
+                stop_server(force=False)
+
         if detach:
             with log_path.open('ab', buffering=0) as log_f:
                 env = os.environ.copy()

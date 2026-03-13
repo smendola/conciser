@@ -201,8 +201,9 @@ class JobService:
         output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
 
         # Build command
+        nbj_path = get_project_root() / "venv" / "bin" / "nbj"
         cmd = [
-            "nbj",
+            str(nbj_path),
             "takeaways",
             job["url"],
             "--format",

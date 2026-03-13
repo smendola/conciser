@@ -4,11 +4,12 @@ from unittest.mock import Mock
 
 from src.cli.app import cli
 from src.cli.commands import check as check_module
+from src.cli.commands import info as info_module
 from src.cli.commands import init as init_module
+from src.cli.commands import start as start_module
 from src.cli.commands import show_script as show_script_module
 from src.cli.commands import tts_samples as tts_samples_module
 from src.cli.commands import voices as voices_module
-from src.cli.commands import info as info_module
 
 
 def test_voices_edge_lang_filter(runner, monkeypatch, settings_factory):
@@ -282,3 +283,53 @@ def test_setup_writes_env(runner, tmp_path):
         assert "OPENAI_API_KEY=openai" in env_text
         assert "ANTHROPIC_API_KEY=anthropic" in env_text
         assert "ELEVENLABS_API_KEY=eleven" in env_text
+
+
+def test_start_restart_stops_before_start(runner, monkeypatch):
+    stop_mock = Mock()
+    run_mock = Mock()
+    monkeypatch.setattr(start_module, "stop_server", stop_mock)
+    monkeypatch.setattr(start_module.subprocess, "run", run_mock)
+
+    result = runner.invoke(cli, ["start", "-r"])
+
+    assert result.exit_code == 0
+    stop_mock.assert_called_once_with(force=False)
+    run_mock.assert_called_once()
+
+
+def test_start_restart_does_not_fail_when_pidfile_missing(runner, monkeypatch, tmp_path):
+    stop_mock = Mock()
+    run_mock = Mock()
+    monkeypatch.setattr(start_module, "stop_server", stop_mock)
+    monkeypatch.setattr(start_module.subprocess, "run", run_mock)
+
+    start_file = Path(start_module.__file__).resolve()
+    repo_root = tmp_path / "repo"
+    commands_dir = repo_root / "src" / "cli" / "commands"
+    commands_dir.mkdir(parents=True, exist_ok=True)
+    server_dir = repo_root / "server"
+    server_dir.mkdir(parents=True, exist_ok=True)
+    (server_dir / "app.py").write_text("", encoding="utf-8")
+    fake_start = commands_dir / start_file.name
+    fake_start.write_text(start_file.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(start_module, "__file__", str(fake_start))
+
+    result = runner.invoke(cli, ["start", "-r"])
+
+    assert result.exit_code == 0
+    stop_mock.assert_not_called()
+    run_mock.assert_called_once()
+
+
+def test_start_restart_propagates_stop_failure(runner, monkeypatch):
+    stop_mock = Mock(side_effect=SystemExit(1))
+    run_mock = Mock()
+    monkeypatch.setattr(start_module, "stop_server", stop_mock)
+    monkeypatch.setattr(start_module.subprocess, "run", run_mock)
+
+    result = runner.invoke(cli, ["start", "-r"])
+
+    assert result.exit_code == 1
+    stop_mock.assert_called_once_with(force=False)
+    run_mock.assert_not_called()
