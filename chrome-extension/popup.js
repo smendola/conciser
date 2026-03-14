@@ -277,7 +277,14 @@ async function openJobInNewTab(jobId) {
   if (!renderUrl) {
     throw new Error('No render_url available');
   }
-  chrome.tabs.create({ url: renderUrl });
+  // Check if we're in content script context or popup context
+  if (document.getElementById('nbj-condenser-container')) {
+    // Content script context - use window.open
+    window.open(renderUrl, '_blank');
+  } else {
+    // Popup context - use chrome.tabs.create
+    chrome.tabs.create({ url: renderUrl });
+  }
 }
 
 async function deleteJob(jobId) {
@@ -332,11 +339,29 @@ function toServerAbsoluteUrl(url) {
 // Initialize popup
 async function initializePopup() {
   console.log('POPUP_BOOT: initializePopup start');
+
+  // Set build version (may not exist if UI is collapsed)
+  const buildInfoEl = document.getElementById('buildInfo');
+  if (buildInfoEl) {
+    if (typeof BUILD_VERSION !== 'undefined') {
+      buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+    } else {
+      buildInfoEl.textContent = 'Build: Unknown';
+    }
+  }
+
   clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  currentUrl = tab.url;
+  // In content script context, just use window.location.href
+  if (document.getElementById('nbj-condenser-container')) {
+    // We're in content script context
+    currentUrl = window.location.href;
+  } else {
+    // We're in popup context
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    currentUrl = tab.url;
+  }
 
   const videoInfo = document.getElementById('videoInfo');
   const condenseBtn = document.getElementById('condenseBtn');
@@ -412,6 +437,9 @@ async function initializePopup() {
 
   // Load recent jobs
   await loadRecentJobs();
+
+  // Setup event listeners
+  setupEventListeners();
 }
 
 // Fetch and display recent jobs
@@ -752,49 +780,214 @@ function resetToCondenseMode() {
 }
 
 // Setup event listeners for controls
-document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
-  document.getElementById('aggressivenessValue').textContent = e.target.value;
-  updateStrategyDescription();
-  handleSettingChange();
-});
+function setupEventListeners() {
+  document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
+    document.getElementById('aggressivenessValue').textContent = e.target.value;
+    updateStrategyDescription();
+    handleSettingChange();
+  });
 
-document.getElementById('speedSlider').addEventListener('input', (e) => {
-  const value = parseFloat(e.target.value);
-  document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
-  handleSettingChange();
-});
+  document.getElementById('speedSlider').addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
+    handleSettingChange();
+  });
 
-document.getElementById('localeSelect').addEventListener('change', (e) => {
-  updateVoiceSelectForLocale('voiceSelect', e.target.value);
-  handleSettingChange();
-});
+  document.getElementById('localeSelect').addEventListener('change', (e) => {
+    updateVoiceSelectForLocale('voiceSelect', e.target.value);
+    handleSettingChange();
+  });
 
-document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
-  updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
-  handleSettingChange();
-});
+  document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
+    updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
+    handleSettingChange();
+  });
 
-document.getElementById('voiceSelect').addEventListener('change', () => {
-  handleSettingChange();
-});
+  document.getElementById('voiceSelect').addEventListener('change', () => {
+    handleSettingChange();
+  });
 
-document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
+  document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
 
+  document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
 
-document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
+  document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
 
-document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
+  // Condense button click
+  document.getElementById('condenseBtn').addEventListener('click', async () => {
+    const condenseBtn = document.getElementById('condenseBtn');
+    condenseBtn.disabled = true;
+    condenseBtn.textContent = 'Processing...';
 
-// Display build version
-if (typeof BUILD_VERSION !== 'undefined') {
-  document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
-} else {
-  document.getElementById('buildInfo').textContent = 'Build: Unknown';
+    try {
+      // Get current settings
+      const aggressiveness = parseInt(document.getElementById('aggressivenessSlider').value);
+      const voice = document.getElementById('voiceSelect').value;
+      const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
+      const speechRate = convertSpeedToRate(speechSpeed);
+      const videoMode = document.getElementById('videoModeSelect').value;
+      const prependIntro = document.getElementById('prependIntroCheck').checked;
+
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'condense',
+          url: currentUrl,
+          params: {
+            aggressiveness: aggressiveness,
+            voice: voice,
+            speech_rate: speechRate,
+            video_mode: videoMode,
+            prepend_intro: prependIntro
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        currentJobId = data.id;
+
+        // Clear any previous completed job for this URL
+        const storage = await chrome.storage.local.get(['completedJobs']);
+        if (storage.completedJobs && storage.completedJobs[currentUrl]) {
+          delete storage.completedJobs[currentUrl];
+          await chrome.storage.local.set({ completedJobs: storage.completedJobs });
+        }
+
+        // Save job to storage for persistence
+        await chrome.storage.local.set({
+          activeJob: {
+            jobId: currentJobId,
+            url: currentUrl,
+            startedAt: new Date().toISOString()
+          }
+        });
+
+        showStatus('processing', `Processing started\nJob ID: ${currentJobId}`);
+        startPolling();
+      } else {
+        showStatus('error', data.error || 'Failed to submit video');
+        condenseBtn.disabled = false;
+        condenseBtn.textContent = 'Condense Video';
+      }
+    } catch (error) {
+      showStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
+      condenseBtn.disabled = false;
+      condenseBtn.textContent = 'Condense Video';
+    }
+  });
+
+  // Takeaways button click
+  document.getElementById('takeawaysBtn').addEventListener('click', async () => {
+    const takeawaysBtn = document.getElementById('takeawaysBtn');
+    takeawaysBtn.disabled = true;
+    takeawaysBtn.textContent = 'Processing...';
+
+    try {
+      // Get takeaways settings
+      const topRadio = document.querySelector('input[name="top"]:checked');
+      const formatRadio = document.querySelector('input[name="format"]:checked');
+      const top = topRadio.value === 'auto' ? null : parseInt(topRadio.value);
+      const format = formatRadio.value;
+      const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
+
+      const params = {
+        format_type: format
+      };
+
+      if (top !== null) {
+        params.top = top;
+      }
+
+      if (voice) {
+        params.voice = voice;
+      }
+
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'takeaways',
+          url: currentUrl,
+          params
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        currentTakeawaysJobId = data.id;
+
+        // Clear any previous completed takeaways for this URL
+        const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
+        if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
+          delete storage.completedTakeawaysJobs[currentUrl];
+          await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
+        }
+
+        // Save job to storage for persistence
+        await chrome.storage.local.set({
+          activeTakeawaysJob: {
+            jobId: currentTakeawaysJobId,
+            url: currentUrl,
+            startedAt: new Date().toISOString()
+          }
+        });
+
+        showTakeawaysStatus('processing', `Processing started\nJob ID: ${currentTakeawaysJobId}`);
+        startTakeawaysPolling();
+      } else {
+        showTakeawaysStatus('error', data.error || 'Failed to extract takeaways');
+        takeawaysBtn.disabled = false;
+        takeawaysBtn.textContent = 'Extract Takeaways';
+      }
+    } catch (error) {
+      showTakeawaysStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
+      takeawaysBtn.disabled = false;
+      takeawaysBtn.textContent = 'Extract Takeaways';
+    }
+  });
 }
 
-// Run initialization
-initializePopup();
+// Don't auto-run when loaded as content script - wait for content.js to call us
+// Display build version only if we're in popup context (not content script)
+if (!document.getElementById('nbj-condenser-container')) {
+  // We're in popup context
+  if (typeof BUILD_VERSION !== 'undefined') {
+    document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
+  } else {
+    document.getElementById('buildInfo').textContent = 'Build: Unknown';
+  }
+  // Run initialization
+  initializePopup();
+}
+// If we're in content script context, content.js will call initializePopup() after injecting the DOM
 
+// Call setupEventListeners when in popup mode (not content script)
+// Don't auto-run when loaded as content script - wait for content.js to call us
+// Display build version only if we're in popup context (not content script)
+if (!document.getElementById('nbj-condenser-container')) {
+  // We're in popup context
+  if (typeof BUILD_VERSION !== 'undefined') {
+    document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
+  } else {
+    document.getElementById('buildInfo').textContent = 'Build: Unknown';
+  }
+  // Setup event listeners for popup mode
+  setupEventListeners();
+  // Run initialization
+  initializePopup();
+}
+// If we're in content script context, content.js will call initializePopup() and setupEventListeners() after injecting the DOM
+
+// Old duplicate code below - keeping for reference but not executing
+/*
 // Condense button click
 document.getElementById('condenseBtn').addEventListener('click', async () => {
   const condenseBtn = document.getElementById('condenseBtn');
@@ -1135,3 +1328,4 @@ function resetTakeawaysButton() {
   takeawaysBtn.textContent = 'Extract Takeaways';
   takeawaysBtn.style.display = '';
 }
+*/

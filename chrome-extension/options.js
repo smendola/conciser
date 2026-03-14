@@ -44,7 +44,7 @@ async function pingServer(rawValue) {
     return;
   }
 
-  const healthUrl = `${serverUrl}/health`;
+  const healthUrl = `${serverUrl}/api/health`;
 
   if (currentPingController) {
     currentPingController.abort();
