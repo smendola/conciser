@@ -569,13 +569,23 @@ class ContentCondenser:
 
                 if self.provider == "openai":
                     # SSML rewrite is a plain-text transform and must NOT use the condensation JSON schema.
-                    # Use a one-shot Responses API call with explicit SSML rewrite instructions.
-                    response = self.client.responses.create(
-                        model=self.model,
-                        instructions=instructions,
-                        input=[{"role": "user", "content": user_input}],
-                        max_output_tokens=8000,
-                    )
+                    if previous_response_id:
+                        # Continue the conversation chain — the model already has the
+                        # condensed script in context, so just send the rewrite instruction.
+                        response = self.client.responses.create(
+                            model=self.model,
+                            previous_response_id=previous_response_id,
+                            input=[{"role": "user", "content": instructions}],
+                            max_output_tokens=8000,
+                        )
+                    else:
+                        # One-shot fallback: send condensed script as user input.
+                        response = self.client.responses.create(
+                            model=self.model,
+                            instructions=instructions,
+                            input=[{"role": "user", "content": user_input}],
+                            max_output_tokens=8000,
+                        )
                     return (response.output_text or "").strip()
 
                 raise ValueError(f"Unsupported provider: {self.provider}")
