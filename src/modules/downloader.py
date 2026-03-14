@@ -361,6 +361,7 @@ class VideoDownloader:
             ydl_opts = {
                 'format': format_string,
                 'outtmpl': output_template,
+                'paths': {'home': str(video_folder)},  # Explicitly set download directory
                 'quiet': True,
                 'no_warnings': True,
                 'ignoreconfig': True,
@@ -397,6 +398,15 @@ class VideoDownloader:
             }
             ydl_opts = self._apply_youtube_auth(ydl_opts)
             ydl_opts = self._apply_youtube_proxy(ydl_opts)
+
+            # Ensure video folder exists right before download
+            video_folder.mkdir(parents=True, exist_ok=True)
+
+            # Verify the folder was created
+            if not video_folder.exists():
+                raise RuntimeError(f"Failed to create video folder: {video_folder}")
+
+            logger.info(f"Downloading to: {output_template}")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Download the video

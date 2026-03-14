@@ -75,6 +75,11 @@ Express numbers with units with the fully spelled out unit name, e.g.
 **BAD**: 100 ms
 **GOOD**: 100 milliseconds
 
+Write out numbers in words, not numerals, e.g.
+
+**BAD**: About 307,000 lines across roughly 1,600 source files
+**GOOD**: About three hundred seven thousand lines across roughly one thousand six hundred source files
+
 The newlines are meaningful to the TTS engine. Use them judiciously to improve the prosody of the output.
 
 **What can always be CUT:**
@@ -304,6 +309,12 @@ Express numbers with units with the fully spelled out unit name, e.g.
 **GOOD**: 4.5 megabytes
 **BAD**: 100 ms
 **GOOD**: 100 milliseconds
+
+Write out numbers in words, not numerals, e.g.
+
+**BAD**: About 307,000 lines across roughly 1,600 source files
+**GOOD**: About three hundred seven thousand lines across roughly one thousand six hundred source files
+
 """
 
 EXTRACT_TAKEAWAYS_PROMPT_BASE = """

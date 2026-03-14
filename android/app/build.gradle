@@ -13,7 +13,7 @@ android {
     }
     def androidBuildNumber = androidBuildNumberFile.text.trim().isInteger() ? androidBuildNumberFile.text.trim().toInteger() : 0
     def androidVersionCodeValue = Math.max(1, androidBuildNumber + 1)
-    def androidVersionName = "1.0.${androidVersionCodeValue}"
+    def androidVersionName = "1.1.${androidVersionCodeValue}"
 
     defaultConfig {
         applicationId "com.nbj"
