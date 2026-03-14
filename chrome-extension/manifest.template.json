@@ -19,8 +19,21 @@
   "background": {
     "service_worker": "background.js"
   },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
+      "js": ["content-mode-flag.js", "build-info.js", "popup.js", "content.js"],
+      "css": ["popup.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.css", "popup.js", "build-info.js", "content-mode-flag.js"],
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
+    }
+  ],
   "action": {
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",

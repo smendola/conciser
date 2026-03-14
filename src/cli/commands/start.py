@@ -37,7 +37,8 @@ from .stop import stop_server
 )
 @click.pass_context
 def start(ctx: click.Context, detach: bool, reload: bool, restart: bool) -> None:
-    repo_root = Path(__file__).resolve().parents[3]
+    env_root = os.environ.get('NBJ_PROJECT_ROOT') or None
+    repo_root = Path(env_root or Path(__file__).resolve().parents[3])
     server_app = repo_root / 'server' / 'app.py'
     log_path = repo_root / 'nbj.log'
     pid_path = repo_root / 'nbj.pid'
@@ -53,6 +54,8 @@ def start(ctx: click.Context, detach: bool, reload: bool, restart: bool) -> None
         if restart:
             if pid_path.exists():
                 stop_server(force=False)
+            else:
+                print(f"{Fore.YELLOW}No pidfile found at {pid_path}; skipping stop step.{Style.RESET_ALL}")
 
         if detach:
             with log_path.open('ab', buffering=0) as log_f:

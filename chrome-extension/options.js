@@ -44,7 +44,7 @@ async function pingServer(rawValue) {
     return;
   }
 
-  const healthUrl = `${serverUrl}/health`;
+  const healthUrl = `${serverUrl}/api/health`;
 
   if (currentPingController) {
     currentPingController.abort();
@@ -134,14 +134,14 @@ async function save(andPing = true) {
   const existing = storage.settings || {};
   const previousServerUrl = normalizeServerUrl(existing.serverUrl);
 
-  console.log('METADATA_CACHE: options_save', {
+  console.log('[CONCISER] METADATA_CACHE: options_save', {
     previousServerUrl,
     serverUrl
   });
   await apiLog(serverUrl, 'options_save', { previousServerUrl });
 
   if (previousServerUrl && previousServerUrl !== serverUrl) {
-    console.log('METADATA_CACHE: options_server_switch_wipe', {
+    console.log('[CONCISER] METADATA_CACHE: options_server_switch_wipe', {
       from: previousServerUrl,
       to: serverUrl
     });

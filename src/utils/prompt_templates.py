@@ -75,6 +75,11 @@ Express numbers with units with the fully spelled out unit name, e.g.
 **BAD**: 100 ms
 **GOOD**: 100 milliseconds
 
+Write out numbers in words, not numerals, e.g.
+
+**BAD**: About 307,000 lines across roughly 1,600 source files
+**GOOD**: About three hundred seven thousand lines across roughly one thousand six hundred source files
+
 The newlines are meaningful to the TTS engine. Use them judiciously to improve the prosody of the output.
 
 **What can always be CUT:**
@@ -296,7 +301,14 @@ Requirements:
 - Do not add new content
 - Output valid SSML only
 - Output must be a single SSML document wrapped in <speak>...</speak>.
+- The output MUST start with:
+  <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  and MUST end with:
+  </speak>
+- Do not wrap the output in markdown fences. Do not output ``` or ```xml.
 - Do not include a <voice> tag or any voice name/voice ID. Voice selection is handled separately.
+- Only use Azure SSML tags that are widely supported: <speak>, <p>, <s>, <break>, <emphasis>, and <prosody>.
+- If you use <prosody>, keep it simple (rate and pitch only) and do not nest it deeply.
 
 Express numbers with units with the fully spelled out unit name, e.g.
 
@@ -304,6 +316,12 @@ Express numbers with units with the fully spelled out unit name, e.g.
 **GOOD**: 4.5 megabytes
 **BAD**: 100 ms
 **GOOD**: 100 milliseconds
+
+Write out numbers in words, not numerals, e.g.
+
+**BAD**: About 307,000 lines across roughly 1,600 source files
+**GOOD**: About three hundred seven thousand lines across roughly one thousand six hundred source files
+
 """
 
 EXTRACT_TAKEAWAYS_PROMPT_BASE = """
