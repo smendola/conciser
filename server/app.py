@@ -35,7 +35,15 @@ from src.utils.prompt_templates import get_strategy_description
 from server.job_service import JobService
 
 app = Flask(__name__)
-CORS(app)  # Allow requests from Chrome extension
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "X-User-Id"],
+        "expose_headers": ["Content-Type"],
+        "supports_credentials": False
+    }
+})  # Allow requests from Chrome extension and other origins
 
 # Job service for concurrent processing
 job_service = JobService(max_workers=3)

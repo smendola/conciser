@@ -609,6 +609,53 @@ function resetTakeawaysButton() {
   takeawaysBtn.style.display = '';
 }
 
+// Check for in-progress jobs and attach to them
+async function checkForInProgressJobs(jobType) {
+  try {
+    console.log(`[CONCISER] Checking for in-progress ${jobType} jobs...`);
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const jobs = data.jobs || [];
+
+    // Find in-progress job for current URL and type
+    const inProgressJob = jobs.find(job =>
+      job.url === currentUrl &&
+      job.type === jobType &&
+      (job.status === 'processing' || job.status === 'queued')
+    );
+
+    if (inProgressJob) {
+      console.log(`[CONCISER] Found in-progress ${jobType} job:`, inProgressJob.id);
+
+      if (jobType === 'condense') {
+        currentJobId = inProgressJob.id;
+        const condenseBtn = document.getElementById('condenseBtn');
+        if (condenseBtn) {
+          condenseBtn.disabled = true;
+          condenseBtn.textContent = 'Processing...';
+        }
+        showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`, inProgressJob.progress);
+        startPolling();
+      } else if (jobType === 'takeaways') {
+        currentTakeawaysJobId = inProgressJob.id;
+        const takeawaysBtn = document.getElementById('takeawaysBtn');
+        if (takeawaysBtn) {
+          takeawaysBtn.disabled = true;
+          takeawaysBtn.textContent = 'Processing...';
+        }
+        showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`, inProgressJob.progress);
+        startTakeawaysPolling();
+      }
+    } else {
+      console.log(`[CONCISER] No in-progress ${jobType} job found for this video`);
+    }
+  } catch (error) {
+    console.error(`[CONCISER] Error checking for in-progress ${jobType} jobs:`, error);
+  }
+}
+
 // Initialize popup
 async function initializePopup() {
   console.log('[CONCISER] POPUP_BOOT: initializePopup start');
@@ -667,6 +714,9 @@ async function initializePopup() {
   // No job state persistence - server is source of truth
   // Just load recent jobs from server
   await loadRecentJobs();
+
+  // Check for in-progress jobs and attach to them
+  await checkForInProgressJobs(currentTab);
 
   // Setup event listeners
   setupEventListeners();
@@ -763,7 +813,7 @@ async function loadRecentJobs() {
 
 // Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
 
-function setActiveTab(targetTab) {
+async function setActiveTab(targetTab) {
   const tabButtons = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
@@ -780,18 +830,21 @@ function setActiveTab(targetTab) {
   });
 
   currentTab = targetTab;
+
+  // Check for in-progress jobs when switching tabs
+  await checkForInProgressJobs(targetTab);
 }
 
 // Setup tab switching
 async function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab');
   const storedTabState = await chrome.storage.local.get([POPUP_TAB_STORAGE_KEY]);
-  setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
+  await setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
 
   tabButtons.forEach(button => {
     button.addEventListener('click', async () => {
       const targetTab = button.getAttribute('data-tab');
-      setActiveTab(targetTab);
+      await setActiveTab(targetTab);
       await chrome.storage.local.set({ [POPUP_TAB_STORAGE_KEY]: targetTab });
     });
   });
