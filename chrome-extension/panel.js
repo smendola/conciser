@@ -706,6 +706,7 @@ async function initializePopup() {
       console.log('[CONCISER] BUILD_VERSION not defined');
       buildInfoEl.textContent = '???';
     }
+    buildInfoEl.addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openOptionsPage' }));
   } else {
     console.log('[CONCISER] buildInfo element not found');
   }

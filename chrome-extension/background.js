@@ -82,6 +82,13 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
+// Open options page on request from content scripts
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.action === 'openOptionsPage') {
+    chrome.runtime.openOptionsPage();
+  }
+});
+
 // Also update icon when extension starts
 chrome.runtime.onStartup.addListener(async () => {
   try {
