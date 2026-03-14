@@ -289,9 +289,18 @@ class CondenserPipeline:
                                 logger.warning("SSML regeneration requested but OpenAI conversation pointer is missing. Falling back to plain text TTS.")
                                 ssml_text = None
                             else:
-                                ssml_text = self.condenser.rewrite_for_tts_ssml("", previous_response_id=previous_response_id)
+                                ssml_word_count_callback = word_count_callback or (lambda n: update_progress("SSML", f"{n} words generated..."))
+                                ssml_text = self.condenser.rewrite_for_tts_ssml(
+                                    "",
+                                    previous_response_id=previous_response_id,
+                                    word_count_callback=ssml_word_count_callback,
+                                )
                         else:
-                            ssml_text = self.condenser.rewrite_for_tts_ssml(tts_script)
+                            ssml_word_count_callback = word_count_callback or (lambda n: update_progress("SSML", f"{n} words generated..."))
+                            ssml_text = self.condenser.rewrite_for_tts_ssml(
+                                tts_script,
+                                word_count_callback=ssml_word_count_callback,
+                            )
                     except Exception as e:
                         print(f"\n{Fore.RED}SSML rewrite failed: {e}{Style.RESET_ALL}\n")
                         ssml_text = None

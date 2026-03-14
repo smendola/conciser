@@ -113,6 +113,15 @@ def _handle_stream_delta(delta: str, chunks: list, char_count: list, mode: str, 
             word_count_callback(n)
 
 
+def _handle_stream_delta_silent(delta: str, chunks: list, word_count_callback):
+    """Process one streaming delta without printing; fire word_count_callback on paragraph breaks."""
+    chunks.append(delta)
+    if word_count_callback and "\\n" in delta:
+        n = len("".join(chunks).split())
+        if n >= 50:
+            word_count_callback(n)
+
+
 def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, mode: str, word_count_callback=None) -> str:
     """Call OpenAI Responses API with streaming; return (full response text, response_id)."""
     import sys
@@ -132,6 +141,23 @@ def _stream_responses_api(client, model: str, chain_id: str, user_prompt: str, m
         final_response = stream.get_final_response()
     sys.stdout.write("\n")
     sys.stdout.flush()
+    return "".join(chunks), final_response.id
+
+
+def _stream_responses_api_silent(client, model: str, chain_id: str, user_prompt: str, word_count_callback=None) -> tuple[str, str]:
+    """Stream Responses API without printing anything; return (full response text, response_id)."""
+    from openai.lib.streaming.responses import ResponseTextDeltaEvent
+    chunks = []
+    with client.responses.stream(
+        model=model,
+        previous_response_id=chain_id,
+        input=[{"role": "user", "content": user_prompt}],
+        max_output_tokens=16000,
+    ) as stream:
+        for event in stream:
+            if isinstance(event, ResponseTextDeltaEvent):
+                _handle_stream_delta_silent(event.delta, chunks, word_count_callback)
+        final_response = stream.get_final_response()
     return "".join(chunks), final_response.id
 
 
@@ -519,6 +545,7 @@ class ContentCondenser:
         self,
         condensed_script: str,
         previous_response_id: str = None,
+        word_count_callback=None,
         max_retries: int = 3,
         initial_retry_delay: float = 1.0,
     ) -> str:
@@ -544,14 +571,14 @@ class ContentCondenser:
                     if not previous_response_id:
                         raise ValueError("OpenAI SSML rewrite requires previous_response_id (do not resend script)")
                     # Continue the same Responses conversation; do not resend the condensed script.
-                    response = self.client.responses.create(
-                        model=self.model,
-                        previous_response_id=previous_response_id,
-                        instructions=instructions,
-                        input=[{"role": "user", "content": "Rewrite now."}],
-                        max_output_tokens=16000,
+                    ssml_text, _response_id = _stream_responses_api_silent(
+                        self.client,
+                        self.model,
+                        previous_response_id,
+                        "Rewrite now.",
+                        word_count_callback=word_count_callback,
                     )
-                    return response.output_text
+                    return ssml_text
 
                 raise ValueError(f"Unsupported provider: {self.provider}")
 
