@@ -594,6 +594,10 @@ class MainActivity : AppCompatActivity() {
     private var currentJobType: String = "condense"  // "condense" or "takeaways"
     private var currentOutputFormat: String = "video"  // "video", "audio", "text"
     private var eventSource: EventSource? = null  // SSE connection for job updates
+    private var isForeground: Boolean = false
+    private var sseReconnectAttempts: Int = 0
+    private val SSE_RECONNECT_DELAY_MS: Long = 1000
+    private val SSE_MAX_RECONNECT_ATTEMPTS: Int = 3
 
     private var voices: List<VoiceItem> = emptyList()
     private var strategies: List<StrategyItem> = emptyList()
@@ -1954,12 +1958,26 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        isForeground = true
         refreshRecentJobsUI()
+
+        val jobId = currentJobId
+        if (jobId != null && (currentState == AppState.PROCESSING || currentState == AppState.SUBMITTING)) {
+            lifecycleScope.launch {
+                delay(SSE_RECONNECT_DELAY_MS)
+                if (isForeground && currentJobId == jobId && eventSource == null) {
+                    startSsePolling(jobId, resetAttempts = true)
+                }
+            }
+        }
     }
 
     override fun onPause() {
         autoSaveSettings(forceCommit = true)
+        isForeground = false
         super.onPause()
+        eventSource?.cancel()
+        eventSource = null
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -2347,8 +2365,16 @@ class MainActivity : AppCompatActivity() {
         eventSource?.cancel()
 
         val jobId = currentJobId ?: return
+        startSsePolling(jobId, resetAttempts = true)
+    }
+
+    private fun startSsePolling(jobId: String, resetAttempts: Boolean = true) {
+        if (resetAttempts) {
+            sseReconnectAttempts = 0
+        }
+
         val cid = ClientIdentity.getOrCreate(this)
-        val url = "${getServerUrl()}/api/jobs/${jobId}/stream?cid=${cid}"
+        val url = "${getServerUrl().trimEnd('/')}/api/jobs/${jobId}/stream?cid=${cid}"
 
         Log.d("SSE", "Connecting to: $url")
 
@@ -2357,9 +2383,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val request = Request.Builder().url(url).build()
-        val client = okhttp3.OkHttpClient()
 
-        eventSource = EventSources.createFactory(client)
+        eventSource = EventSources.createFactory(okhttp3.OkHttpClient())
             .newEventSource(request, object : EventSourceListener() {
                 override fun onOpen(eventSource: EventSource, response: Response) {
                     Log.d("SSE", "Connection opened")
@@ -2377,7 +2402,6 @@ class MainActivity : AppCompatActivity() {
                         val job = gson.fromJson(data, JobResponse::class.java)
                         runOnUiThread {
                             updateJobUI(job)
-                            // Close connection when job is complete or errored
                             if (job.status == "completed" || job.status == "error") {
                                 eventSource.cancel()
                             }
@@ -2390,6 +2414,9 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onClosed(eventSource: EventSource) {
                     Log.d("SSE", "Connection closed")
+                    if (this@MainActivity.eventSource === eventSource) {
+                        this@MainActivity.eventSource = null
+                    }
                 }
 
                 override fun onFailure(
@@ -2398,6 +2425,34 @@ class MainActivity : AppCompatActivity() {
                     response: Response?
                 ) {
                     Log.e("SSE", "Connection error: ${t?.message}, response: ${response?.code}")
+
+                    if (this@MainActivity.eventSource === eventSource) {
+                        this@MainActivity.eventSource = null
+                    }
+
+                    // If we are backgrounded, do not surface an error; we'll reconnect on resume.
+                    if (!isForeground) {
+                        return
+                    }
+
+                    // Retry a few times with 1s delay before giving up.
+                    if (sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+                        sseReconnectAttempts += 1
+                        runOnUiThread {
+                            updateUI(
+                                AppState.PROCESSING,
+                                statusText = "Connection lost. Reconnecting... (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})\nJob ID: ${currentJobId ?: jobId}"
+                            )
+                        }
+                        lifecycleScope.launch {
+                            delay(SSE_RECONNECT_DELAY_MS)
+                            val current = currentJobId
+                            if (isForeground && current != null && (currentState == AppState.PROCESSING || currentState == AppState.SUBMITTING)) {
+                                startSsePolling(current, resetAttempts = false)
+                            }
+                        }
+                        return
+                    }
 
                     // Try one regular fetch to see if job still exists
                     lifecycleScope.launch {

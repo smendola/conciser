@@ -14,6 +14,10 @@ let strategies = [];
 let voices = [];
 let currentTab = 'condense';
 let clientId = null;
+let sseReconnectAttempts = 0;
+let takeawaysSseReconnectAttempts = 0;
+const SSE_RECONNECT_DELAY_MS = 1000;
+const SSE_MAX_RECONNECT_ATTEMPTS = 3;
 const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
 
 function getServerCacheKeyPrefix() {
@@ -437,10 +441,14 @@ function resetButton() {
   condenseBtn.style.display = '';
 }
 
-function startPolling() {
+function startPollingInternal({ resetAttempts } = {}) {
   // Close any existing connection
   if (eventSource) {
     eventSource.close();
+  }
+
+  if (resetAttempts) {
+    sseReconnectAttempts = 0;
   }
 
   // Create SSE connection
@@ -469,6 +477,14 @@ function startPolling() {
     console.error('SSE connection error:', error);
     eventSource.close();
 
+    if (sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+      sseReconnectAttempts += 1;
+      showStatus('processing', `Connection lost. Reconnecting... (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})\nJob ID: ${currentJobId}`);
+      await new Promise(resolve => setTimeout(resolve, SSE_RECONNECT_DELAY_MS));
+      startPollingInternal({ resetAttempts: false });
+      return;
+    }
+
     // Try one regular fetch to see if job still exists
     try {
       const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
@@ -488,10 +504,18 @@ function startPolling() {
   };
 }
 
-function startTakeawaysPolling() {
+function startPolling() {
+  startPollingInternal({ resetAttempts: true });
+}
+
+function startTakeawaysPollingInternal({ resetAttempts } = {}) {
   // Close any existing connection
   if (takeawaysEventSource) {
     takeawaysEventSource.close();
+  }
+
+  if (resetAttempts) {
+    takeawaysSseReconnectAttempts = 0;
   }
 
   // Create SSE connection for takeaways
@@ -519,6 +543,14 @@ function startTakeawaysPolling() {
     console.error('SSE connection error (takeaways):', error);
     takeawaysEventSource.close();
 
+    if (takeawaysSseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+      takeawaysSseReconnectAttempts += 1;
+      showTakeawaysStatus('processing', `Connection lost. Reconnecting... (attempt ${takeawaysSseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})\nJob ID: ${currentTakeawaysJobId}`);
+      await new Promise(resolve => setTimeout(resolve, SSE_RECONNECT_DELAY_MS));
+      startTakeawaysPollingInternal({ resetAttempts: false });
+      return;
+    }
+
     try {
       const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
       if (response.status === 404) {
@@ -535,6 +567,10 @@ function startTakeawaysPolling() {
       resetTakeawaysButton();
     }
   };
+}
+
+function startTakeawaysPolling() {
+  startTakeawaysPollingInternal({ resetAttempts: true });
 }
 
 // Fallback check function (kept for potential fallback scenarios)
