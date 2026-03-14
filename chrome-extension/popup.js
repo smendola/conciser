@@ -1,18 +1,23 @@
 // NBJ Condenser - Chrome Extension
 
-console.log('POPUP_BOOT: popup.js loaded');
+console.log('[CONCISER] POPUP_BOOT: popup.js loaded');
 
+// Forward declarations - actual implementations after this block
 let currentUrl = null;
 let currentJobId = null;
 let currentTakeawaysJobId = null;
-let pollInterval = null;
-let takeawaysPollInterval = null;
+let eventSource = null;  // SSE connection for condense jobs
+let takeawaysEventSource = null;  // SSE connection for takeaways jobs
 // DEFAULT_SERVER_URL is injected at build time via build-info.js
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
 let voices = [];
 let currentTab = 'condense';
 let clientId = null;
+let sseReconnectAttempts = 0;
+let takeawaysSseReconnectAttempts = 0;
+const SSE_RECONNECT_DELAY_MS = 1000;
+const SSE_MAX_RECONNECT_ATTEMPTS = 3;
 const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
 
 function getServerCacheKeyPrefix() {
@@ -25,14 +30,14 @@ async function clearAllStateOnServerSwitchIfNeeded() {
   const settings = storage.settings || {};
   const selectedServerUrl = normalizeServerUrl(settings.serverUrl || serverUrl);
 
-  console.log('METADATA_CACHE: server_switch_check', {
+  console.log('[CONCISER] METADATA_CACHE: server_switch_check', {
     lastServerUrl,
     selectedServerUrl
   });
   await apiLog('server_switch_check', { lastServerUrl, selectedServerUrl });
 
   if (lastServerUrl && normalizeServerUrl(lastServerUrl) !== selectedServerUrl) {
-    console.log('METADATA_CACHE: server_switch_wipe', {
+    console.log('[CONCISER] METADATA_CACHE: server_switch_wipe', {
       from: lastServerUrl,
       to: selectedServerUrl
     });
@@ -61,7 +66,7 @@ async function loadCachedStrategiesForCurrentServer() {
   const key = getStrategiesCacheKey();
   const storage = await chrome.storage.local.get([key]);
   const cache = storage[key];
-  console.log('METADATA_CACHE: strategies_cache_read', {
+  console.log('[CONCISER] METADATA_CACHE: strategies_cache_read', {
     serverUrl,
     key,
     hit: !!(cache && Array.isArray(cache.data)),
@@ -84,7 +89,7 @@ async function loadCachedVoicesForCurrentServer(locale) {
   const key = getVoicesCacheKey(locale);
   const storage = await chrome.storage.local.get([key]);
   const cache = storage[key];
-  console.log('METADATA_CACHE: voices_cache_read', {
+  console.log('[CONCISER] METADATA_CACHE: voices_cache_read', {
     serverUrl,
     locale,
     key,
@@ -105,7 +110,7 @@ async function loadCachedVoicesForCurrentServer(locale) {
 }
 
 async function fetchAndCacheStrategiesForCurrentServer() {
-  console.log('METADATA_CACHE: strategies_fetch_start', { serverUrl });
+  console.log('[CONCISER] METADATA_CACHE: strategies_fetch_start', { serverUrl });
   await apiLog('strategies_fetch_start', {});
   const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
   if (!response.ok) throw new Error(`Failed to fetch strategies (${response.status})`);
@@ -113,13 +118,13 @@ async function fetchAndCacheStrategiesForCurrentServer() {
   strategies = data.strategies || [];
   const key = getStrategiesCacheKey();
   await chrome.storage.local.set({ [key]: { data: strategies, timestamp: Date.now() } });
-  console.log('METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
+  console.log('[CONCISER] METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
   await apiLog('strategies_cache_write', { key, count: strategies.length });
   updateStrategyDescription();
 }
 
 async function fetchAndCacheVoicesForCurrentServer(locale) {
-  console.log('METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
+  console.log('[CONCISER] METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
   await apiLog('voices_fetch_start', { locale });
   const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
   if (!response.ok) throw new Error(`Failed to fetch voices (${response.status})`);
@@ -127,13 +132,13 @@ async function fetchAndCacheVoicesForCurrentServer(locale) {
   voices = data.voices || [];
   const key = getVoicesCacheKey(locale);
   await chrome.storage.local.set({ [key]: { data: voices, locale, timestamp: Date.now() } });
-  console.log('METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
+  console.log('[CONCISER] METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
   await apiLog('voices_cache_write', { locale, key, count: voices.length });
 }
 
 async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
   const locale = getLanguageOnlyLocale();
-  console.log('METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
+  console.log('[CONCISER] METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
   await apiLog('ensure_metadata_start', { locale, allowNetwork });
   const haveStrategies = await loadCachedStrategiesForCurrentServer();
   const haveVoices = await loadCachedVoicesForCurrentServer(locale);
@@ -146,7 +151,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
     const storage = await chrome.storage.local.get(['settings']);
     const settings = storage.settings || {};
 
-    console.log('METADATA_CACHE: restore_settings', {
+    console.log('[CONCISER] METADATA_CACHE: restore_settings', {
       condenseLocale: settings.condenseLocale,
       condenseVoice: settings.condenseVoice,
       takeawaysLocale: settings.takeawaysLocale,
@@ -180,7 +185,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
         voiceSelectEl.value = savedVoice;
       }
 
-      console.log('METADATA_CACHE: applied_selection', {
+      console.log('[CONCISER] METADATA_CACHE: applied_selection', {
         localeSelectId,
         voiceSelectId,
         savedLocaleKey,
@@ -277,7 +282,14 @@ async function openJobInNewTab(jobId) {
   if (!renderUrl) {
     throw new Error('No render_url available');
   }
-  chrome.tabs.create({ url: renderUrl });
+  // Check if we're in content script context or popup context
+  if (document.getElementById('nbj-condenser-container')) {
+    // Content script context - use window.open
+    window.open(renderUrl, '_blank');
+  } else {
+    // Popup context - use chrome.tabs.create
+    chrome.tabs.create({ url: renderUrl });
+  }
 }
 
 async function deleteJob(jobId) {
@@ -329,16 +341,388 @@ function toServerAbsoluteUrl(url) {
   }
 }
 
+// Helper functions - defined before initializePopup so they can be called from it
+function showStatus(type, message, progress = '') {
+  const container = document.getElementById('statusContainer');
+  if (!container) {
+    return;
+  }
+
+  let progressHtml = '';
+  if (progress) {
+    progressHtml = `<div class="progress">${progress}</div>`;
+  }
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
+}
+
+function showTakeawaysStatus(type, message, progress = '') {
+  const container = document.getElementById('takeawaysStatusContainer');
+  if (!container) {
+    return;
+  }
+
+  let progressHtml = '';
+  if (progress) {
+    progressHtml = `<div class="progress">${progress}</div>`;
+  }
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
+}
+
+// SSE-based status checking (no longer used - replaced by startPolling SSE connection)
+// Kept for potential fallback scenarios
+async function checkStatus() {
+  try {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
+
+    if (response.status === 404) {
+      showStatus('error', `Job ${currentJobId} not found on server`);
+      resetButton();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'completed') {
+      showCompleted({ job_id: currentJobId });
+    } else if (data.status === 'error') {
+      showStatus('error', `Processing failed\n${data.error}`);
+      resetButton();
+    } else if (data.status === 'processing') {
+      showStatus('processing', `Processing video...\nJob ID: ${currentJobId}`, data.progress);
+    } else {
+      showStatus('processing', `Status: ${data.status}\nJob ID: ${currentJobId}`);
+    }
+  } catch (error) {
+    console.error('Status check error:', error);
+    const errorMsg = error.message.includes('Failed to fetch')
+      ? 'Connection lost. Check that the server is running or reload the extension.'
+      : `Status check error: ${error.message}`;
+    showStatus('error', errorMsg);
+    resetButton();
+  }
+}
+
+function showCompleted(data) {
+  const container = document.getElementById('statusContainer');
+  if (!container) return;
+
+  const condenseBtn = document.getElementById('condenseBtn');
+  if (condenseBtn) condenseBtn.style.display = 'none';
+
+  container.innerHTML = `
+    <div class="status completed">
+      ✅ Video ready!<br>
+      Job ID: ${currentJobId}
+    </div>
+    <button class="download-btn" id="downloadBtn">
+      Watch Video
+    </button>
+  `;
+
+  const downloadBtn = document.getElementById('downloadBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+      openJobInNewTab(currentJobId).catch(err => console.error(err));
+      // Reload recent jobs and reset UI
+      await loadRecentJobs();
+      resetButton();
+      const statusContainer = document.getElementById('statusContainer');
+      if (statusContainer) statusContainer.innerHTML = '';
+      currentJobId = null;
+    });
+  }
+}
+
+function resetButton() {
+  const condenseBtn = document.getElementById('condenseBtn');
+  if (!condenseBtn) return;
+  condenseBtn.disabled = false;
+  condenseBtn.textContent = 'Condense Video';
+  condenseBtn.style.display = '';
+}
+
+function startPollingInternal({ resetAttempts } = {}) {
+  // Close any existing connection
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  if (resetAttempts) {
+    sseReconnectAttempts = 0;
+  }
+
+  // Create SSE connection
+  const url = `${serverUrl}/api/jobs/${currentJobId}/stream?cid=${encodeURIComponent(clientId)}`;
+  eventSource = new EventSource(url);
+
+  eventSource.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.status === 'completed') {
+      eventSource.close();
+      showCompleted({ job_id: currentJobId });
+    } else if (data.status === 'error') {
+      eventSource.close();
+      showStatus('error', `Processing failed\n${data.error || 'Unknown error'}`);
+      resetButton();
+    } else if (data.status === 'processing') {
+      showStatus('processing', `Processing video...\nJob ID: ${currentJobId}`, data.progress);
+    } else {
+      showStatus('processing', `Status: ${data.status}\nJob ID: ${currentJobId}`);
+    }
+  };
+
+  // Called on connection errors (network issues, server down, etc.)
+  eventSource.onerror = async (error) => {
+    console.error('SSE connection error:', error);
+    eventSource.close();
+
+    if (sseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+      sseReconnectAttempts += 1;
+      showStatus('processing', `Connection lost. Reconnecting... (attempt ${sseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})\nJob ID: ${currentJobId}`);
+      await new Promise(resolve => setTimeout(resolve, SSE_RECONNECT_DELAY_MS));
+      startPollingInternal({ resetAttempts: false });
+      return;
+    }
+
+    // Try one regular fetch to see if job still exists
+    try {
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
+      if (response.status === 404) {
+        showStatus('error', `Job ${currentJobId} not found on server`);
+        resetButton();
+      } else {
+        const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+        showStatus('error', errorMsg);
+        resetButton();
+      }
+    } catch (e) {
+      const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+      showStatus('error', errorMsg);
+      resetButton();
+    }
+  };
+}
+
+function startPolling() {
+  startPollingInternal({ resetAttempts: true });
+}
+
+function startTakeawaysPollingInternal({ resetAttempts } = {}) {
+  // Close any existing connection
+  if (takeawaysEventSource) {
+    takeawaysEventSource.close();
+  }
+
+  if (resetAttempts) {
+    takeawaysSseReconnectAttempts = 0;
+  }
+
+  // Create SSE connection for takeaways
+  const url = `${serverUrl}/api/jobs/${currentTakeawaysJobId}/stream?cid=${encodeURIComponent(clientId)}`;
+  takeawaysEventSource = new EventSource(url);
+
+  takeawaysEventSource.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.status === 'completed') {
+      takeawaysEventSource.close();
+      showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
+    } else if (data.status === 'error') {
+      takeawaysEventSource.close();
+      showTakeawaysStatus('error', `Processing failed\n${data.error || 'Unknown error'}`);
+      resetTakeawaysButton();
+    } else if (data.status === 'processing') {
+      showTakeawaysStatus('processing', `Extracting takeaways...\nJob ID: ${currentTakeawaysJobId}`, data.progress);
+    } else {
+      showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
+    }
+  };
+
+  takeawaysEventSource.onerror = async (error) => {
+    console.error('SSE connection error (takeaways):', error);
+    takeawaysEventSource.close();
+
+    if (takeawaysSseReconnectAttempts < SSE_MAX_RECONNECT_ATTEMPTS) {
+      takeawaysSseReconnectAttempts += 1;
+      showTakeawaysStatus('processing', `Connection lost. Reconnecting... (attempt ${takeawaysSseReconnectAttempts}/${SSE_MAX_RECONNECT_ATTEMPTS})\nJob ID: ${currentTakeawaysJobId}`);
+      await new Promise(resolve => setTimeout(resolve, SSE_RECONNECT_DELAY_MS));
+      startTakeawaysPollingInternal({ resetAttempts: false });
+      return;
+    }
+
+    try {
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
+      if (response.status === 404) {
+        showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
+        resetTakeawaysButton();
+      } else {
+        const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+        showTakeawaysStatus('error', errorMsg);
+        resetTakeawaysButton();
+      }
+    } catch (e) {
+      const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+      showTakeawaysStatus('error', errorMsg);
+      resetTakeawaysButton();
+    }
+  };
+}
+
+function startTakeawaysPolling() {
+  startTakeawaysPollingInternal({ resetAttempts: true });
+}
+
+// Fallback check function (kept for potential fallback scenarios)
+async function checkTakeawaysStatus() {
+  try {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
+
+    if (response.status === 404) {
+      showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
+      resetTakeawaysButton();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'completed') {
+      showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
+    } else if (data.status === 'error') {
+      showTakeawaysStatus('error', `Processing failed\n${data.error}`);
+      resetTakeawaysButton();
+    } else if (data.status === 'processing') {
+      showTakeawaysStatus('processing', `Extracting takeaways...\nJob ID: ${currentTakeawaysJobId}`, data.progress);
+    } else {
+      showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
+    }
+  } catch (error) {
+    console.error('Status check error:', error);
+    const errorMsg = error.message.includes('Failed to fetch')
+      ? 'Connection lost. Check that the server is running or reload the extension.'
+      : `Status check error: ${error.message}`;
+    showTakeawaysStatus('error', errorMsg);
+    resetTakeawaysButton();
+  }
+}
+
+function showTakeawaysCompleted(data) {
+  const container = document.getElementById('takeawaysStatusContainer');
+  if (!container) return;
+
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  if (takeawaysBtn) takeawaysBtn.style.display = 'none';
+
+  container.innerHTML = `
+    <div class="status completed">
+      ✅ Takeaways ready!<br>
+      Job ID: ${currentTakeawaysJobId}
+    </div>
+    <button class="download-btn" id="downloadTakeawaysBtn">
+      View Takeaways
+    </button>
+  `;
+
+  const downloadBtn = document.getElementById('downloadTakeawaysBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+      openJobInNewTab(currentTakeawaysJobId).catch(err => console.error(err));
+      // Reload recent jobs and reset UI
+      await loadRecentJobs();
+      resetTakeawaysButton();
+      const statusContainer = document.getElementById('takeawaysStatusContainer');
+      if (statusContainer) statusContainer.innerHTML = '';
+      currentTakeawaysJobId = null;
+    });
+  }
+}
+
+function resetTakeawaysButton() {
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  if (!takeawaysBtn) return;
+  takeawaysBtn.disabled = false;
+  takeawaysBtn.textContent = 'Extract Takeaways';
+  takeawaysBtn.style.display = '';
+}
+
+// Check for in-progress jobs and attach to them
+async function checkForInProgressJobs(jobType) {
+  try {
+    console.log(`[CONCISER] Checking for in-progress ${jobType} jobs...`);
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const jobs = data.jobs || [];
+
+    // Find in-progress job for current URL and type
+    const inProgressJob = jobs.find(job =>
+      job.url === currentUrl &&
+      job.type === jobType &&
+      (job.status === 'processing' || job.status === 'queued')
+    );
+
+    if (inProgressJob) {
+      console.log(`[CONCISER] Found in-progress ${jobType} job:`, inProgressJob.id);
+
+      if (jobType === 'condense') {
+        currentJobId = inProgressJob.id;
+        const condenseBtn = document.getElementById('condenseBtn');
+        if (condenseBtn) {
+          condenseBtn.disabled = true;
+          condenseBtn.textContent = 'Processing...';
+        }
+        showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`, inProgressJob.progress);
+        startPolling();
+      } else if (jobType === 'takeaways') {
+        currentTakeawaysJobId = inProgressJob.id;
+        const takeawaysBtn = document.getElementById('takeawaysBtn');
+        if (takeawaysBtn) {
+          takeawaysBtn.disabled = true;
+          takeawaysBtn.textContent = 'Processing...';
+        }
+        showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`, inProgressJob.progress);
+        startTakeawaysPolling();
+      }
+    } else {
+      console.log(`[CONCISER] No in-progress ${jobType} job found for this video`);
+    }
+  } catch (error) {
+    console.error(`[CONCISER] Error checking for in-progress ${jobType} jobs:`, error);
+  }
+}
+
 // Initialize popup
 async function initializePopup() {
-  console.log('POPUP_BOOT: initializePopup start');
+  console.log('[CONCISER] POPUP_BOOT: initializePopup start');
+
+  // Set build version (may not exist if UI is collapsed)
+  const buildInfoEl = document.getElementById('buildInfo');
+  if (buildInfoEl) {
+    if (typeof BUILD_VERSION !== 'undefined') {
+      console.log('[CONCISER] BUILD_VERSION found:', BUILD_VERSION);
+      buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+    } else {
+      console.log('[CONCISER] BUILD_VERSION not defined');
+      buildInfoEl.textContent = 'Build: Unknown';
+    }
+  } else {
+    console.log('[CONCISER] buildInfo element not found');
+  }
+
   clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  currentUrl = tab.url;
+  // In content script context, just use window.location.href
+  if (window.NBJ_CONTENT_SCRIPT_MODE) {
+    // We're in content script context
+    currentUrl = window.location.href;
+  } else {
+    // We're in popup context
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    currentUrl = tab.url;
+  }
 
-  const videoInfo = document.getElementById('videoInfo');
   const condenseBtn = document.getElementById('condenseBtn');
   const takeawaysBtn = document.getElementById('takeawaysBtn');
 
@@ -347,25 +731,11 @@ async function initializePopup() {
   const match = currentUrl.match(youtubeRegex);
 
   if (match) {
-    const videoId = match[3];
-    videoInfo.textContent = `Video: ${videoId}`;
-    videoInfo.title = currentUrl;
-    condenseBtn.disabled = false;
-    takeawaysBtn.disabled = false;
-
-    // Fetch title async — update when ready without blocking init
-    fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(currentUrl)}&format=json`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.title) {
-          videoInfo.innerHTML = `Video: ${videoId}<br><span style="font-weight:700;color:#555;">${data.title}</span>`;
-        }
-      })
-      .catch(() => { }); // silently ignore — title is decorative
+    if (condenseBtn) condenseBtn.disabled = false;
+    if (takeawaysBtn) takeawaysBtn.disabled = false;
   } else {
-    videoInfo.textContent = '⚠️ Not a YouTube video page';
-    condenseBtn.disabled = true;
-    takeawaysBtn.disabled = true;
+    if (condenseBtn) condenseBtn.disabled = true;
+    if (takeawaysBtn) takeawaysBtn.disabled = true;
   }
 
   // Load settings and populate controls
@@ -377,41 +747,15 @@ async function initializePopup() {
   // Setup tabs
   await setupTabs();
 
-  // Check for existing job in storage
-  const storage = await chrome.storage.local.get(['activeJob', 'completedJobs', 'activeTakeawaysJob', 'completedTakeawaysJobs']);
-
-  // First check if this video has a completed job
-  const completedJobs = storage.completedJobs || {};
-  if (completedJobs[currentUrl]) {
-    currentJobId = completedJobs[currentUrl];
-    showCompleted({ job_id: currentJobId });
-    return;
-  }
-
-  // Then check if there's an active job in progress FOR THIS VIDEO
-  if (storage.activeJob && storage.activeJob.url === currentUrl) {
-    currentJobId = storage.activeJob.jobId;
-    condenseBtn.disabled = true;
-    condenseBtn.textContent = 'Processing...';
-    showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`);
-    startPolling();
-  }
-
-  // Check for takeaways jobs FOR THIS VIDEO
-  const completedTakeawaysJobs = storage.completedTakeawaysJobs || {};
-  if (completedTakeawaysJobs[currentUrl]) {
-    currentTakeawaysJobId = completedTakeawaysJobs[currentUrl];
-    showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
-  } else if (storage.activeTakeawaysJob && storage.activeTakeawaysJob.url === currentUrl) {
-    currentTakeawaysJobId = storage.activeTakeawaysJob.jobId;
-    takeawaysBtn.disabled = true;
-    takeawaysBtn.textContent = 'Processing...';
-    showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`);
-    startTakeawaysPolling();
-  }
-
-  // Load recent jobs
+  // No job state persistence - server is source of truth
+  // Just load recent jobs from server
   await loadRecentJobs();
+
+  // Check for in-progress jobs and attach to them
+  await checkForInProgressJobs(currentTab);
+
+  // Setup event listeners
+  setupEventListeners();
 }
 
 // Fetch and display recent jobs
@@ -505,7 +849,7 @@ async function loadRecentJobs() {
 
 // Fetch strategies/voices are now loaded on first successful server contact and cached per-server.
 
-function setActiveTab(targetTab) {
+async function setActiveTab(targetTab) {
   const tabButtons = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
@@ -522,18 +866,21 @@ function setActiveTab(targetTab) {
   });
 
   currentTab = targetTab;
+
+  // Check for in-progress jobs when switching tabs
+  await checkForInProgressJobs(targetTab);
 }
 
 // Setup tab switching
 async function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab');
   const storedTabState = await chrome.storage.local.get([POPUP_TAB_STORAGE_KEY]);
-  setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
+  await setActiveTab(storedTabState[POPUP_TAB_STORAGE_KEY] || 'condense');
 
   tabButtons.forEach(button => {
     button.addEventListener('click', async () => {
       const targetTab = button.getAttribute('data-tab');
-      setActiveTab(targetTab);
+      await setActiveTab(targetTab);
       await chrome.storage.local.set({ [POPUP_TAB_STORAGE_KEY]: targetTab });
     });
   });
@@ -676,7 +1023,7 @@ async function saveSettings() {
     condenseVoice: document.getElementById('voiceSelect').value,
     takeawaysLocale,
     takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
-    takeawaysFormat,
+    takeawaysFormat: takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
     videoMode: document.getElementById('videoModeSelect').value,
     prependIntro: document.getElementById('prependIntroCheck').checked
@@ -752,49 +1099,222 @@ function resetToCondenseMode() {
 }
 
 // Setup event listeners for controls
-document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
-  document.getElementById('aggressivenessValue').textContent = e.target.value;
-  updateStrategyDescription();
-  handleSettingChange();
-});
+function setupEventListeners() {
+  const aggressivenessSlider = document.getElementById('aggressivenessSlider');
+  const speedSlider = document.getElementById('speedSlider');
+  const localeSelect = document.getElementById('localeSelect');
+  const takeawaysLocaleSelect = document.getElementById('takeawaysLocaleSelect');
+  const voiceSelect = document.getElementById('voiceSelect');
+  const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
+  const videoModeSelect = document.getElementById('videoModeSelect');
+  const prependIntroCheck = document.getElementById('prependIntroCheck');
+  const condenseBtn = document.getElementById('condenseBtn');
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
 
-document.getElementById('speedSlider').addEventListener('input', (e) => {
-  const value = parseFloat(e.target.value);
-  document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
-  handleSettingChange();
-});
+  if (!aggressivenessSlider || !speedSlider || !condenseBtn || !takeawaysBtn) {
+    return;
+  }
 
-document.getElementById('localeSelect').addEventListener('change', (e) => {
-  updateVoiceSelectForLocale('voiceSelect', e.target.value);
-  handleSettingChange();
-});
+  aggressivenessSlider.addEventListener('input', (e) => {
+    document.getElementById('aggressivenessValue').textContent = e.target.value;
+    updateStrategyDescription();
+    handleSettingChange();
+  });
 
-document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
-  updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
-  handleSettingChange();
-});
+  speedSlider.addEventListener('input', (e) => {
+    const value = parseFloat(e.target.value);
+    document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
+    handleSettingChange();
+  });
 
-document.getElementById('voiceSelect').addEventListener('change', () => {
-  handleSettingChange();
-});
+  if (localeSelect) {
+    localeSelect.addEventListener('change', (e) => {
+      updateVoiceSelectForLocale('voiceSelect', e.target.value);
+      handleSettingChange();
+    });
+  }
 
-document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
+  if (takeawaysLocaleSelect) {
+    takeawaysLocaleSelect.addEventListener('change', (e) => {
+      updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
+      handleSettingChange();
+    });
+  }
 
+  if (voiceSelect) {
+    voiceSelect.addEventListener('change', () => {
+      handleSettingChange();
+    });
+  }
 
-document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
+  if (takeawaysVoiceSelect) {
+    takeawaysVoiceSelect.addEventListener('change', handleSettingChange);
+  }
 
-document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
+  if (videoModeSelect) {
+    videoModeSelect.addEventListener('change', handleSettingChange);
+  }
 
-// Display build version
-if (typeof BUILD_VERSION !== 'undefined') {
-  document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
-} else {
-  document.getElementById('buildInfo').textContent = 'Build: Unknown';
+  if (prependIntroCheck) {
+    prependIntroCheck.addEventListener('change', handleSettingChange);
+  }
+
+  // Condense button click
+  document.getElementById('condenseBtn').addEventListener('click', async () => {
+    const condenseBtn = document.getElementById('condenseBtn');
+    condenseBtn.disabled = true;
+    condenseBtn.textContent = 'Processing...';
+
+    try {
+      // Get current settings
+      const aggressiveness = parseInt(document.getElementById('aggressivenessSlider').value);
+      const voice = document.getElementById('voiceSelect').value;
+      const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
+      const speechRate = convertSpeedToRate(speechSpeed);
+      const videoMode = document.getElementById('videoModeSelect').value;
+      const prependIntro = document.getElementById('prependIntroCheck').checked;
+
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'condense',
+          url: currentUrl,
+          params: {
+            aggressiveness: aggressiveness,
+            voice: voice,
+            speech_rate: speechRate,
+            video_mode: videoMode,
+            prepend_intro: prependIntro
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        currentJobId = data.id;
+
+        showStatus('processing', `Processing started\nJob ID: ${currentJobId}`);
+        startPolling();
+      } else {
+        if (response.status === 429 && data && data.active_job && data.active_job.id) {
+          const activeId = data.active_job.id;
+          const activeStatus = data.active_job.status || 'processing';
+          showStatus(
+            'error',
+            `You already have an active job (${activeId}, ${activeStatus}).\nPlease wait for it to finish, or cancel it from the Recent list, then try again.`
+          );
+        } else {
+          showStatus('error', data.error || 'Failed to submit video');
+        }
+        condenseBtn.disabled = false;
+        condenseBtn.textContent = 'Condense Video';
+      }
+    } catch (error) {
+      showStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
+      condenseBtn.disabled = false;
+      condenseBtn.textContent = 'Condense Video';
+    }
+  });
+
+  // Takeaways button click
+  document.getElementById('takeawaysBtn').addEventListener('click', async () => {
+    const takeawaysBtn = document.getElementById('takeawaysBtn');
+    takeawaysBtn.disabled = true;
+    takeawaysBtn.textContent = 'Processing...';
+
+    try {
+      // Get takeaways settings
+      const topRadio = document.querySelector('input[name="top"]:checked');
+      const formatRadio = document.querySelector('input[name="format"]:checked');
+      const top = topRadio.value === 'auto' ? null : parseInt(topRadio.value);
+      const format = formatRadio.value;
+      const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
+
+      const params = {
+        format_type: format
+      };
+
+      if (top !== null) {
+        params.top = top;
+      }
+
+      if (voice) {
+        params.voice = voice;
+      }
+
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'takeaways',
+          url: currentUrl,
+          params
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        currentTakeawaysJobId = data.id;
+
+        showTakeawaysStatus('processing', `Processing started\nJob ID: ${currentTakeawaysJobId}`);
+        startTakeawaysPolling();
+      } else {
+        if (response.status === 429 && data && data.active_job && data.active_job.id) {
+          const activeId = data.active_job.id;
+          const activeStatus = data.active_job.status || 'processing';
+          showTakeawaysStatus(
+            'error',
+            `You already have an active job (${activeId}, ${activeStatus}).\nPlease wait for it to finish, or cancel it from the Recent list, then try again.`
+          );
+        } else {
+          showTakeawaysStatus('error', data.error || 'Failed to extract takeaways');
+        }
+        takeawaysBtn.disabled = false;
+        takeawaysBtn.textContent = 'Extract Takeaways';
+      }
+    } catch (error) {
+      showTakeawaysStatus('error', `Connection error: ${error.message}\nCheck that the server is running`);
+      takeawaysBtn.disabled = false;
+      takeawaysBtn.textContent = 'Extract Takeaways';
+    }
+  });
 }
 
-// Run initialization
-initializePopup();
+// Removed duplicate code - initialization handled by NBJ_CONTENT_SCRIPT_MODE check below
 
+// Call setupEventListeners when in popup mode (not content script)
+// Don't auto-run when loaded as content script - wait for content.js to call us
+// Display build version only if we're in popup context (not content script)
+if (!window.NBJ_CONTENT_SCRIPT_MODE) {
+  // We're in popup context (not content script)
+  try {
+    const buildInfoEl = document.getElementById('buildInfo');
+    if (buildInfoEl) {
+      if (typeof BUILD_VERSION !== 'undefined') {
+        buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+      } else {
+        buildInfoEl.textContent = 'Build: Unknown';
+      }
+    }
+  } catch (e) {
+    // Ignore
+  }
+  // Setup event listeners for popup mode
+  setupEventListeners();
+  // Run initialization
+  initializePopup();
+}
+// If we're in content script context, content.js will call initializePopup() and setupEventListeners() after injecting the DOM
+
+// Old duplicate code below - keeping for reference but not executing
+/*
 // Condense button click
 document.getElementById('condenseBtn').addEventListener('click', async () => {
   const condenseBtn = document.getElementById('condenseBtn');
@@ -863,36 +1383,15 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
   }
 });
 
-function showStatus(type, message, progress = '') {
-  const container = document.getElementById('statusContainer');
+// All helper functions moved earlier in file before initializePopup
 
-  let progressHtml = '';
-  if (progress) {
-    progressHtml = `<div class="progress">${progress}</div>`;
-  }
-  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
-}
-
-function startPolling() {
-  // Poll every 3 seconds
-  pollInterval = setInterval(checkStatus, 3000);
-  checkStatus(); // Check immediately
-}
-
-async function checkStatus() {
+// REMOVED DUPLICATE: async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
 
-    // If job returns 404, forget it ever existed
+    // If job returns 404
     if (response.status === 404) {
       clearInterval(pollInterval);
-      await clearJobStorage();
-      // Also clear completed jobs for this URL
-      const storage = await chrome.storage.local.get(['completedJobs']);
-      if (storage.completedJobs && storage.completedJobs[currentUrl]) {
-        delete storage.completedJobs[currentUrl];
-        await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-      }
       showStatus('error', `Job ${currentJobId} not found on server`);
       resetButton();
       return;
@@ -902,11 +1401,9 @@ async function checkStatus() {
 
     if (data.status === 'completed') {
       clearInterval(pollInterval);
-      await saveCompletedJob();
       showCompleted({ job_id: currentJobId });
     } else if (data.status === 'error') {
       clearInterval(pollInterval);
-      await clearJobStorage();
       showStatus('error', `Processing failed\n${data.error}`);
       resetButton();
     } else if (data.status === 'processing') {
@@ -1036,21 +1533,7 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
   }
 });
 
-function showTakeawaysStatus(type, message, progress = '') {
-  const container = document.getElementById('takeawaysStatusContainer');
-
-  let progressHtml = '';
-  if (progress) {
-    progressHtml = `<div class="progress">${progress}</div>`;
-  }
-  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
-}
-
-function startTakeawaysPolling() {
-  // Poll every 2 seconds (faster than condense since takeaways is quicker)
-  takeawaysPollInterval = setInterval(checkTakeawaysStatus, 2000);
-  checkTakeawaysStatus(); // Check immediately
-}
+// showTakeawaysStatus and startTakeawaysPolling moved earlier in file before initializePopup
 
 async function checkTakeawaysStatus() {
   try {
@@ -1135,3 +1618,4 @@ function resetTakeawaysButton() {
   takeawaysBtn.textContent = 'Extract Takeaways';
   takeawaysBtn.style.display = '';
 }
+*/

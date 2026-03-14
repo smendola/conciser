@@ -289,9 +289,18 @@ class CondenserPipeline:
                                 logger.warning("SSML regeneration requested but OpenAI conversation pointer is missing. Falling back to plain text TTS.")
                                 ssml_text = None
                             else:
-                                ssml_text = self.condenser.rewrite_for_tts_ssml("", previous_response_id=previous_response_id)
+                                ssml_word_count_callback = word_count_callback or (lambda n: update_progress("SSML", f"{n} words generated..."))
+                                ssml_text = self.condenser.rewrite_for_tts_ssml(
+                                    "",
+                                    previous_response_id=previous_response_id,
+                                    word_count_callback=ssml_word_count_callback,
+                                )
                         else:
-                            ssml_text = self.condenser.rewrite_for_tts_ssml(tts_script)
+                            ssml_word_count_callback = word_count_callback or (lambda n: update_progress("SSML", f"{n} words generated..."))
+                            ssml_text = self.condenser.rewrite_for_tts_ssml(
+                                tts_script,
+                                word_count_callback=ssml_word_count_callback,
+                            )
                     except Exception as e:
                         print(f"\n{Fore.RED}SSML rewrite failed: {e}{Style.RESET_ALL}\n")
                         ssml_text = None
@@ -1102,17 +1111,24 @@ class CondenserPipeline:
             '-i', str(audio_path),
             '-map', '0:v:0',
             '-map', '1:a:0',
+            '-vsync', '2',
+            '-fflags', '+genpts',
             '-c:v', 'libx264',       # re-encode (not copy) to preserve keyframes and movflags
             '-pix_fmt', 'yuv420p',
             '-g', '1',
             '-movflags', '+faststart',
             '-c:a', 'aac',
             '-b:a', '192k',
+            '-max_muxing_queue_size', '4096',
             '-shortest',
             str(output_path)
         ]
 
-        subprocess.run(cmd, check=True, capture_output=True)
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"FFmpeg audio mux failed: {e.stderr}")
+            raise RuntimeError(f"Failed to mux slideshow video with audio: {e.stderr}")
         logger.info(f"Created slideshow video with {len(frame_timings)} scene-synchronized frames")
         logger.info(f"Extracted frames saved to: {frames_dir}")
 

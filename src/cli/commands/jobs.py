@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
 import sys
+from typing import Optional
 
 import click
 from colorama import Fore, Style
@@ -66,9 +67,17 @@ def _extract_video_id(url: str) -> str:
     default=50,
     help='Maximum number of jobs to show (default: 50)'
 )
-def jobs(status, client_id, limit):
+@click.argument('status_shortcut', required=False)
+def jobs(status, client_id, limit, status_shortcut: Optional[str]):
     """List active jobs from the SQLite database."""
     _suppress_httpx_info_logs()
+
+    if status_shortcut is not None:
+        status_shortcut = status_shortcut.strip().lower()
+        if status_shortcut == 'rn':
+            status = status or 'processing'
+        else:
+            raise click.UsageError(f"Unknown jobs argument: {status_shortcut}")
 
     try:
         settings = get_settings()
@@ -103,8 +112,8 @@ def jobs(status, client_id, limit):
                 args.extend(status_list)
             
         if client_id:
-            query += " AND client_id = ?"
-            args.append(client_id)
+            query += " AND client_id LIKE ?"
+            args.append(f"{client_id}%")
             
         query += " ORDER BY created_at DESC LIMIT ?"
         args.append(limit)

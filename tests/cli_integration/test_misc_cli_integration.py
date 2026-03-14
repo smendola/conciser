@@ -291,6 +291,13 @@ def test_start_restart_stops_before_start(runner, monkeypatch):
     monkeypatch.setattr(start_module, "stop_server", stop_mock)
     monkeypatch.setattr(start_module.subprocess, "run", run_mock)
 
+    import os
+    os.environ.pop("NBJ_PROJECT_ROOT", None)
+
+    # Ensure pidfile exists so -r triggers stop step
+    pid_path = Path(start_module.__file__).resolve().parents[3] / "nbj.pid"
+    pid_path.write_text("123", encoding="utf-8")
+
     result = runner.invoke(cli, ["start", "-r"])
 
     assert result.exit_code == 0
@@ -315,11 +322,16 @@ def test_start_restart_does_not_fail_when_pidfile_missing(runner, monkeypatch, t
     fake_start.write_text(start_file.read_text(encoding="utf-8"), encoding="utf-8")
     monkeypatch.setattr(start_module, "__file__", str(fake_start))
 
+    import os
+    os.environ["NBJ_PROJECT_ROOT"] = str(repo_root)
+
     result = runner.invoke(cli, ["start", "-r"])
 
     assert result.exit_code == 0
     stop_mock.assert_not_called()
     run_mock.assert_called_once()
+
+    os.environ.pop("NBJ_PROJECT_ROOT", None)
 
 
 def test_start_restart_propagates_stop_failure(runner, monkeypatch):
@@ -327,6 +339,13 @@ def test_start_restart_propagates_stop_failure(runner, monkeypatch):
     run_mock = Mock()
     monkeypatch.setattr(start_module, "stop_server", stop_mock)
     monkeypatch.setattr(start_module.subprocess, "run", run_mock)
+
+    import os
+    os.environ.pop("NBJ_PROJECT_ROOT", None)
+
+    # Ensure pidfile exists so -r triggers stop step (and failure propagates)
+    pid_path = Path(start_module.__file__).resolve().parents[3] / "nbj.pid"
+    pid_path.write_text("123", encoding="utf-8")
 
     result = runner.invoke(cli, ["start", "-r"])
 

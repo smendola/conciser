@@ -81,7 +81,8 @@ class AzureTTS:
 
             # Synthesize based on input type
             if is_ssml:
-                # Ensure SSML has voice set if not already specified
+                # Ensure the SSML does not pin a voice internally.
+                # The selected voice should be controlled via the `voice` parameter.
                 ssml_text = self._ensure_voice_in_ssml(text, voice, rate)
                 logger.debug(f"Using SSML synthesis with voice={voice}")
                 result = synthesizer.speak_ssml_async(ssml_text).get()
@@ -130,11 +131,9 @@ class AzureTTS:
         rate_value = rate if rate.startswith('-') else rate.lstrip('+')
 
         ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-    <voice name="{voice}">
-        <prosody rate="{rate_value}">
-            {text}
-        </prosody>
-    </voice>
+    <prosody rate="{rate_value}">
+        {text}
+    </prosody>
 </speak>"""
         return ssml
 
@@ -150,38 +149,49 @@ class AzureTTS:
         Returns:
             Modified SSML with voice settings
         """
-        # If SSML already has <voice> tag, return as-is
-        if '<voice' in ssml.lower():
-            return ssml
-
-        # Otherwise, wrap content with voice tag
+        # Azure's SSML endpoint requires a <voice> tag. The pipeline SSML rewrite intentionally
+        # omits it, so we add it here while keeping the pipeline output cacheable and voice-agnostic.
         import re
 
-        # Extract content between <speak> tags
-        speak_match = re.search(r'<speak[^>]*>(.*)</speak>', ssml, re.DOTALL)
+        # Strip any embedded voice tags to ensure the selected `voice` param remains authoritative.
+        ssml = self._strip_voice_tags_from_ssml(ssml)
+
+        speak_match = re.search(r'(<speak[^>]*>)(.*)(</speak>)', ssml, re.DOTALL | re.IGNORECASE)
         if speak_match:
-            content = speak_match.group(1).strip()
+            speak_open = speak_match.group(1)
+            inner = speak_match.group(2).strip()
+            speak_close = speak_match.group(3)
             rate_value = rate if rate.startswith('-') else rate.lstrip('+')
 
-            # Reconstruct with voice wrapper
             if rate and rate != "+0%":
-                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+                wrapped = f"""{speak_open}
     <voice name="{voice}">
         <prosody rate="{rate_value}">
-            {content}
+            {inner}
         </prosody>
     </voice>
-</speak>"""
+{speak_close}"""
             else:
-                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+                wrapped = f"""{speak_open}
     <voice name="{voice}">
-        {content}
+        {inner}
     </voice>
-</speak>"""
-            return new_ssml
+{speak_close}"""
+            return wrapped
 
-        # If no <speak> tags found, wrap everything
+        # If no <speak> wrapper, treat input as plain text.
         return self._text_to_ssml(ssml, voice, rate)
+
+    def _strip_voice_tags_from_ssml(self, ssml: str) -> str:
+        """Remove any <voice ...> wrappers from SSML, preserving inner content."""
+        if not isinstance(ssml, str) or not ssml.strip():
+            return ssml
+        import re
+
+        # Remove <voice ...> opening/closing tags but keep content.
+        # This is intentionally simple; the SSML emitted by our pipeline is well-formed.
+        stripped = re.sub(r"</?voice\b[^>]*>", "", ssml, flags=re.IGNORECASE)
+        return stripped
 
     def list_voices(self, locale_filter: Optional[str] = None) -> List[dict]:
         """

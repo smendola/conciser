@@ -240,6 +240,23 @@ class JobStore:
             rows = conn.execute(query, args).fetchall()
             return [dict(r) for r in rows]
 
+    def get_active_job_for_client(self, client_id: str) -> Optional[Dict[str, Any]]:
+        """Return the most recent active job (queued/processing) for a client."""
+        if not client_id:
+            return None
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM jobs
+                WHERE client_id = ?
+                  AND status IN ('queued', 'processing')
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (client_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def get_next_queued_job(self, job_types: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """Get the next queued job for processing."""
         with self._conn() as conn:

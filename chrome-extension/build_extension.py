@@ -78,7 +78,7 @@ def build_extension():
     dist_dir = project_root / 'dist'
 
     build_number = _bump_chrome_build_number(extension_dir)
-    version = f"1.0.{build_number}"
+    version = f"1.1.{build_number}"
     _generate_manifest(extension_dir, version)
 
     output_zip = dist_dir / f'nbj-chrome-extension-{version}.zip'

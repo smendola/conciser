@@ -14,6 +14,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
+import retrofit2.HttpException
 
 data class CreateJobRequest(
     val type: String,
@@ -27,6 +28,24 @@ data class CreateJobResponse(
     val type: String,
     val created_at: String? = null
 )
+
+data class ActiveJobInfo(
+    val id: String? = null,
+    val status: String? = null,
+    val type: String? = null,
+    val created_at: String? = null
+)
+
+data class ActiveJobErrorResponse(
+    val error: String? = null,
+    val active_job: ActiveJobInfo? = null
+)
+
+class ActiveJobInProgressException(
+    message: String,
+    val activeJobId: String? = null,
+    val activeJobStatus: String? = null
+) : Exception(message)
 
 data class JobResponse(
     val id: String,
@@ -121,6 +140,33 @@ object ConciserApi {
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
+    }
+
+    suspend fun createJobWithActiveJobHandling(
+        api: ConciserApiService,
+        request: CreateJobRequest
+    ): CreateJobResponse {
+        try {
+            return api.createJob(request)
+        } catch (e: HttpException) {
+            if (e.code() == 429) {
+                val body = try {
+                    e.response()?.errorBody()?.string()
+                } catch (_: Exception) {
+                    null
+                }
+                val parsed = try {
+                    body?.let { Gson().fromJson(it, ActiveJobErrorResponse::class.java) }
+                } catch (_: Exception) {
+                    null
+                }
+                val activeId = parsed?.active_job?.id
+                val activeStatus = parsed?.active_job?.status
+                val msg = parsed?.error ?: "Client already has an active job"
+                throw ActiveJobInProgressException(msg, activeId, activeStatus)
+            }
+            throw e
+        }
     }
 
     private val httpClient: OkHttpClient by lazy {

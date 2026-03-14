@@ -15,6 +15,12 @@ from server.job_store import JobStore
 from src.config import get_settings
 from src.pipeline import CondenserPipeline
 from src.utils.project_root import get_project_root
+from src.modules.downloader import VideoDownloader
+from src.modules.transcriber import Transcriber
+from src.modules.condenser import ContentCondenser
+from src.modules.edge_tts import EdgeTTS
+from src.modules.azure_tts import AzureTTS
+from src.utils.audio_utils import embed_cover_art_mp3
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +88,12 @@ class JobService:
     ) -> List[Dict[str, Any]]:
         """List jobs with optional filters."""
         return self.store.list_jobs(client_id, status, limit)
+
+    def get_active_job_for_client(self, client_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Get the current active job (queued/processing) for a client, if any."""
+        if not client_id:
+            return None
+        return self.store.get_active_job_for_client(client_id)
 
     def update_progress(self, job_id: str, stage: str, message: str) -> None:
         """Update job progress."""
@@ -179,10 +191,7 @@ class JobService:
         self.mark_completed(job_id, str(output_path))
 
     def _process_takeaways(self, job: Dict[str, Any]) -> None:
-        """Process a takeaways job using subprocess."""
-        import subprocess
-        import re
-
+        """Process a takeaways job in-process (same execution model as condense)."""
         job_id = job["id"]
         params = job.get("params", {})
 
@@ -200,81 +209,137 @@ class JobService:
         output_ext = "mp3" if params.get("format_type") == "audio" else "md"
         output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
 
-        # Build command
-        nbj_path = get_project_root() / "venv" / "bin" / "nbj"
-        cmd = [
-            str(nbj_path),
-            "takeaways",
-            job["url"],
-            "--format",
-            params.get("format_type", "text"),
-            "--output",
-            str(output_path.with_suffix("")),  # nbj adds extension
-        ]
+        format_type = (params.get("format_type") or "text").strip().lower()
+        top = params.get("top")
+        voice = params.get("voice")
+        tts_provider = (params.get("tts_provider") or self.settings.tts_provider or "edge").strip().lower()
+        speech_rate = (params.get("speech_rate") or "+0%").strip()
 
-        if params.get("top"):
-            cmd.extend(["--top", str(params["top"])])
-
-        if params.get("voice"):
-            cmd.extend(["--voice", params["voice"]])
-
-        # Add resume flag based on settings
-        if self.settings.resume:
-            cmd.append("--resume")
-        else:
-            cmd.append("--no-resume")
+        if format_type not in {"text", "audio"}:
+            raise ValueError(f"Invalid takeaways format_type: {format_type}")
 
         self.update_progress(job_id, "FETCH", "Starting takeaways job")
-        logger.info(f"[{job_id}] Running: {' '.join(cmd)}")
 
-        stage_line_re = re.compile(r"^\[(?P<stage>[A-Z_]+)\]\s*(?P<message>.*)$")
-        stderr_lines = []
-
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            cwd=get_project_root(),
+        downloader = VideoDownloader(
+            self.settings.temp_dir,
+            youtube_cookie_file=self.settings.youtube_cookie_file,
+            youtube_proxy_url=self.settings.youtube_proxy_url,
+        )
+        transcriber = Transcriber(
+            api_key=self.settings.openai_api_key,
+            provider=self.settings.transcription_service,
+            groq_api_key=self.settings.groq_api_key,
+            youtube_proxy_url=self.settings.youtube_proxy_url,
+        )
+        condenser = ContentCondenser(
+            provider=self.settings.takeaways_extraction_provider,
+            openai_api_key=self.settings.openai_api_key,
+            anthropic_api_key=self.settings.anthropic_api_key,
+            condensation_model_openai=self.settings.condensation_model_openai,
+            condensation_model_anthropic=self.settings.condensation_model_anthropic,
+            takeaways_model_openai=self.settings.takeaways_model_openai,
+            takeaways_model_anthropic=self.settings.takeaways_model_anthropic,
         )
 
-        assert proc.stdout is not None
-        assert proc.stderr is not None
+        self.update_progress(job_id, "FETCH", "Fetching video metadata...")
+        video_info = downloader.download(job["url"], metadata_only=True)
+        video_folder = video_info["video_folder"]
+        metadata = video_info.get("metadata", {})
+        video_title = metadata.get("title", "")
+        video_id_resolved = metadata.get("video_id", job["url"])
 
-        def _drain_stderr():
-            for line in proc.stderr:
-                line = line.rstrip("\n")
-                if line:
-                    stderr_lines.append(line)
-                    logger.info(f"[{job_id}] STDERR: {line}")
+        transcript_path = video_folder / f"transcript_{video_id_resolved}.txt"
+        transcript: str
+        if self.settings.resume and transcript_path.exists():
+            self.update_progress(job_id, "FETCH", "Loading cached transcript...")
+            transcript = transcript_path.read_text(encoding="utf-8")
+        else:
+            self.update_progress(job_id, "FETCH", "Fetching transcript...")
+            youtube_transcript = transcriber.fetch_youtube_transcript(video_id_resolved)
+            if youtube_transcript:
+                transcript = youtube_transcript["text"]
+            else:
+                self.update_progress(job_id, "FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
+                video_info_full = downloader.download(
+                    job["url"],
+                    metadata_only=False,
+                    existing_folder=video_folder,
+                )
+                video_path = video_info_full["video_path"]
+                transcript_result = transcriber.transcribe(video_path)
+                transcript = transcript_result["text"]
 
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
+            transcript_path.write_text(transcript, encoding="utf-8")
 
-        for raw_line in proc.stdout:
-            line = raw_line.rstrip("\n")
-            if not line:
-                continue
-
-            logger.info(f"[{job_id}] STDOUT: {line}")
-            m = stage_line_re.match(line)
-            if m:
-                self.update_progress(job_id, m.group("stage"), m.group("message"))
-
-        return_code = proc.wait()
-        stderr_thread.join(timeout=1)
-
-        if return_code != 0:
-            stderr_text = "\n".join(stderr_lines).strip()
-            raise RuntimeError(
-                f"Takeaways extraction failed (exit={return_code}): {stderr_text or 'No stderr'}"
+        takeaways_md_path = output_path if format_type == "text" else output_path.with_suffix(".md")
+        takeaways_text: str
+        if self.settings.resume and takeaways_md_path.exists():
+            self.update_progress(job_id, "EXTRACT", "Loading cached takeaways...")
+            takeaways_text = takeaways_md_path.read_text(encoding="utf-8")
+        else:
+            self.update_progress(job_id, "EXTRACT", "Extracting key takeaways...")
+            takeaways_text_only = condenser.extract_takeaways(
+                transcript=transcript,
+                video_title=video_title,
+                top=top,
+                format=format_type,
             )
 
-        if not output_path.exists():
-            raise RuntimeError(f"Takeaways file not found at expected location: {output_path}")
+            header = f"# {video_title}\n\n"
+            header += f"*Top {top} key concepts*\n\n" if top else "*Key concepts*\n\n"
+            takeaways_text = header + takeaways_text_only
+            takeaways_md_path.parent.mkdir(parents=True, exist_ok=True)
+            takeaways_md_path.write_text(takeaways_text, encoding="utf-8")
 
-        self.mark_completed(job_id, str(output_path))
+        if format_type == "text":
+            self.update_progress(job_id, "FINALIZE", "Takeaways extraction complete")
+            self.mark_completed(job_id, str(takeaways_md_path))
+            return
+
+        self.update_progress(job_id, "FINALIZE", "Generating audio...")
+
+        audio_script = takeaways_text
+        audio_path = output_path
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if tts_provider == "edge":
+            edge_tts = EdgeTTS()
+            edge_tts.generate_speech(
+                text=audio_script,
+                output_path=audio_path,
+                voice=voice or "en-US-AriaNeural",
+                rate=speech_rate,
+            )
+        elif tts_provider == "azure":
+            azure_tts = AzureTTS(self.settings.azure_speech_key, self.settings.azure_speech_region)
+            azure_tts.generate_speech(
+                text=audio_script,
+                output_path=audio_path,
+                voice=voice or "en-US-AriaNeural",
+                rate=speech_rate,
+                is_ssml=False,
+            )
+        else:
+            raise ValueError(f"Unsupported tts_provider for takeaways audio: {tts_provider}")
+
+        try:
+            thumb_candidates = [
+                p
+                for p in video_folder.glob("thumbnail.*")
+                if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+            ]
+            if not thumb_candidates:
+                thumb_candidates = [
+                    p
+                    for p in video_folder.glob("source_video.*")
+                    if p.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]
+                ]
+            if thumb_candidates:
+                embed_cover_art_mp3(audio_path, thumb_candidates[0])
+        except Exception as e:
+            logger.warning(f"Failed to embed cover art into takeaways MP3: {e}")
+
+        self.mark_completed(job_id, str(audio_path))
 
     def get_next_job(self, job_types: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """Get the next queued job (called by workers)."""
