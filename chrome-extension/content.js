@@ -50,14 +50,14 @@ function injectCondenserUI() {
   try {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = chrome.runtime.getURL('popup.css');
+    style.href = chrome.runtime.getURL('panel.css');
     document.head.appendChild(style);
   } catch (e) {
     console.error('[CONCISER] CONTENT_SCRIPT: failed to load CSS', e);
     return;
   }
 
-  // Set the innerHTML to match popup.html content
+  // Set the innerHTML to match panel.html content
   container.innerHTML = `
     <!-- Collapsed state - just a button -->
     <div id="nbj-condenser-collapsed">
@@ -66,7 +66,10 @@ function injectCondenserUI() {
 
     <!-- Expanded state - full UI (hidden by default) -->
     <div id="nbj-condenser-expanded" class="hidden">
-    <h2>🎬 NBJ Condenser</h2>
+    <div class="title-row">
+      <span class="title-text">🎬 NBJ Condenser</span>
+      <span class="build-info" id="buildInfo">…</span>
+    </div>
 
     <div class="tabs">
       <button class="tab active" data-tab="condense">Condense</button>
@@ -202,7 +205,6 @@ function injectCondenserUI() {
       </div>
     </div>
 
-    <div class="build-info" id="buildInfo">Build: Loading...</div>
     </div>
   `;
 

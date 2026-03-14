@@ -7,6 +7,8 @@ Output: dist/nbj-chrome-extension.zip
 
 import zipfile
 import json
+import base64
+import subprocess
 from pathlib import Path
 import shutil
 from datetime import datetime
@@ -79,6 +81,20 @@ def build_extension():
 
     build_number = _bump_chrome_build_number(extension_dir)
     version = f"1.1.{build_number}"
+
+    # Extract public key from .pem so Chrome assigns a stable extension ID
+    pem_path = project_root / 'chrome-extension.pem'
+    if pem_path.exists():
+        pub_key_der = subprocess.check_output(
+            ['openssl', 'rsa', '-in', str(pem_path), '-pubout', '-outform', 'DER'],
+            stderr=subprocess.DEVNULL
+        )
+        key_value = base64.b64encode(pub_key_der).decode()
+        _write_json_file(extension_dir / 'manifest.key.json', {'key': key_value})
+        print(f"Extracted key from {pem_path.name}")
+    else:
+        print(f"Warning: {pem_path.name} not found — extension ID will not be stable")
+
     _generate_manifest(extension_dir, version)
 
     output_zip = dist_dir / f'nbj-chrome-extension-{version}.zip'
@@ -100,8 +116,9 @@ def build_extension():
     build_settings_file = project_root / 'build-settings.json'
     with open(build_settings_file, 'r') as f:
         build_settings = json.load(f)
-    default_server_url = build_settings['default_server_url']
     preset_servers = build_settings.get('preset_servers', [])
+    default_server_index = build_settings.get('default_server_index', 0)
+    default_server_url = preset_servers[default_server_index]['url'] if preset_servers else 'http://127.0.0.1:5000'
     preset_urls_js = '[' + ', '.join(f'"{s["url"]}"' for s in preset_servers) + ']'
     preset_names_js = '[' + ', '.join(f'"{s["name"]}"' for s in preset_servers) + ']'
 

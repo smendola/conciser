@@ -1,6 +1,6 @@
 // NBJ Condenser - Chrome Extension
 
-console.log('[CONCISER] POPUP_BOOT: popup.js loaded');
+console.log('[CONCISER] POPUP_BOOT: panel.js loaded');
 
 // Forward declarations - actual implementations after this block
 let currentUrl = null;
@@ -701,10 +701,10 @@ async function initializePopup() {
   if (buildInfoEl) {
     if (typeof BUILD_VERSION !== 'undefined') {
       console.log('[CONCISER] BUILD_VERSION found:', BUILD_VERSION);
-      buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+      buildInfoEl.textContent = `${BUILD_VERSION}`;
     } else {
       console.log('[CONCISER] BUILD_VERSION not defined');
-      buildInfoEl.textContent = 'Build: Unknown';
+      buildInfoEl.textContent = '???';
     }
   } else {
     console.log('[CONCISER] buildInfo element not found');
@@ -1298,9 +1298,9 @@ if (!window.NBJ_CONTENT_SCRIPT_MODE) {
     const buildInfoEl = document.getElementById('buildInfo');
     if (buildInfoEl) {
       if (typeof BUILD_VERSION !== 'undefined') {
-        buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+        buildInfoEl.textContent = `${BUILD_VERSION}`;
       } else {
-        buildInfoEl.textContent = 'Build: Unknown';
+        buildInfoEl.textContent = '???';
       }
     }
   } catch (e) {

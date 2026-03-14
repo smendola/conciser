@@ -28,7 +28,8 @@ Add the following to `build-settings.json` in the project root:
 ```json
 {
   "sentry_dsn": "https://your-sentry-dsn@sentry.io/project-id",
-  "default_server_url": "http://127.0.0.1:5000"
+  "preset_servers": [{ "name": "Local", "url": "http://127.0.0.1:5000" }],
+  "default_server_index": 0
 }
 ```
 

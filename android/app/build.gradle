@@ -34,12 +34,13 @@ android {
         // Inject default server URL
         def settingsFile = new File(rootProject.projectDir, '../build-settings.json')
         def settingsJson = settingsFile.exists() ? new groovy.json.JsonSlurper().parseText(settingsFile.text) : [:]
-        def settingsDefaultUrl = settingsJson?.default_server_url
+        def presetServers = settingsJson?.preset_servers ?: []
+        def defaultServerIndex = settingsJson?.default_server_index ?: 0
+        def settingsDefaultUrl = presetServers ? presetServers[defaultServerIndex]?.url : null
         def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: (settingsDefaultUrl ?: 'http://127.0.0.1:5000')
         buildConfigField "String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl}\""
 
         // Inject preset server list from build-settings.json
-        def presetServers = settingsJson?.preset_servers ?: []
         def presetUrlsStr = presetServers.collect { "\"${it.url}\"" }.join(', ')
         def presetNamesStr = presetServers.collect { "\"${it.name}\"" }.join(', ')
         buildConfigField "String[]", "PRESET_SERVER_URLS", "{${presetUrlsStr}}"

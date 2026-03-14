@@ -585,7 +585,7 @@
             android:gravity="center"
             android:textSize="9sp"
             android:textColor="@color/text_secondary"
-            android:text="Build: Loading..." />
+            android:text="..." />
 
     </LinearLayout>
 

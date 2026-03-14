@@ -937,7 +937,9 @@ def _print_startup_banner():
     try:
         settings_path = get_project_root() / 'build-settings.json'
         settings = json.loads(settings_path.read_text(encoding='utf-8')) if settings_path.exists() else {}
-        public_url = settings.get('default_server_url')
+        preset_servers = settings.get('preset_servers', [])
+        default_server_index = settings.get('default_server_index', 0)
+        public_url = preset_servers[default_server_index]['url'] if preset_servers else None
     except Exception:
         public_url = None
     if public_url:

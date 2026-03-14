@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='start.css') }}">
     <script defer src="{{ url_for('static', filename='start.js') }}"></script>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -20,7 +22,8 @@
                 <h2>What is this?</h2>
                 <p>
                     <strong>NBJ Condenser</strong> is a browser extension that allows you to condense
-                    YouTube videos. <span style="font-weight: 500;">NBJ</span> stands for Nate.B.<em>James</em>. If you know, you know. 😊
+                    YouTube videos. <span style="font-weight: 500;">NBJ</span> stands for Nate.B.<em>James</em>. If you
+                    know, you know. 😊
                 </p>
             </div>
 
@@ -44,9 +47,11 @@
                     <div class="step-detail">
                         Click to copy the URL, then paste it into your browser's address bar:<br>
                         <button class="extensions-btn" id="copy-url-btn" onclick="copyExtensionsURL()">
-                            📋 Copy <code id="extensions-url" style="background: transparent; color: white;">chrome://extensions/</code>
+                            📋 Copy <code id="extensions-url"
+                                style="background: transparent; color: white;">chrome://extensions/</code>
                         </button>
-                        <div id="copy-feedback" style="display: none; color: #28a745; font-weight: 600; margin-top: 10px;">
+                        <div id="copy-feedback"
+                            style="display: none; color: #28a745; font-weight: 600; margin-top: 10px;">
                             ✅ Copied! Paste it in a new tab's address bar and press Enter
                         </div>
                         <p style="margin-top: 10px; font-size: 0.85em; color: #888;">
@@ -76,16 +81,20 @@
                         Find <code>nbj-chrome-extension.zip</code> in your Downloads folder<br>
                         <strong>Drag it directly onto the extensions page</strong><br>
                         Chrome will automatically install it - no extraction or developer mode needed!
-                        <p style="margin-top: 12px; padding: 10px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #1a73e8;">
-                            <strong>💡 Pro Tip:</strong> You can drag directly from Chrome's <strong>Recent download history</strong> widget (top-right of browser)
+                        <p
+                            style="margin-top: 12px; padding: 10px; background: #e8f4f8; border-radius: 4px; border-left: 3px solid #1a73e8;">
+                            <strong>💡 Pro Tip:</strong> You can drag directly from Chrome's <strong>Recent download
+                                history</strong> widget (top-right of browser)
                             without opening your file explorer!
                         </p>
                     </div>
                 </div>
 
                 <div class="tip">
-                    <strong>✨ That's it!</strong> The extension should now appear in your extensions list with a blue "C" icon.
-                    Chrome may show a "not from Chrome Web Store" warning - this is normal, just click "OK" or dismiss it.
+                    <strong>✨ That's it!</strong> The extension should now appear in your extensions list with a blue
+                    "C" icon.
+                    Chrome may show a "not from Chrome Web Store" warning - this is normal, just click "OK" or dismiss
+                    it.
                 </div>
 
                 <details style="margin-top: 20px;">
@@ -104,114 +113,34 @@
             </div>
 
             <div class="section">
-                <h2>📌 Step 3: Pin the Extension</h2>
+                <h2>🎯 Step 3: Using the Extension</h2>
 
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">1</span>
-                        Click the puzzle piece icon (🧩)
+                        Navigate to a YouTube video page
                     </div>
                     <div class="step-detail">
-                        Look in your browser toolbar (top-right corner, next to the address bar)
+                        Go to any video on <code>youtube.com/watch?v=...</code><br>
+                        You will see this button in the recommended videos sidebar, above the recommendations:
+                        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                            like this: <span style="font-size: 1.6em;">👉</span>
+                            <button
+                                style="width: 300px; padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; cursor: default;">
+                                Too long! Condense this video</button>
+                        </div>
                     </div>
                 </div>
 
                 <div class="step">
                     <div class="step-title">
                         <span class="step-number">2</span>
-                        Pin "NBJ Condenser"
+                        Open the NBJ Condenser controls
                     </div>
                     <div class="step-detail">
-                        Find "NBJ Condenser" in the dropdown<br>
-                        Click the <strong>pin icon (📌)</strong> next to it<br>
-                        The "C" icon will now appear in your toolbar for easy access
+                        Press that button to open the NBJ Condenser controls.<br>
+                        It should be self-explanatory from there!
                     </div>
-                </div>
-                <p>This step is optional. If you skip it, you will need to dig around in the extensions
-                list (puzzle piece icon) to find NBJ Condenser every time you want to condense a video.</p>
-            </div>
-
-            <div class="section">
-                <h2>🎯 Step 4: Using the Extension</h2>
-
-                <div class="important" style="background: #e3f2fd; border-left-color: #1a73e8;">
-                    <strong>💡 Smart Icon Feature:</strong> The extension icon changes color to show when it's ready to use!
-                    <ul style="margin-top: 10px;">
-                        <li><strong>🔵 Colored Icon:</strong> You're on a YouTube video page - click to condense!</li>
-                        <li><strong>⚫ Gray Icon:</strong> Not on a YouTube video page - navigate to a video first</li>
-                    </ul>
-                    <p style="margin-top: 10px; margin-bottom: 0;">
-                        The icon automatically updates as you browse, so you always know when you can use it.
-                    </p>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">1</span>
-                        Go to YouTube
-                    </div>
-                    <div class="step-detail">
-                        Open <code>youtube.com</code> in your browser<br>
-                        Navigate to <strong>any video page</strong> (must be a video, not the homepage or search results)<br>
-                        <em>Watch the icon turn blue when you're on a video page!</em>
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">2</span>
-                        Click the NBJ Condenser icon
-                    </div>
-                    <div class="step-detail">
-                        Click the blue "C" icon in your toolbar (or the puzzle piece icon if you didn't pin it)<br>
-                        <em>The icon will only be blue/active when you're on a YouTube video page</em><br>
-                        A popup will appear showing the current video
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">3</span>
-                        Start condensing
-                    </div>
-                    <div class="step-detail">
-                        Click the <strong>"Condense Video"</strong> button<br>
-                        The extension will submit the video to the NBJ Condenser server for processing
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">4</span>
-                        Wait for processing
-                    </div>
-                    <div class="step-detail">
-                        The popup will show real-time progress updates every 3 seconds<br>
-                        You'll see stages like "Downloading", "Transcribing", "Condensing", "Generating video"<br>
-                        <strong>Processing typically takes 1-5 minutes</strong> depending on video length<br>
-                        <strong>💡 Pro tip:</strong> You can close the popup and come back later - the extension remembers your job and will resume tracking when you reopen it!
-                    </div>
-                </div>
-
-                <div class="step">
-                    <div class="step-title">
-                        <span class="step-number">5</span>
-                        Watch your condensed video
-                    </div>
-                    <div class="step-detail">
-                        When processing completes, you'll see a green "✅ Video ready!" message<br>
-                        Click the <strong>"Watch Video"</strong> button<br>
-                        The condensed video will open in a new tab and play automatically
-                    </div>
-                </div>
-
-                <div class="important">
-                    <strong>⚠️ Server Limitations:</strong>
-                    <ul>
-                        <li>The server processes <strong>one video at a time</strong></li>
-                        <li>If someone else is using it, you'll see "Server is busy" - just wait and try again</li>
-                        <li>Regular YouTube videos work best - some Shorts or restricted videos may not work</li>
-                    </ul>
                 </div>
             </div>
 
@@ -226,17 +155,20 @@
                         NBJ Condenser uses AI to intelligently condense YouTube videos:
                         <ul>
                             <li><strong>Extracts the script</strong> from the video using speech recognition</li>
-                            <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness: 5/10)</li>
+                            <li><strong>Analyzes and condenses</strong> the content using Claude AI (aggressiveness:
+                                5/10)</li>
                             <li><strong>Generates new audio</strong> with natural text-to-speech voice</li>
                             <li><strong>Creates a slideshow</strong> using key frames from the original video</li>
-                            <li><strong>Produces a final video</strong> that can be between 75% and just 10% the length of the original video</li>
+                            <li><strong>Produces a final video</strong> that can be between 75% and just 10% the length
+                                of the original video</li>
                         </ul>
                         <p>It can also produce a super-compact <strong>"key takeaways"</strong> page or audio file</p>
                     </div>
                 </div>
 
                 <div class="tip">
-                    <strong>💡 Best for:</strong> Educational videos, tutorials, documentaries, podcasts, and long-form content.
+                    <strong>💡 Best for:</strong> Educational videos, tutorials, documentaries, podcasts, and long-form
+                    content.
                     Perfect for when you want the key information without watching the entire video!
                 </div>
             </div>
@@ -285,4 +217,5 @@
         </div>
     </div>
 </body>
+
 </html>
