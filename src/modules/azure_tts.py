@@ -149,34 +149,37 @@ class AzureTTS:
         Returns:
             Modified SSML with voice settings
         """
-        # The pipeline may cache/resume SSML that includes a <voice> tag.
-        # We intentionally strip any embedded voice so the selected `voice` param
-        # remains authoritative (Azure will use speech_synthesis_voice_name).
-        ssml = self._strip_voice_tags_from_ssml(ssml)
-
-        # Otherwise, wrap content with voice tag
+        # Azure's SSML endpoint requires a <voice> tag. The pipeline SSML rewrite intentionally
+        # omits it, so we add it here while keeping the pipeline output cacheable and voice-agnostic.
         import re
 
-        # Extract content between <speak> tags
-        speak_match = re.search(r'<speak[^>]*>(.*)</speak>', ssml, re.DOTALL)
+        # Strip any embedded voice tags to ensure the selected `voice` param remains authoritative.
+        ssml = self._strip_voice_tags_from_ssml(ssml)
+
+        speak_match = re.search(r'(<speak[^>]*>)(.*)(</speak>)', ssml, re.DOTALL | re.IGNORECASE)
         if speak_match:
-            content = speak_match.group(1).strip()
+            speak_open = speak_match.group(1)
+            inner = speak_match.group(2).strip()
+            speak_close = speak_match.group(3)
             rate_value = rate if rate.startswith('-') else rate.lstrip('+')
 
-            # Reconstruct with voice wrapper
             if rate and rate != "+0%":
-                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-    <prosody rate="{rate_value}">
-        {content}
-    </prosody>
-</speak>"""
+                wrapped = f"""{speak_open}
+    <voice name="{voice}">
+        <prosody rate="{rate_value}">
+            {inner}
+        </prosody>
+    </voice>
+{speak_close}"""
             else:
-                new_ssml = f"""<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
-    {content}
-</speak>"""
-            return new_ssml
+                wrapped = f"""{speak_open}
+    <voice name="{voice}">
+        {inner}
+    </voice>
+{speak_close}"""
+            return wrapped
 
-        # If no <speak> tags found, wrap everything
+        # If no <speak> wrapper, treat input as plain text.
         return self._text_to_ssml(ssml, voice, rate)
 
     def _strip_voice_tags_from_ssml(self, ssml: str) -> str:

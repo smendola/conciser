@@ -1200,7 +1200,16 @@ function setupEventListeners() {
         showStatus('processing', `Processing started\nJob ID: ${currentJobId}`);
         startPolling();
       } else {
-        showStatus('error', data.error || 'Failed to submit video');
+        if (response.status === 429 && data && data.active_job && data.active_job.id) {
+          const activeId = data.active_job.id;
+          const activeStatus = data.active_job.status || 'processing';
+          showStatus(
+            'error',
+            `You already have an active job (${activeId}, ${activeStatus}).\nPlease wait for it to finish, or cancel it from the Recent list, then try again.`
+          );
+        } else {
+          showStatus('error', data.error || 'Failed to submit video');
+        }
         condenseBtn.disabled = false;
         condenseBtn.textContent = 'Condense Video';
       }
@@ -1257,7 +1266,16 @@ function setupEventListeners() {
         showTakeawaysStatus('processing', `Processing started\nJob ID: ${currentTakeawaysJobId}`);
         startTakeawaysPolling();
       } else {
-        showTakeawaysStatus('error', data.error || 'Failed to extract takeaways');
+        if (response.status === 429 && data && data.active_job && data.active_job.id) {
+          const activeId = data.active_job.id;
+          const activeStatus = data.active_job.status || 'processing';
+          showTakeawaysStatus(
+            'error',
+            `You already have an active job (${activeId}, ${activeStatus}).\nPlease wait for it to finish, or cancel it from the Recent list, then try again.`
+          );
+        } else {
+          showTakeawaysStatus('error', data.error || 'Failed to extract takeaways');
+        }
         takeawaysBtn.disabled = false;
         takeawaysBtn.textContent = 'Extract Takeaways';
       }

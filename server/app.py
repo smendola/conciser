@@ -370,6 +370,18 @@ def api_create_job():
     if error_response:
         return error_response
 
+    active = job_service.get_active_job_for_client(client_id)
+    if active:
+        return jsonify({
+            'error': 'Client already has an active job. Please wait for it to finish or cancel it before submitting a new one.',
+            'active_job': {
+                'id': active.get('id'),
+                'status': active.get('status'),
+                'type': _job_type_to_type(active.get('job_type')),
+                'created_at': active.get('created_at'),
+            },
+        }), 429
+
     data = request.get_json(force=True, silent=True) or {}
     job_type = (data.get('type') or '').strip().lower()
     youtube_url = data.get('url')

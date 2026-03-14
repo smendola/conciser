@@ -2254,11 +2254,15 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val api = ConciserApi.createService(serverUrl, clientId)
-                val response = api.createJob(req)
+                val response = ConciserApi.createJobWithActiveJobHandling(api, req)
                 ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
                 currentJobId = response.id
                 updateUI(AppState.PROCESSING, statusText = "Processing video...\nJob ID: ${response.id}")
                 startPolling()
+            } catch (e: ActiveJobInProgressException) {
+                val idPart = if (!e.activeJobId.isNullOrBlank()) " (${e.activeJobId}${if (!e.activeJobStatus.isNullOrBlank()) ", ${e.activeJobStatus}" else ""})" else ""
+                val msg = "You already have an active job$idPart. Please wait for it to finish, or cancel it from Recent Jobs, then try again."
+                updateUI(AppState.READY, statusText = msg)
             } catch (e: Exception) {
                 Sentry.captureException(e)
                 updateUI(AppState.ERROR, statusText = "Failed to submit: ${e.message}")
@@ -2312,11 +2316,15 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val api = ConciserApi.createService(serverUrl, clientId)
-                val response = api.createJob(req)
+                val response = ConciserApi.createJobWithActiveJobHandling(api, req)
                 ensureServerMetadataLoadedAfterSuccessfulContact(serverUrl)
                 currentJobId = response.id
                 updateUI(AppState.PROCESSING, statusText = "Extracting takeaways...\nJob ID: ${response.id}")
                 startPolling()
+            } catch (e: ActiveJobInProgressException) {
+                val idPart = if (!e.activeJobId.isNullOrBlank()) " (${e.activeJobId}${if (!e.activeJobStatus.isNullOrBlank()) ", ${e.activeJobStatus}" else ""})" else ""
+                val msg = "You already have an active job$idPart. Please wait for it to finish, or cancel it from Recent Jobs, then try again."
+                updateUI(AppState.READY, statusText = msg)
             } catch (e: Exception) {
                 Sentry.captureException(e)
                 updateUI(AppState.ERROR, statusText = "Failed to submit: ${e.message}")

@@ -89,6 +89,12 @@ class JobService:
         """List jobs with optional filters."""
         return self.store.list_jobs(client_id, status, limit)
 
+    def get_active_job_for_client(self, client_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Get the current active job (queued/processing) for a client, if any."""
+        if not client_id:
+            return None
+        return self.store.get_active_job_for_client(client_id)
+
     def update_progress(self, job_id: str, stage: str, message: str) -> None:
         """Update job progress."""
         progress = f"[{stage}] {message}"
