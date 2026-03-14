@@ -43,7 +43,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.os.SystemClock
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okhttp3.sse.EventSource
+import okhttp3.sse.EventSourceListener
+import okhttp3.sse.EventSources
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -588,7 +593,7 @@ class MainActivity : AppCompatActivity() {
     private var currentVideoMode: String = "slideshow"
     private var currentJobType: String = "condense"  // "condense" or "takeaways"
     private var currentOutputFormat: String = "video"  // "video", "audio", "text"
-    private var isPolling = false
+    private var eventSource: EventSource? = null  // SSE connection for job updates
 
     private var voices: List<VoiceItem> = emptyList()
     private var strategies: List<StrategyItem> = emptyList()
@@ -621,7 +626,7 @@ class MainActivity : AppCompatActivity() {
         if (suppressAutoSave || restoringVoiceSelections) return
         if (currentState == AppState.NO_URL || currentState == AppState.READY) return
         sentryBreadcrumb("ui:settings_changed_reset_state", mapOf("source" to source, "from" to currentState.name))
-        isPolling = false
+        eventSource?.cancel()
         currentJobId = null
         updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
     }
@@ -1964,7 +1969,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isPolling = false
+        eventSource?.cancel()
     }
 
     // -------------------------------------------------------------------------
@@ -1991,7 +1996,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnCancel.setOnClickListener {
-            isPolling = false
+            eventSource?.cancel()
             updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
         }
         binding.btnWatch.setOnClickListener {
@@ -2005,6 +2010,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchMode(mode: String) {
         appMode = mode
+        currentJobType = mode  // Update current job type for in-progress checks
         if (mode == "condense") {
             binding.cardCondenseSettings.visibility = View.VISIBLE
             binding.cardTakeawaysSettings.visibility = View.GONE
@@ -2022,10 +2028,13 @@ class MainActivity : AppCompatActivity() {
         }
         // Reset state when switching modes
         if (currentState != AppState.NO_URL && currentState != AppState.READY) {
-            isPolling = false
+            eventSource?.cancel()
             currentJobId = null
             updateUI(if (currentVideoUrl != null) AppState.READY else AppState.NO_URL)
         }
+
+        // Check for in-progress jobs after switching tabs
+        checkForInProgressJobs()
     }
 
     // -------------------------------------------------------------------------
@@ -2157,7 +2166,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleIntent(intent: Intent) {
         // Stop any in-progress job when a new share arrives
-        isPolling = false
+        eventSource?.cancel()
 
         val url = when (intent.action) {
             Intent.ACTION_SEND -> {
@@ -2186,6 +2195,8 @@ class MainActivity : AppCompatActivity() {
                     binding.tvVideoInfo.text = span
                 }
             }
+            // Check for in-progress jobs for this video
+            checkForInProgressJobs()
         } else {
             currentVideoUrl = null
             updateUI(AppState.NO_URL)
@@ -2295,37 +2306,129 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startPolling() {
-        isPolling = true
+    private fun checkForInProgressJobs() {
+        val videoUrl = currentVideoUrl ?: return
 
         lifecycleScope.launch {
-            val api = createApi()
-            ensureServerMetadataLoadedAfterSuccessfulContact(getServerUrl())
-            while (isPolling) {
-                try {
-                    val job = api.getJob(currentJobId!!)
-                    updateJobUI(job)
-                } catch (e: Exception) {
-                    // Check if it's a 404 error
-                    if (e is retrofit2.HttpException && e.code() == 404) {
-                        Sentry.captureException(e)
-                        isPolling = false
-                        val missingId = currentJobId
-                        currentJobId = null
-                        updateUI(
-                            AppState.ERROR,
-                            statusText = "Job ${missingId ?: "(unknown)"} not found on server"
-                        )
-                    } else {
-                        // Log other errors but continue polling
-                        Sentry.captureMessage("Polling error: ${e.message}", SentryLevel.WARNING)
-                    }
-                    // Keep polling on other network errors — mirrors Chrome popup behavior
+            try {
+                Log.d("JobResume", "Checking for in-progress jobs for current video...")
+                val api = createApi()
+                val response = api.getJobs()
+                val jobs = response.jobs
+
+                // Find in-progress job for current URL and type
+                val inProgressJob = jobs.firstOrNull { job ->
+                    job.url == videoUrl &&
+                    job.type == currentJobType &&
+                    (job.status == "processing" || job.status == "queued")
                 }
 
-                if (isPolling) delay(3000)
+                if (inProgressJob != null) {
+                    Log.d("JobResume", "Found in-progress ${currentJobType} job: ${inProgressJob.id}")
+                    currentJobId = inProgressJob.id
+                    updateUI(
+                        AppState.PROCESSING,
+                        statusText = "Resuming job...\nJob ID: ${currentJobId}",
+                        progressText = inProgressJob.progress
+                    )
+                    startPolling()
+                } else {
+                    Log.d("JobResume", "No in-progress ${currentJobType} job found for this video")
+                }
+            } catch (e: Exception) {
+                Log.e("JobResume", "Error checking for in-progress jobs: ${e.message}")
+                // Silently fail - don't interrupt user experience
             }
         }
+    }
+
+    private fun startPolling() {
+        // Close any existing SSE connection
+        eventSource?.cancel()
+
+        val jobId = currentJobId ?: return
+        val cid = ClientIdentity.getOrCreate(this)
+        val url = "${getServerUrl()}/api/jobs/${jobId}/stream?cid=${cid}"
+
+        Log.d("SSE", "Connecting to: $url")
+
+        lifecycleScope.launch {
+            ensureServerMetadataLoadedAfterSuccessfulContact(getServerUrl())
+        }
+
+        val request = Request.Builder().url(url).build()
+        val client = okhttp3.OkHttpClient()
+
+        eventSource = EventSources.createFactory(client)
+            .newEventSource(request, object : EventSourceListener() {
+                override fun onOpen(eventSource: EventSource, response: Response) {
+                    Log.d("SSE", "Connection opened")
+                }
+
+                override fun onEvent(
+                    eventSource: EventSource,
+                    id: String?,
+                    type: String?,
+                    data: String
+                ) {
+                    Log.d("SSE", "Received event: $data")
+                    try {
+                        val gson = com.google.gson.Gson()
+                        val job = gson.fromJson(data, JobResponse::class.java)
+                        runOnUiThread {
+                            updateJobUI(job)
+                            // Close connection when job is complete or errored
+                            if (job.status == "completed" || job.status == "error") {
+                                eventSource.cancel()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SSE", "Error parsing job data: ${e.message}")
+                        Sentry.captureException(e)
+                    }
+                }
+
+                override fun onClosed(eventSource: EventSource) {
+                    Log.d("SSE", "Connection closed")
+                }
+
+                override fun onFailure(
+                    eventSource: EventSource,
+                    t: Throwable?,
+                    response: Response?
+                ) {
+                    Log.e("SSE", "Connection error: ${t?.message}, response: ${response?.code}")
+
+                    // Try one regular fetch to see if job still exists
+                    lifecycleScope.launch {
+                        try {
+                            val api = createApi()
+                            val job = api.getJob(currentJobId!!)
+                            runOnUiThread {
+                                updateJobUI(job)
+                            }
+                        } catch (e: Exception) {
+                            if (e is retrofit2.HttpException && e.code() == 404) {
+                                val missingId = currentJobId
+                                currentJobId = null
+                                runOnUiThread {
+                                    updateUI(
+                                        AppState.ERROR,
+                                        statusText = "Job ${missingId ?: "(unknown)"} not found on server"
+                                    )
+                                }
+                            } else {
+                                runOnUiThread {
+                                    updateUI(
+                                        AppState.ERROR,
+                                        statusText = "Connection lost. Check that the server is running."
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            })
     }
 
     private fun updateJobUI(job: JobResponse) {
