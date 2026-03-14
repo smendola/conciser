@@ -315,7 +315,7 @@ class VideoDownloader:
             if output_filename is None:
                 output_filename = "source_video.%(ext)s"
 
-            output_template = str(video_folder / output_filename)
+            output_template = str(video_folder / (output_filename + ".part"))
             thumbnail_template = str(video_folder / "thumbnail.%(ext)s")
 
             # If metadata_only, return early without downloading
@@ -387,6 +387,7 @@ class VideoDownloader:
                 'writesubtitles': False,
                 'writeautomaticsub': False,
                 'ignoreerrors': False,
+                'nopart': True,  # our outtmpl already uses .part suffix; we rename on success ourselves
                 # No postprocessors - use native format (webm, mp4, mkv, etc.)
                 # ffmpeg can handle all formats in later pipeline stages
                 # Use web and android clients for better format availability
@@ -412,21 +413,19 @@ class VideoDownloader:
                 # Download the video
                 ydl.download([url])
 
-                # Find the actual downloaded file (yt-dlp may choose different format than expected)
-                # Look for source_video.* in the video folder
-                downloaded_files = list(video_folder.glob("source_video.*"))
-
-                # Filter out image thumbnails
-                video_files = [
-                    f
-                    for f in downloaded_files
-                    if f.suffix.lower() not in ['.webp', '.jpg', '.jpeg', '.png']
+                # yt-dlp wrote to source_video.<ext>.part — rename to source_video.<ext>
+                part_files = [
+                    f for f in video_folder.glob("source_video.*.part")
+                    if f.suffixes[-2].lower() not in ['.webp', '.jpg', '.jpeg', '.png']
                 ]
 
-                if not video_files:
-                    raise RuntimeError(f"Downloaded video not found in {video_folder}")
+                if not part_files:
+                    raise RuntimeError(f"Downloaded video (.part) not found in {video_folder}")
 
-                video_path = video_files[0]
+                part_file = part_files[0]
+                # Strip the trailing .part to get the final name
+                video_path = part_file.with_suffix('')
+                part_file.rename(video_path)
                 logger.info(f"Download completed: {video_path}")
                 
                 # Find and log thumbnail file

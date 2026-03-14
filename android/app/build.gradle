@@ -38,6 +38,13 @@ android {
         def defaultServerUrl = System.getenv('NBJ_DEFAULT_SERVER_URL') ?: (settingsDefaultUrl ?: 'http://127.0.0.1:5000')
         buildConfigField "String", "DEFAULT_SERVER_URL", "\"${defaultServerUrl}\""
 
+        // Inject preset server list from build-settings.json
+        def presetServers = settingsJson?.preset_servers ?: []
+        def presetUrlsStr = presetServers.collect { "\"${it.url}\"" }.join(', ')
+        def presetNamesStr = presetServers.collect { "\"${it.name}\"" }.join(', ')
+        buildConfigField "String[]", "PRESET_SERVER_URLS", "{${presetUrlsStr}}"
+        buildConfigField "String[]", "PRESET_SERVER_NAMES", "{${presetNamesStr}}"
+
         // Inject Sentry DSN from environment or build-settings.json
         def sentryDsn = System.getenv('SENTRY_DSN') ?: (settingsJson?.sentry_dsn ?: '')
         buildConfigField "String", "SENTRY_DSN", "\"${sentryDsn}\""

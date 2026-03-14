@@ -11,13 +11,7 @@
     <string name="server_url">Server URL</string>
     <string name="server_url_hint">https://x13.puma-garibaldi.ts.net</string>
 
-    <string-array name="server_url_options">
-        <item>Select a server or enter custom URL...</item>
-        <item>1. X13</item>
-        <item>2. CUDA-LINUX</item>
-        <item>Custom URL...</item>
-    </string-array>
-    <string name="save">Save</string>
+<string name="save">Save</string>
     <string name="server_status_not_checked">Server status not checked</string>
     <string name="server_status_invalid">Enter a valid server URL to check</string>
     <string name="server_status_checking">Checking server…</string>

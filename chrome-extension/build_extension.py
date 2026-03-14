@@ -101,6 +101,9 @@ def build_extension():
     with open(build_settings_file, 'r') as f:
         build_settings = json.load(f)
     default_server_url = build_settings['default_server_url']
+    preset_servers = build_settings.get('preset_servers', [])
+    preset_urls_js = '[' + ', '.join(f'"{s["url"]}"' for s in preset_servers) + ']'
+    preset_names_js = '[' + ', '.join(f'"{s["name"]}"' for s in preset_servers) + ']'
 
     # Generate build info file
     build_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -108,8 +111,10 @@ def build_extension():
     build_info_file.write_text(
         f'const BUILD_VERSION = "{version}";\n'
         f'const DEFAULT_SERVER_URL = "{default_server_url}";\n'
+        f'const PRESET_URLS = {preset_urls_js};\n'
+        f'const PRESET_NAMES = {preset_names_js};\n'
     )
-    print(f"Generated build-info.js: version={version} timestamp={build_timestamp} server={default_server_url}")
+    print(f"Generated build-info.js: version={version} timestamp={build_timestamp} server={default_server_url} presets={len(preset_servers)}")
 
     # Files/folders to include
     include_patterns = [

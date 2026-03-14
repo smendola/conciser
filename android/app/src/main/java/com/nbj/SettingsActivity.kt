@@ -1,8 +1,6 @@
 package com.nbj
 
-import android.app.AlertDialog
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -35,10 +33,9 @@ class SettingsActivity : AppCompatActivity() {
             .build()
     }
 
-    private val presetUrls = listOf(
-        "https://x13.puma-garibaldi.ts.net",
-        "https://cuda-linux.puma-garibaldi.ts.net"
-    )
+    private val presetUrls = BuildConfig.PRESET_SERVER_URLS.toList()
+    private val presetNames = BuildConfig.PRESET_SERVER_NAMES.toList()
+    private val customUrlPosition = presetUrls.size + 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +50,7 @@ class SettingsActivity : AppCompatActivity() {
 
 
         binding.btnResetState.setOnClickListener {
-            showResetConfirmationDialog()
+            resetAllState()
         }
 
         binding.etServerUrl.setOnFocusChangeListener { _, hasFocus ->
@@ -65,30 +62,30 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun setupSpinner() {
-        val adapter = ArrayAdapter.createFromResource(
-            this,
-            R.array.server_url_options,
-            android.R.layout.simple_spinner_item
-        )
+        val options = mutableListOf("Select a server or enter custom URL...")
+        presetNames.forEachIndexed { i, name -> options.add("${i + 1}. $name") }
+        options.add("Custom URL...")
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerServerUrl.adapter = adapter
 
         binding.spinnerServerUrl.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                when (position) {
-                    0 -> {
+                when {
+                    position == 0 -> {
                         // "Select a server or enter custom URL..."
                         binding.etServerUrl.visibility = View.GONE
                         binding.etServerUrl.setText("")
                     }
-                    in 1..3 -> {
+                    position in 1..presetUrls.size -> {
                         // Preset URLs
                         binding.etServerUrl.visibility = View.GONE
                         binding.etServerUrl.setText("")
                         val selectedUrl = presetUrls[position - 1]
                         autoSave(selectedUrl)
                     }
-                    4 -> {
+                    position == customUrlPosition -> {
                         // "Custom URL..."
                         binding.etServerUrl.visibility = View.VISIBLE
                         binding.etServerUrl.requestFocus()
@@ -114,7 +111,7 @@ class SettingsActivity : AppCompatActivity() {
             binding.etServerUrl.visibility = View.GONE
         } else if (savedUrl.isNotEmpty()) {
             // Custom URL
-            binding.spinnerServerUrl.setSelection(4) // "Custom URL..."
+            binding.spinnerServerUrl.setSelection(customUrlPosition)
             binding.etServerUrl.setText(savedUrl)
             binding.etServerUrl.visibility = View.VISIBLE
         } else {
@@ -232,17 +229,6 @@ class SettingsActivity : AppCompatActivity() {
         object Unreachable : HealthResult()
     }
 
-    private fun showResetConfirmationDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Reset All State")
-            .setMessage("Are you sure you want to reset all state? This will clear:\n\n• All active and completed jobs\n• All settings\n• Cached voices and strategies\n• Client ID\n\nThis cannot be undone.")
-            .setPositiveButton("Reset") { _, _ ->
-                resetAllState()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
     private fun resetAllState() {
         // Clear all SharedPreferences
         getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE).edit().clear().apply()
@@ -251,12 +237,7 @@ class SettingsActivity : AppCompatActivity() {
         getSharedPreferences("client_identity", Context.MODE_PRIVATE).edit().clear().apply()
         
         Toast.makeText(this, "All state has been reset", Toast.LENGTH_SHORT).show()
-        
-        // Go back to main activity to refresh everything
-        val intent = Intent(this, MainActivity::class.java)
-        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
-        startActivity(intent)
-        finish()
+        loadSettings()
     }
 
     override fun onSupportNavigateUp(): Boolean {

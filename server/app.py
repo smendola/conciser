@@ -11,6 +11,7 @@ import uuid
 import threading
 import subprocess
 from pathlib import Path
+import yaml
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for, Response
 from urllib.parse import quote_plus
@@ -794,6 +795,28 @@ def get_strategies():
     return jsonify({'strategies': strategies})
 
 
+def _load_voice_whitelist() -> dict:
+    """Load voice_whitelist.yaml at call time so edits take effect without restart."""
+    path = Path(__file__).parent / 'voice_whitelist.yaml'
+    try:
+        with open(path, 'r') as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.warning(f"voice_whitelist.yaml not found at {path} — no whitelist applied")
+        return {}
+
+
+def _apply_voice_whitelist(voices: list, provider: str, locale: str) -> list:
+    """Filter voices by whitelist for (provider, locale) if one is defined; otherwise pass through."""
+    whitelist = _load_voice_whitelist()
+    allowed = whitelist.get(provider, {}).get(locale)
+    if not allowed:
+        return voices
+    # Prefix match: "Brian" matches "en-US-BrianNeural", "en-US-BrianMultilingualNeural", etc.
+    prefix = locale + '-'
+    return [v for v in voices if any(v['name'].startswith(prefix + entry) for entry in allowed)]
+
+
 @app.route('/api/voices', methods=['GET'])
 def get_voices():
     """Get available TTS voices filtered by locale, using the configured voice service."""
@@ -875,6 +898,17 @@ def get_voices():
                     ],
                     key=lambda x: x['name']
                 )
+                filtered_voices = _apply_voice_whitelist(filtered_voices, 'azure', locale)
+                # Deduplicate by friendly_name — multiple variants (Neural, MultilingualNeural)
+                # look identical to clients; keep the first seen after name sort.
+                seen: set = set()
+                deduped = []
+                for v in filtered_voices:
+                    key = v['friendly_name']
+                    if key not in seen:
+                        seen.add(key)
+                        deduped.append(v)
+                filtered_voices = deduped
 
             case 'edge' | _:
                 edge_tts = EdgeTTS()

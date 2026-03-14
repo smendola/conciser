@@ -1,8 +1,4 @@
-// DEFAULT_SERVER_URL is injected at build time via build-info.js
-const PRESET_URLS = [
-  'https://x13.puma-garibaldi.ts.net',
-  'https://cuda-linux.puma-garibaldi.ts.net'
-];
+// PRESET_URLS, PRESET_NAMES, DEFAULT_SERVER_URL are injected at build time via build-info.js
 let pingTimeoutId = null;
 let currentPingController = null;
 
@@ -179,9 +175,18 @@ async function resetAllState() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // Populate preset options dynamically from build-injected PRESET_URLS/PRESET_NAMES
+  const selectEl = document.getElementById('serverUrlSelect');
+  const customOption = selectEl.querySelector('option[value="custom"]');
+  PRESET_URLS.forEach((url, i) => {
+    const opt = document.createElement('option');
+    opt.value = url;
+    opt.textContent = `${i + 1}. ${PRESET_NAMES[i]}`;
+    selectEl.insertBefore(opt, customOption);
+  });
+
   await load();
 
-  const selectEl = document.getElementById('serverUrlSelect');
   const inputEl = document.getElementById('serverUrl');
 
   // Handle dropdown changes
