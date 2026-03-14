@@ -429,6 +429,51 @@ def api_get_job(job_id: str):
     return jsonify(_job_repr(job))
 
 
+@app.route('/api/jobs/<job_id>/stream', methods=['GET'])
+def api_stream_job(job_id: str):
+    """Server-Sent Events endpoint for real-time job status updates."""
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job = job_service.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    if job.get('client_id') and job.get('client_id') != client_id:
+        return jsonify({'error': 'Job not found'}), 404
+
+    def generate():
+        import time
+        import json
+
+        # Send initial status immediately
+        job_data = job_service.get_job(job_id)
+        if job_data:
+            yield f"data: {json.dumps(_job_repr(job_data))}\n\n"
+
+        # Poll for updates until job is completed or errored
+        while True:
+            time.sleep(1)  # Check every second
+
+            job_data = job_service.get_job(job_id)
+            if not job_data:
+                # Job was deleted
+                yield f"data: {json.dumps({'status': 'error', 'error': 'Job not found'})}\n\n"
+                break
+
+            status = job_data.get('status')
+            yield f"data: {json.dumps(_job_repr(job_data))}\n\n"
+
+            # Stop streaming when job reaches terminal state
+            if status in ('completed', 'error'):
+                break
+
+    return Response(generate(), mimetype='text/event-stream', headers={
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'  # Disable nginx buffering
+    })
+
+
 @app.route('/api/jobs/<job_id>', methods=['DELETE'])
 def api_delete_job(job_id: str):
     client_id, error_response = _client_id_response()

@@ -1,13 +1,13 @@
 // NBJ Condenser - Chrome Extension
 
-console.log('POPUP_BOOT: popup.js loaded');
+console.log('[CONCISER] POPUP_BOOT: popup.js loaded');
 
 // Forward declarations - actual implementations after this block
 let currentUrl = null;
 let currentJobId = null;
 let currentTakeawaysJobId = null;
-let pollInterval = null;
-let takeawaysPollInterval = null;
+let eventSource = null;  // SSE connection for condense jobs
+let takeawaysEventSource = null;  // SSE connection for takeaways jobs
 // DEFAULT_SERVER_URL is injected at build time via build-info.js
 let serverUrl = DEFAULT_SERVER_URL;
 let strategies = [];
@@ -26,14 +26,14 @@ async function clearAllStateOnServerSwitchIfNeeded() {
   const settings = storage.settings || {};
   const selectedServerUrl = normalizeServerUrl(settings.serverUrl || serverUrl);
 
-  console.log('METADATA_CACHE: server_switch_check', {
+  console.log('[CONCISER] METADATA_CACHE: server_switch_check', {
     lastServerUrl,
     selectedServerUrl
   });
   await apiLog('server_switch_check', { lastServerUrl, selectedServerUrl });
 
   if (lastServerUrl && normalizeServerUrl(lastServerUrl) !== selectedServerUrl) {
-    console.log('METADATA_CACHE: server_switch_wipe', {
+    console.log('[CONCISER] METADATA_CACHE: server_switch_wipe', {
       from: lastServerUrl,
       to: selectedServerUrl
     });
@@ -62,7 +62,7 @@ async function loadCachedStrategiesForCurrentServer() {
   const key = getStrategiesCacheKey();
   const storage = await chrome.storage.local.get([key]);
   const cache = storage[key];
-  console.log('METADATA_CACHE: strategies_cache_read', {
+  console.log('[CONCISER] METADATA_CACHE: strategies_cache_read', {
     serverUrl,
     key,
     hit: !!(cache && Array.isArray(cache.data)),
@@ -85,7 +85,7 @@ async function loadCachedVoicesForCurrentServer(locale) {
   const key = getVoicesCacheKey(locale);
   const storage = await chrome.storage.local.get([key]);
   const cache = storage[key];
-  console.log('METADATA_CACHE: voices_cache_read', {
+  console.log('[CONCISER] METADATA_CACHE: voices_cache_read', {
     serverUrl,
     locale,
     key,
@@ -106,7 +106,7 @@ async function loadCachedVoicesForCurrentServer(locale) {
 }
 
 async function fetchAndCacheStrategiesForCurrentServer() {
-  console.log('METADATA_CACHE: strategies_fetch_start', { serverUrl });
+  console.log('[CONCISER] METADATA_CACHE: strategies_fetch_start', { serverUrl });
   await apiLog('strategies_fetch_start', {});
   const response = await fetchWithAuth(`${serverUrl}/api/strategies`);
   if (!response.ok) throw new Error(`Failed to fetch strategies (${response.status})`);
@@ -114,13 +114,13 @@ async function fetchAndCacheStrategiesForCurrentServer() {
   strategies = data.strategies || [];
   const key = getStrategiesCacheKey();
   await chrome.storage.local.set({ [key]: { data: strategies, timestamp: Date.now() } });
-  console.log('METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
+  console.log('[CONCISER] METADATA_CACHE: strategies_cache_write', { serverUrl, key, count: strategies.length });
   await apiLog('strategies_cache_write', { key, count: strategies.length });
   updateStrategyDescription();
 }
 
 async function fetchAndCacheVoicesForCurrentServer(locale) {
-  console.log('METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
+  console.log('[CONCISER] METADATA_CACHE: voices_fetch_start', { serverUrl, locale });
   await apiLog('voices_fetch_start', { locale });
   const response = await fetchWithAuth(`${serverUrl}/api/voices?locale=${locale}`);
   if (!response.ok) throw new Error(`Failed to fetch voices (${response.status})`);
@@ -128,13 +128,13 @@ async function fetchAndCacheVoicesForCurrentServer(locale) {
   voices = data.voices || [];
   const key = getVoicesCacheKey(locale);
   await chrome.storage.local.set({ [key]: { data: voices, locale, timestamp: Date.now() } });
-  console.log('METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
+  console.log('[CONCISER] METADATA_CACHE: voices_cache_write', { serverUrl, locale, key, count: voices.length });
   await apiLog('voices_cache_write', { locale, key, count: voices.length });
 }
 
 async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
   const locale = getLanguageOnlyLocale();
-  console.log('METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
+  console.log('[CONCISER] METADATA_CACHE: ensure_metadata_start', { serverUrl, locale, allowNetwork });
   await apiLog('ensure_metadata_start', { locale, allowNetwork });
   const haveStrategies = await loadCachedStrategiesForCurrentServer();
   const haveVoices = await loadCachedVoicesForCurrentServer(locale);
@@ -147,7 +147,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
     const storage = await chrome.storage.local.get(['settings']);
     const settings = storage.settings || {};
 
-    console.log('METADATA_CACHE: restore_settings', {
+    console.log('[CONCISER] METADATA_CACHE: restore_settings', {
       condenseLocale: settings.condenseLocale,
       condenseVoice: settings.condenseVoice,
       takeawaysLocale: settings.takeawaysLocale,
@@ -181,7 +181,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
         voiceSelectEl.value = savedVoice;
       }
 
-      console.log('METADATA_CACHE: applied_selection', {
+      console.log('[CONCISER] METADATA_CACHE: applied_selection', {
         localeSelectId,
         voiceSelectId,
         savedLocaleKey,
@@ -364,12 +364,13 @@ function showTakeawaysStatus(type, message, progress = '') {
   container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
 }
 
+// SSE-based status checking (no longer used - replaced by startPolling SSE connection)
+// Kept for potential fallback scenarios
 async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
 
     if (response.status === 404) {
-      clearInterval(pollInterval);
       showStatus('error', `Job ${currentJobId} not found on server`);
       resetButton();
       return;
@@ -378,10 +379,8 @@ async function checkStatus() {
     const data = await response.json();
 
     if (data.status === 'completed') {
-      clearInterval(pollInterval);
       showCompleted({ job_id: currentJobId });
     } else if (data.status === 'error') {
-      clearInterval(pollInterval);
       showStatus('error', `Processing failed\n${data.error}`);
       resetButton();
     } else if (data.status === 'processing') {
@@ -390,11 +389,10 @@ async function checkStatus() {
       showStatus('processing', `Status: ${data.status}\nJob ID: ${currentJobId}`);
     }
   } catch (error) {
-    console.error('Polling error:', error);
-    clearInterval(pollInterval);
+    console.error('Status check error:', error);
     const errorMsg = error.message.includes('Failed to fetch')
       ? 'Connection lost. Check that the server is running or reload the extension.'
-      : `Polling error: ${error.message}`;
+      : `Status check error: ${error.message}`;
     showStatus('error', errorMsg);
     resetButton();
   }
@@ -440,21 +438,111 @@ function resetButton() {
 }
 
 function startPolling() {
-  pollInterval = setInterval(checkStatus, 3000);
-  checkStatus();
+  // Close any existing connection
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  // Create SSE connection
+  const url = `${serverUrl}/api/jobs/${currentJobId}/stream?cid=${encodeURIComponent(clientId)}`;
+  eventSource = new EventSource(url);
+
+  eventSource.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.status === 'completed') {
+      eventSource.close();
+      showCompleted({ job_id: currentJobId });
+    } else if (data.status === 'error') {
+      eventSource.close();
+      showStatus('error', `Processing failed\n${data.error || 'Unknown error'}`);
+      resetButton();
+    } else if (data.status === 'processing') {
+      showStatus('processing', `Processing video...\nJob ID: ${currentJobId}`, data.progress);
+    } else {
+      showStatus('processing', `Status: ${data.status}\nJob ID: ${currentJobId}`);
+    }
+  };
+
+  // Called on connection errors (network issues, server down, etc.)
+  eventSource.onerror = async (error) => {
+    console.error('SSE connection error:', error);
+    eventSource.close();
+
+    // Try one regular fetch to see if job still exists
+    try {
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
+      if (response.status === 404) {
+        showStatus('error', `Job ${currentJobId} not found on server`);
+        resetButton();
+      } else {
+        const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+        showStatus('error', errorMsg);
+        resetButton();
+      }
+    } catch (e) {
+      const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+      showStatus('error', errorMsg);
+      resetButton();
+    }
+  };
 }
 
 function startTakeawaysPolling() {
-  takeawaysPollInterval = setInterval(checkTakeawaysStatus, 2000);
-  checkTakeawaysStatus();
+  // Close any existing connection
+  if (takeawaysEventSource) {
+    takeawaysEventSource.close();
+  }
+
+  // Create SSE connection for takeaways
+  const url = `${serverUrl}/api/jobs/${currentTakeawaysJobId}/stream?cid=${encodeURIComponent(clientId)}`;
+  takeawaysEventSource = new EventSource(url);
+
+  takeawaysEventSource.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.status === 'completed') {
+      takeawaysEventSource.close();
+      showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
+    } else if (data.status === 'error') {
+      takeawaysEventSource.close();
+      showTakeawaysStatus('error', `Processing failed\n${data.error || 'Unknown error'}`);
+      resetTakeawaysButton();
+    } else if (data.status === 'processing') {
+      showTakeawaysStatus('processing', `Extracting takeaways...\nJob ID: ${currentTakeawaysJobId}`, data.progress);
+    } else {
+      showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
+    }
+  };
+
+  takeawaysEventSource.onerror = async (error) => {
+    console.error('SSE connection error (takeaways):', error);
+    takeawaysEventSource.close();
+
+    try {
+      const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
+      if (response.status === 404) {
+        showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
+        resetTakeawaysButton();
+      } else {
+        const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+        showTakeawaysStatus('error', errorMsg);
+        resetTakeawaysButton();
+      }
+    } catch (e) {
+      const errorMsg = 'Connection lost. Check that the server is running or reload the extension.';
+      showTakeawaysStatus('error', errorMsg);
+      resetTakeawaysButton();
+    }
+  };
 }
 
+// Fallback check function (kept for potential fallback scenarios)
 async function checkTakeawaysStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
 
     if (response.status === 404) {
-      clearInterval(takeawaysPollInterval);
       showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
       resetTakeawaysButton();
       return;
@@ -463,10 +551,8 @@ async function checkTakeawaysStatus() {
     const data = await response.json();
 
     if (data.status === 'completed') {
-      clearInterval(takeawaysPollInterval);
       showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
     } else if (data.status === 'error') {
-      clearInterval(takeawaysPollInterval);
       showTakeawaysStatus('error', `Processing failed\n${data.error}`);
       resetTakeawaysButton();
     } else if (data.status === 'processing') {
@@ -475,11 +561,10 @@ async function checkTakeawaysStatus() {
       showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
     }
   } catch (error) {
-    console.error('Polling error:', error);
-    clearInterval(takeawaysPollInterval);
+    console.error('Status check error:', error);
     const errorMsg = error.message.includes('Failed to fetch')
       ? 'Connection lost. Check that the server is running or reload the extension.'
-      : `Polling error: ${error.message}`;
+      : `Status check error: ${error.message}`;
     showTakeawaysStatus('error', errorMsg);
     resetTakeawaysButton();
   }
@@ -526,16 +611,20 @@ function resetTakeawaysButton() {
 
 // Initialize popup
 async function initializePopup() {
-  console.log('POPUP_BOOT: initializePopup start');
+  console.log('[CONCISER] POPUP_BOOT: initializePopup start');
 
   // Set build version (may not exist if UI is collapsed)
   const buildInfoEl = document.getElementById('buildInfo');
   if (buildInfoEl) {
     if (typeof BUILD_VERSION !== 'undefined') {
+      console.log('[CONCISER] BUILD_VERSION found:', BUILD_VERSION);
       buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
     } else {
+      console.log('[CONCISER] BUILD_VERSION not defined');
       buildInfoEl.textContent = 'Build: Unknown';
     }
+  } else {
+    console.log('[CONCISER] buildInfo element not found');
   }
 
   clientId = await ensureClientId();
@@ -845,7 +934,7 @@ async function saveSettings() {
     condenseVoice: document.getElementById('voiceSelect').value,
     takeawaysLocale,
     takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
-    takeawaysFormat,
+    takeawaysFormat: takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
     videoMode: document.getElementById('videoModeSelect').value,
     prependIntro: document.getElementById('prependIntroCheck').checked
