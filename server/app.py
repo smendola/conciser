@@ -806,21 +806,33 @@ def _load_voice_whitelist() -> dict:
         return {}
 
 
-def _apply_voice_whitelist(voices: list, provider: str, locale: str) -> list:
-    """Filter voices by whitelist for (provider, locale) if one is defined; otherwise pass through."""
+def _apply_voice_whitelist_per_voice(voices: list, provider: str) -> list:
+    """For each voice apply the whitelist for its specific locale; if no whitelist exists for that locale, pass through."""
     whitelist = _load_voice_whitelist()
-    allowed = whitelist.get(provider, {}).get(locale)
-    if not allowed:
-        return voices
-    # Prefix match: "Brian" matches "en-US-BrianNeural", "en-US-BrianMultilingualNeural", etc.
-    prefix = locale + '-'
-    return [v for v in voices if any(v['name'].startswith(prefix + entry) for entry in allowed)]
+    provider_wl = whitelist.get(provider, {})
+    result = []
+    for v in voices:
+        locale = v.get('locale', '')
+        allowed = provider_wl.get(locale)
+        if not allowed:
+            result.append(v)
+        else:
+            prefix = locale + '-'
+            if any(v['name'].startswith(prefix + entry) for entry in allowed):
+                result.append(v)
+    return result
 
 
 @app.route('/api/voices', methods=['GET'])
 def get_voices():
-    """Get available TTS voices filtered by locale, using the configured voice service."""
-    locale = request.args.get('locale', 'en-US')
+    """Get available TTS voices filtered by lang (required).
+    lang=xx-YY  exact locale, whitelist applied if defined for that locale.
+    lang=xx     all locales under that language, per-locale whitelists applied.
+    """
+    lang = request.args.get('locale')
+    if not lang:
+        return jsonify({'error': 'locale parameter is required (e.g. ?locale=en or ?locale=en-US)'}), 400
+    exact_locale = '-' in lang
     settings = get_settings()
 
     def _friendly_voice_name(voice_name: str) -> str:
@@ -889,16 +901,18 @@ def get_voices():
 
                 from src.modules.azure_tts import AzureTTS
                 azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
-                all_voices = azure.list_voices(locale_filter=locale)
+                all_voices = azure.list_voices(locale_filter=lang)
+                locale_match = (lambda v: v['locale'] == lang) if exact_locale else (lambda v: v['locale'].startswith(lang + '-'))
                 filtered_voices = sorted(
                     [
                         _to_voice_repr(v)
                         for v in all_voices
+                        if locale_match(v)
                         if _is_voice_name_allowed(_friendly_voice_name(v['name']))
                     ],
                     key=lambda x: x['name']
                 )
-                filtered_voices = _apply_voice_whitelist(filtered_voices, 'azure', locale)
+                filtered_voices = _apply_voice_whitelist_per_voice(filtered_voices, 'azure')
                 # Deduplicate by friendly_name — multiple variants (Neural, MultilingualNeural)
                 # look identical to clients; keep the first seen after name sort.
                 seen: set = set()
@@ -913,16 +927,17 @@ def get_voices():
             case 'edge' | _:
                 edge_tts = EdgeTTS()
                 all_voices = edge_tts.list_voices()
-                # Filter voices by locale prefix (e.g., 'en' matches 'en-US', 'en-GB', etc.)
+                locale_match = (lambda v: v['locale'] == lang) if exact_locale else (lambda v: v['locale'].startswith(lang + '-'))
                 filtered_voices = sorted(
                     [
                         _to_voice_repr(v)
                         for v in all_voices
-                        if v['locale'].startswith(locale)
+                        if locale_match(v)
                         if _is_voice_name_allowed(_friendly_voice_name(v['name']))
                     ],
                     key=lambda x: x['name']
                 )
+                filtered_voices = _apply_voice_whitelist_per_voice(filtered_voices, 'edge')
         return jsonify({'voices': filtered_voices})
     except Exception as e:
         logger.error(f"Failed to fetch voices: {e}")

@@ -1,12 +1,17 @@
 """Edge TTS module using Microsoft Edge's TTS API."""
 
 import asyncio
+import time
 from pathlib import Path
 from typing import List, Optional
 import logging
 import edge_tts
 
 logger = logging.getLogger(__name__)
+
+_voices_cache: List[dict] = []
+_voices_cache_time: float = 0.0
+_VOICES_CACHE_TTL = 3600  # seconds
 
 
 class EdgeTTS:
@@ -93,14 +98,17 @@ class EdgeTTS:
 
     def list_voices(self) -> List[dict]:
         """
-        List all available Edge TTS voices.
+        List all available Edge TTS voices, cached for 1 hour.
 
         Returns:
             List of voice dictionaries with name, gender, locale
         """
+        global _voices_cache, _voices_cache_time
+        if _voices_cache and (time.time() - _voices_cache_time) < _VOICES_CACHE_TTL:
+            return _voices_cache
         try:
             voices = asyncio.run(edge_tts.list_voices())
-            return [
+            _voices_cache = [
                 {
                     'name': v['ShortName'],
                     'gender': v.get('Gender', 'Unknown'),
@@ -108,9 +116,11 @@ class EdgeTTS:
                 }
                 for v in voices
             ]
+            _voices_cache_time = time.time()
+            return _voices_cache
         except Exception as e:
             logger.error(f"Failed to list Edge TTS voices: {e}")
-            return []
+            return _voices_cache  # return stale cache rather than empty on transient failure
 
     def find_voice(self, locale: str = "en-US", gender: str = None) -> Optional[str]:
         """

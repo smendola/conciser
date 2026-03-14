@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""Convert .windsurf/rules/*.md files into a single CLAUDE.md"""
+import re
+from pathlib import Path
+
+rules_dir = Path(".windsurf/rules")
+output = Path("CLAUDE.md")
+
+TRIGGER_NOTE = {
+    "always_on": "> **Always follow this rule.**",
+    "model_decision": "> Apply this rule when you judge it to be relevant.",
+}
+
+sections = []
+for f in sorted(rules_dir.glob("*.md")):
+    content = f.read_text().strip()
+    # Extract trigger from frontmatter
+    trigger_match = re.search(r"^---\s*\ntrigger:\s*(\S+)", content)
+    trigger = trigger_match.group(1) if trigger_match else None
+    # Strip frontmatter
+    content = re.sub(r"^---.*?---\s*", "", content, flags=re.DOTALL).strip()
+    if content:
+        note = TRIGGER_NOTE.get(trigger, "")
+        sections.append(f"## {f.stem}\n\n{note}\n\n{content}" if note else f"## {f.stem}\n\n{content}")
+
+output.write_text("# Project Rules\n\n" + "\n\n".join(sections) + "\n")
+print(f"Written {output} from {len(sections)} rules")

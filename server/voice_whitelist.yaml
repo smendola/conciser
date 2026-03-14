@@ -1,0 +1,30 @@
+# Voice whitelist for the /api/voices endpoint.
+# Voices NOT in this list are hidden from clients (apps), but remain available
+# in the CLI `nbj voices` command.
+#
+# Structure: provider -> locale -> list of friendly voice names
+# Friendly name = the short name shown in the UI (e.g. "Andrew" for en-US-AndrewNeural)
+#
+# Omitting a provider or locale means no whitelist applies (all voices shown).
+
+edge:
+  en-US:
+    - Andrew
+    - Ava
+    - Brian
+    - Emma
+    - Jenny
+  en-GB:
+    - Ryan
+    - Sonia
+
+azure:
+  en-US:
+    - Andrew
+    - Ava
+    - Brian
+    - Emma
+    - Jenny
+  en-GB:
+    - Ryan
+    - Sonia

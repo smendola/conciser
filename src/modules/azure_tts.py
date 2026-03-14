@@ -1,11 +1,16 @@
 """Azure TTS module using Microsoft Azure Cognitive Services Speech API."""
 
 import logging
+import time
 from pathlib import Path
 from typing import List, Optional
 import azure.cognitiveservices.speech as speechsdk
 
 logger = logging.getLogger(__name__)
+
+_voices_cache: List[dict] = []
+_voices_cache_time: float = 0.0
+_VOICES_CACHE_TTL = 3600  # seconds
 
 
 class AzureTTS:
@@ -203,36 +208,39 @@ class AzureTTS:
         Returns:
             List of voice dictionaries with name, gender, locale
         """
+        global _voices_cache, _voices_cache_time
+        if _voices_cache and (time.time() - _voices_cache_time) < _VOICES_CACHE_TTL:
+            return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
         try:
-            # Create synthesizer to get voices
-            synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config)
-            result = synthesizer.get_voices_async().get()
+            for attempt in range(3):
+                synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config)
+                result = synthesizer.get_voices_async().get()
+                if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
+                    break
+                logger.warning(f"get_voices attempt {attempt + 1} failed ({result.reason}), retrying...")
+                time.sleep(1.5 ** attempt)  # 1s, 1.5s
 
             if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
-                voices = []
+                all_voices = []
                 for voice in result.voices:
-                    # Apply locale filter if specified
-                    if locale_filter and not voice.locale.startswith(locale_filter):
-                        continue
-
                     # Exclude HD voices because they are much slower to generate
                     if 'DragonHD' in voice.short_name:
                         continue
-
-                    voices.append({
+                    all_voices.append({
                         'name': voice.short_name,
                         'gender': voice.gender.name if hasattr(voice.gender, 'name') else str(voice.gender),
                         'locale': voice.locale,
                         'display_name': voice.local_name
                     })
-                return voices
+                _voices_cache = all_voices
+                _voices_cache_time = time.time()
             else:
-                logger.error(f"Failed to retrieve voices: {result.reason}")
-                return []
+                logger.error(f"Failed to retrieve voices after retries: {result.reason}")
+            return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
 
         except Exception as e:
             logger.error(f"Failed to list Azure TTS voices: {e}")
-            return []
+            return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
 
     def find_voice(self, locale: str = "en-US", gender: str = None) -> Optional[str]:
         """

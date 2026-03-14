@@ -160,10 +160,6 @@ async function save(andPing = true) {
 }
 
 async function resetAllState() {
-  if (!confirm('Are you sure you want to reset all state? This will clear:\n\n• All active and completed jobs\n• All settings\n• Cached voices and strategies\n• Client ID\n\nThis cannot be undone.')) {
-    return;
-  }
-
   try {
     await chrome.storage.local.clear();
     setStatus('All state has been reset. Reloading...', 'ok');
