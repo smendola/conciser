@@ -2,6 +2,7 @@
 
 console.log('POPUP_BOOT: popup.js loaded');
 
+// Forward declarations - actual implementations after this block
 let currentUrl = null;
 let currentJobId = null;
 let currentTakeawaysJobId = null;
@@ -336,6 +337,193 @@ function toServerAbsoluteUrl(url) {
   }
 }
 
+// Helper functions - defined before initializePopup so they can be called from it
+function showStatus(type, message, progress = '') {
+  const container = document.getElementById('statusContainer');
+  if (!container) {
+    return;
+  }
+
+  let progressHtml = '';
+  if (progress) {
+    progressHtml = `<div class="progress">${progress}</div>`;
+  }
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
+}
+
+function showTakeawaysStatus(type, message, progress = '') {
+  const container = document.getElementById('takeawaysStatusContainer');
+  if (!container) {
+    return;
+  }
+
+  let progressHtml = '';
+  if (progress) {
+    progressHtml = `<div class="progress">${progress}</div>`;
+  }
+  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
+}
+
+async function checkStatus() {
+  try {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
+
+    if (response.status === 404) {
+      clearInterval(pollInterval);
+      showStatus('error', `Job ${currentJobId} not found on server`);
+      resetButton();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'completed') {
+      clearInterval(pollInterval);
+      showCompleted({ job_id: currentJobId });
+    } else if (data.status === 'error') {
+      clearInterval(pollInterval);
+      showStatus('error', `Processing failed\n${data.error}`);
+      resetButton();
+    } else if (data.status === 'processing') {
+      showStatus('processing', `Processing video...\nJob ID: ${currentJobId}`, data.progress);
+    } else {
+      showStatus('processing', `Status: ${data.status}\nJob ID: ${currentJobId}`);
+    }
+  } catch (error) {
+    console.error('Polling error:', error);
+    clearInterval(pollInterval);
+    const errorMsg = error.message.includes('Failed to fetch')
+      ? 'Connection lost. Check that the server is running or reload the extension.'
+      : `Polling error: ${error.message}`;
+    showStatus('error', errorMsg);
+    resetButton();
+  }
+}
+
+function showCompleted(data) {
+  const container = document.getElementById('statusContainer');
+  if (!container) return;
+
+  const condenseBtn = document.getElementById('condenseBtn');
+  if (condenseBtn) condenseBtn.style.display = 'none';
+
+  container.innerHTML = `
+    <div class="status completed">
+      ✅ Video ready!<br>
+      Job ID: ${currentJobId}
+    </div>
+    <button class="download-btn" id="downloadBtn">
+      Watch Video
+    </button>
+  `;
+
+  const downloadBtn = document.getElementById('downloadBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+      openJobInNewTab(currentJobId).catch(err => console.error(err));
+      // Reload recent jobs and reset UI
+      await loadRecentJobs();
+      resetButton();
+      const statusContainer = document.getElementById('statusContainer');
+      if (statusContainer) statusContainer.innerHTML = '';
+      currentJobId = null;
+    });
+  }
+}
+
+function resetButton() {
+  const condenseBtn = document.getElementById('condenseBtn');
+  if (!condenseBtn) return;
+  condenseBtn.disabled = false;
+  condenseBtn.textContent = 'Condense Video';
+  condenseBtn.style.display = '';
+}
+
+function startPolling() {
+  pollInterval = setInterval(checkStatus, 3000);
+  checkStatus();
+}
+
+function startTakeawaysPolling() {
+  takeawaysPollInterval = setInterval(checkTakeawaysStatus, 2000);
+  checkTakeawaysStatus();
+}
+
+async function checkTakeawaysStatus() {
+  try {
+    const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentTakeawaysJobId}`);
+
+    if (response.status === 404) {
+      clearInterval(takeawaysPollInterval);
+      showTakeawaysStatus('error', `Job ${currentTakeawaysJobId} not found on server`);
+      resetTakeawaysButton();
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data.status === 'completed') {
+      clearInterval(takeawaysPollInterval);
+      showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
+    } else if (data.status === 'error') {
+      clearInterval(takeawaysPollInterval);
+      showTakeawaysStatus('error', `Processing failed\n${data.error}`);
+      resetTakeawaysButton();
+    } else if (data.status === 'processing') {
+      showTakeawaysStatus('processing', `Extracting takeaways...\nJob ID: ${currentTakeawaysJobId}`, data.progress);
+    } else {
+      showTakeawaysStatus('processing', `Status: ${data.status}\nJob ID: ${currentTakeawaysJobId}`);
+    }
+  } catch (error) {
+    console.error('Polling error:', error);
+    clearInterval(takeawaysPollInterval);
+    const errorMsg = error.message.includes('Failed to fetch')
+      ? 'Connection lost. Check that the server is running or reload the extension.'
+      : `Polling error: ${error.message}`;
+    showTakeawaysStatus('error', errorMsg);
+    resetTakeawaysButton();
+  }
+}
+
+function showTakeawaysCompleted(data) {
+  const container = document.getElementById('takeawaysStatusContainer');
+  if (!container) return;
+
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  if (takeawaysBtn) takeawaysBtn.style.display = 'none';
+
+  container.innerHTML = `
+    <div class="status completed">
+      ✅ Takeaways ready!<br>
+      Job ID: ${currentTakeawaysJobId}
+    </div>
+    <button class="download-btn" id="downloadTakeawaysBtn">
+      View Takeaways
+    </button>
+  `;
+
+  const downloadBtn = document.getElementById('downloadTakeawaysBtn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async () => {
+      openJobInNewTab(currentTakeawaysJobId).catch(err => console.error(err));
+      // Reload recent jobs and reset UI
+      await loadRecentJobs();
+      resetTakeawaysButton();
+      const statusContainer = document.getElementById('takeawaysStatusContainer');
+      if (statusContainer) statusContainer.innerHTML = '';
+      currentTakeawaysJobId = null;
+    });
+  }
+}
+
+function resetTakeawaysButton() {
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+  if (!takeawaysBtn) return;
+  takeawaysBtn.disabled = false;
+  takeawaysBtn.textContent = 'Extract Takeaways';
+  takeawaysBtn.style.display = '';
+}
+
 // Initialize popup
 async function initializePopup() {
   console.log('POPUP_BOOT: initializePopup start');
@@ -353,7 +541,7 @@ async function initializePopup() {
   clientId = await ensureClientId();
   // Get current tab and check if it's YouTube
   // In content script context, just use window.location.href
-  if (document.getElementById('nbj-condenser-container')) {
+  if (window.NBJ_CONTENT_SCRIPT_MODE) {
     // We're in content script context
     currentUrl = window.location.href;
   } else {
@@ -363,7 +551,6 @@ async function initializePopup() {
     currentUrl = tab.url;
   }
 
-  const videoInfo = document.getElementById('videoInfo');
   const condenseBtn = document.getElementById('condenseBtn');
   const takeawaysBtn = document.getElementById('takeawaysBtn');
 
@@ -372,25 +559,11 @@ async function initializePopup() {
   const match = currentUrl.match(youtubeRegex);
 
   if (match) {
-    const videoId = match[3];
-    videoInfo.textContent = `Video: ${videoId}`;
-    videoInfo.title = currentUrl;
-    condenseBtn.disabled = false;
-    takeawaysBtn.disabled = false;
-
-    // Fetch title async — update when ready without blocking init
-    fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(currentUrl)}&format=json`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.title) {
-          videoInfo.innerHTML = `Video: ${videoId}<br><span style="font-weight:700;color:#555;">${data.title}</span>`;
-        }
-      })
-      .catch(() => { }); // silently ignore — title is decorative
+    if (condenseBtn) condenseBtn.disabled = false;
+    if (takeawaysBtn) takeawaysBtn.disabled = false;
   } else {
-    videoInfo.textContent = '⚠️ Not a YouTube video page';
-    condenseBtn.disabled = true;
-    takeawaysBtn.disabled = true;
+    if (condenseBtn) condenseBtn.disabled = true;
+    if (takeawaysBtn) takeawaysBtn.disabled = true;
   }
 
   // Load settings and populate controls
@@ -402,40 +575,8 @@ async function initializePopup() {
   // Setup tabs
   await setupTabs();
 
-  // Check for existing job in storage
-  const storage = await chrome.storage.local.get(['activeJob', 'completedJobs', 'activeTakeawaysJob', 'completedTakeawaysJobs']);
-
-  // First check if this video has a completed job
-  const completedJobs = storage.completedJobs || {};
-  if (completedJobs[currentUrl]) {
-    currentJobId = completedJobs[currentUrl];
-    showCompleted({ job_id: currentJobId });
-    return;
-  }
-
-  // Then check if there's an active job in progress FOR THIS VIDEO
-  if (storage.activeJob && storage.activeJob.url === currentUrl) {
-    currentJobId = storage.activeJob.jobId;
-    condenseBtn.disabled = true;
-    condenseBtn.textContent = 'Processing...';
-    showStatus('processing', `Resuming job...\nJob ID: ${currentJobId}`);
-    startPolling();
-  }
-
-  // Check for takeaways jobs FOR THIS VIDEO
-  const completedTakeawaysJobs = storage.completedTakeawaysJobs || {};
-  if (completedTakeawaysJobs[currentUrl]) {
-    currentTakeawaysJobId = completedTakeawaysJobs[currentUrl];
-    showTakeawaysCompleted({ job_id: currentTakeawaysJobId });
-  } else if (storage.activeTakeawaysJob && storage.activeTakeawaysJob.url === currentUrl) {
-    currentTakeawaysJobId = storage.activeTakeawaysJob.jobId;
-    takeawaysBtn.disabled = true;
-    takeawaysBtn.textContent = 'Processing...';
-    showTakeawaysStatus('processing', `Resuming job...\nJob ID: ${currentTakeawaysJobId}`);
-    startTakeawaysPolling();
-  }
-
-  // Load recent jobs
+  // No job state persistence - server is source of truth
+  // Just load recent jobs from server
   await loadRecentJobs();
 
   // Setup event listeners
@@ -781,37 +922,64 @@ function resetToCondenseMode() {
 
 // Setup event listeners for controls
 function setupEventListeners() {
-  document.getElementById('aggressivenessSlider').addEventListener('input', (e) => {
+  const aggressivenessSlider = document.getElementById('aggressivenessSlider');
+  const speedSlider = document.getElementById('speedSlider');
+  const localeSelect = document.getElementById('localeSelect');
+  const takeawaysLocaleSelect = document.getElementById('takeawaysLocaleSelect');
+  const voiceSelect = document.getElementById('voiceSelect');
+  const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
+  const videoModeSelect = document.getElementById('videoModeSelect');
+  const prependIntroCheck = document.getElementById('prependIntroCheck');
+  const condenseBtn = document.getElementById('condenseBtn');
+  const takeawaysBtn = document.getElementById('takeawaysBtn');
+
+  if (!aggressivenessSlider || !speedSlider || !condenseBtn || !takeawaysBtn) {
+    return;
+  }
+
+  aggressivenessSlider.addEventListener('input', (e) => {
     document.getElementById('aggressivenessValue').textContent = e.target.value;
     updateStrategyDescription();
     handleSettingChange();
   });
 
-  document.getElementById('speedSlider').addEventListener('input', (e) => {
+  speedSlider.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
     handleSettingChange();
   });
 
-  document.getElementById('localeSelect').addEventListener('change', (e) => {
-    updateVoiceSelectForLocale('voiceSelect', e.target.value);
-    handleSettingChange();
-  });
+  if (localeSelect) {
+    localeSelect.addEventListener('change', (e) => {
+      updateVoiceSelectForLocale('voiceSelect', e.target.value);
+      handleSettingChange();
+    });
+  }
 
-  document.getElementById('takeawaysLocaleSelect').addEventListener('change', (e) => {
-    updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
-    handleSettingChange();
-  });
+  if (takeawaysLocaleSelect) {
+    takeawaysLocaleSelect.addEventListener('change', (e) => {
+      updateVoiceSelectForLocale('takeawaysVoiceSelect', e.target.value);
+      handleSettingChange();
+    });
+  }
 
-  document.getElementById('voiceSelect').addEventListener('change', () => {
-    handleSettingChange();
-  });
+  if (voiceSelect) {
+    voiceSelect.addEventListener('change', () => {
+      handleSettingChange();
+    });
+  }
 
-  document.getElementById('takeawaysVoiceSelect').addEventListener('change', handleSettingChange);
+  if (takeawaysVoiceSelect) {
+    takeawaysVoiceSelect.addEventListener('change', handleSettingChange);
+  }
 
-  document.getElementById('videoModeSelect').addEventListener('change', handleSettingChange);
+  if (videoModeSelect) {
+    videoModeSelect.addEventListener('change', handleSettingChange);
+  }
 
-  document.getElementById('prependIntroCheck').addEventListener('change', handleSettingChange);
+  if (prependIntroCheck) {
+    prependIntroCheck.addEventListener('change', handleSettingChange);
+  }
 
   // Condense button click
   document.getElementById('condenseBtn').addEventListener('click', async () => {
@@ -850,22 +1018,6 @@ function setupEventListeners() {
 
       if (response.ok) {
         currentJobId = data.id;
-
-        // Clear any previous completed job for this URL
-        const storage = await chrome.storage.local.get(['completedJobs']);
-        if (storage.completedJobs && storage.completedJobs[currentUrl]) {
-          delete storage.completedJobs[currentUrl];
-          await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-        }
-
-        // Save job to storage for persistence
-        await chrome.storage.local.set({
-          activeJob: {
-            jobId: currentJobId,
-            url: currentUrl,
-            startedAt: new Date().toISOString()
-          }
-        });
 
         showStatus('processing', `Processing started\nJob ID: ${currentJobId}`);
         startPolling();
@@ -924,22 +1076,6 @@ function setupEventListeners() {
       if (response.ok) {
         currentTakeawaysJobId = data.id;
 
-        // Clear any previous completed takeaways for this URL
-        const storage = await chrome.storage.local.get(['completedTakeawaysJobs']);
-        if (storage.completedTakeawaysJobs && storage.completedTakeawaysJobs[currentUrl]) {
-          delete storage.completedTakeawaysJobs[currentUrl];
-          await chrome.storage.local.set({ completedTakeawaysJobs: storage.completedTakeawaysJobs });
-        }
-
-        // Save job to storage for persistence
-        await chrome.storage.local.set({
-          activeTakeawaysJob: {
-            jobId: currentTakeawaysJobId,
-            url: currentUrl,
-            startedAt: new Date().toISOString()
-          }
-        });
-
         showTakeawaysStatus('processing', `Processing started\nJob ID: ${currentTakeawaysJobId}`);
         startTakeawaysPolling();
       } else {
@@ -955,29 +1091,24 @@ function setupEventListeners() {
   });
 }
 
-// Don't auto-run when loaded as content script - wait for content.js to call us
-// Display build version only if we're in popup context (not content script)
-if (!document.getElementById('nbj-condenser-container')) {
-  // We're in popup context
-  if (typeof BUILD_VERSION !== 'undefined') {
-    document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
-  } else {
-    document.getElementById('buildInfo').textContent = 'Build: Unknown';
-  }
-  // Run initialization
-  initializePopup();
-}
-// If we're in content script context, content.js will call initializePopup() after injecting the DOM
+// Removed duplicate code - initialization handled by NBJ_CONTENT_SCRIPT_MODE check below
 
 // Call setupEventListeners when in popup mode (not content script)
 // Don't auto-run when loaded as content script - wait for content.js to call us
 // Display build version only if we're in popup context (not content script)
-if (!document.getElementById('nbj-condenser-container')) {
-  // We're in popup context
-  if (typeof BUILD_VERSION !== 'undefined') {
-    document.getElementById('buildInfo').textContent = `Build: ${BUILD_VERSION}`;
-  } else {
-    document.getElementById('buildInfo').textContent = 'Build: Unknown';
+if (!window.NBJ_CONTENT_SCRIPT_MODE) {
+  // We're in popup context (not content script)
+  try {
+    const buildInfoEl = document.getElementById('buildInfo');
+    if (buildInfoEl) {
+      if (typeof BUILD_VERSION !== 'undefined') {
+        buildInfoEl.textContent = `Build: ${BUILD_VERSION}`;
+      } else {
+        buildInfoEl.textContent = 'Build: Unknown';
+      }
+    }
+  } catch (e) {
+    // Ignore
   }
   // Setup event listeners for popup mode
   setupEventListeners();
@@ -1056,36 +1187,15 @@ document.getElementById('condenseBtn').addEventListener('click', async () => {
   }
 });
 
-function showStatus(type, message, progress = '') {
-  const container = document.getElementById('statusContainer');
+// All helper functions moved earlier in file before initializePopup
 
-  let progressHtml = '';
-  if (progress) {
-    progressHtml = `<div class="progress">${progress}</div>`;
-  }
-  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
-}
-
-function startPolling() {
-  // Poll every 3 seconds
-  pollInterval = setInterval(checkStatus, 3000);
-  checkStatus(); // Check immediately
-}
-
-async function checkStatus() {
+// REMOVED DUPLICATE: async function checkStatus() {
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs/${currentJobId}`);
 
-    // If job returns 404, forget it ever existed
+    // If job returns 404
     if (response.status === 404) {
       clearInterval(pollInterval);
-      await clearJobStorage();
-      // Also clear completed jobs for this URL
-      const storage = await chrome.storage.local.get(['completedJobs']);
-      if (storage.completedJobs && storage.completedJobs[currentUrl]) {
-        delete storage.completedJobs[currentUrl];
-        await chrome.storage.local.set({ completedJobs: storage.completedJobs });
-      }
       showStatus('error', `Job ${currentJobId} not found on server`);
       resetButton();
       return;
@@ -1095,11 +1205,9 @@ async function checkStatus() {
 
     if (data.status === 'completed') {
       clearInterval(pollInterval);
-      await saveCompletedJob();
       showCompleted({ job_id: currentJobId });
     } else if (data.status === 'error') {
       clearInterval(pollInterval);
-      await clearJobStorage();
       showStatus('error', `Processing failed\n${data.error}`);
       resetButton();
     } else if (data.status === 'processing') {
@@ -1229,21 +1337,7 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
   }
 });
 
-function showTakeawaysStatus(type, message, progress = '') {
-  const container = document.getElementById('takeawaysStatusContainer');
-
-  let progressHtml = '';
-  if (progress) {
-    progressHtml = `<div class="progress">${progress}</div>`;
-  }
-  container.innerHTML = `<div class="status ${type}">${message.replace(/\n/g, '<br>')}${progressHtml}</div>`;
-}
-
-function startTakeawaysPolling() {
-  // Poll every 2 seconds (faster than condense since takeaways is quicker)
-  takeawaysPollInterval = setInterval(checkTakeawaysStatus, 2000);
-  checkTakeawaysStatus(); // Check immediately
-}
+// showTakeawaysStatus and startTakeawaysPolling moved earlier in file before initializePopup
 
 async function checkTakeawaysStatus() {
   try {

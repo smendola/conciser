@@ -22,14 +22,14 @@
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
-      "js": ["build-info.js", "popup.js", "content.js"],
+      "js": ["content-mode-flag.js", "build-info.js", "popup.js", "content.js"],
       "css": ["popup.css"],
       "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["popup.css", "popup.js", "build-info.js"],
+      "resources": ["popup.css", "popup.js", "build-info.js", "content-mode-flag.js"],
       "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
     }
   ],

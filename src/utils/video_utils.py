@@ -88,7 +88,7 @@ def extract_frame(video_path: Path, output_path: Path, timestamp: float = 5.0) -
             str(output_path)
         ]
 
-        logger.info(f"Extracting frame at {timestamp}s from {video_path}")
+        logger.debug(f"Extracting frame at {timestamp}s from {video_path}")
         subprocess.run(cmd, capture_output=True, text=True, check=True)
         return output_path
 
