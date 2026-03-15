@@ -319,6 +319,7 @@ class CondenserPipeline:
 
             if tts_provider == "azure" and aggressiveness >= 4 and not self.settings.text_to_ssml_processing:
                 logger.info("TEXT_TO_SSML_PROCESSING is disabled; skipping Azure SSML rewrite and using plain text TTS")
+                tts_mode = "text"
 
             # Stage 4: Clone voice or select premade
             _t = time.time()

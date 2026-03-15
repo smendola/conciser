@@ -161,6 +161,23 @@ def _stream_responses_api_silent(client, model: str, chain_id: str, user_prompt:
     return "".join(chunks), final_response.id
 
 
+def _stream_responses_api_no_chain_silent(client, model: str, system_prompt: str, user_prompt: str, word_count_callback=None) -> tuple[str, str]:
+    """Stream a one-shot plain-text Responses API call (no chain, no JSON schema); return (full response text, response_id)."""
+    from openai.lib.streaming.responses import ResponseTextDeltaEvent
+    chunks = []
+    with client.responses.stream(
+        model=model,
+        instructions=system_prompt,
+        input=[{"role": "user", "content": user_prompt}],
+        max_output_tokens=8000,
+    ) as stream:
+        for event in stream:
+            if isinstance(event, ResponseTextDeltaEvent):
+                _handle_stream_delta_silent(event.delta, chunks, word_count_callback)
+        final_response = stream.get_final_response()
+    return "".join(chunks), final_response.id
+
+
 def _stream_responses_api_no_chain(client, model: str, system_prompt: str, user_prompt: str, mode: str, word_count_callback=None) -> tuple[str, str]:
     """Stream a one-shot Responses API call (no chain); return (full response text, response_id)."""
     import sys
@@ -572,6 +589,11 @@ class ContentCondenser:
                     if previous_response_id:
                         # Continue the conversation chain — the model already has the
                         # condensed script in context, so just send the rewrite instruction.
+                        if word_count_callback:
+                            text, _ = _stream_responses_api_silent(
+                                self.client, self.model, previous_response_id, instructions, word_count_callback
+                            )
+                            return text.strip()
                         response = self.client.responses.create(
                             model=self.model,
                             previous_response_id=previous_response_id,
@@ -580,6 +602,11 @@ class ContentCondenser:
                         )
                     else:
                         # One-shot fallback: send condensed script as user input.
+                        if word_count_callback:
+                            text, _ = _stream_responses_api_no_chain_silent(
+                                self.client, self.model, instructions, user_input, word_count_callback
+                            )
+                            return text.strip()
                         response = self.client.responses.create(
                             model=self.model,
                             instructions=instructions,
