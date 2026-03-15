@@ -274,10 +274,14 @@ class AzureTTS:
                 _save_disk_cache(_voices_cache, _voices_cache_time)
             else:
                 logger.error(f"Failed to retrieve voices after retries: {result.reason}")
+                if not _voices_cache:
+                    raise RuntimeError(f"Failed to retrieve Azure voices: {result.reason}")
             return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
 
         except Exception as e:
             logger.error(f"Failed to list Azure TTS voices: {e}")
+            if not _voices_cache:
+                raise
             return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
 
     def find_voice(self, locale: str = "en-US", gender: str = None) -> Optional[str]:

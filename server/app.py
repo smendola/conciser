@@ -946,7 +946,7 @@ def get_voices():
         return jsonify({'voices': filtered_voices})
     except Exception as e:
         logger.error(f"Failed to fetch voices: {e}")
-        return jsonify({'error': 'Failed to fetch voices', 'voices': []}), 500
+        return jsonify({'error': 'Failed to fetch voices'}), 500
 
 
 def _print_startup_banner():

@@ -120,6 +120,8 @@ class EdgeTTS:
             return _voices_cache
         except Exception as e:
             logger.error(f"Failed to list Edge TTS voices: {e}")
+            if not _voices_cache:
+                raise
             return _voices_cache  # return stale cache rather than empty on transient failure
 
     def find_voice(self, locale: str = "en-US", gender: str = None) -> Optional[str]:
