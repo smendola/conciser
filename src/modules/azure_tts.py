@@ -233,25 +233,11 @@ class AzureTTS:
         if not _voices_cache:
             _voices_cache, _voices_cache_time = _load_disk_cache()
         if _voices_cache and (time.time() - _voices_cache_time) < _VOICES_CACHE_TTL:
-            logger.debug(f"list_voices: returning {len(_voices_cache)} cached voices (age={int(time.time()-_voices_cache_time)}s)")
             return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
         try:
-            logger.debug(f"list_voices called: api_key={self.api_key[:8]}...{self.api_key[-4:]}, region={self.region}, locale_filter={locale_filter!r}")
-            import socket
-            try:
-                endpoint = f"{self.region}.tts.speech.microsoft.com"
-                addr = socket.getaddrinfo(endpoint, 443)
-                logger.debug(f"DNS OK: {endpoint} -> {addr[0][4][0]}")
-            except Exception as dns_err:
-                logger.error(f"DNS resolution failed for {endpoint}: {dns_err}")
-
             for attempt in range(3):
-                logger.debug(f"get_voices attempt {attempt + 1}: creating SpeechSynthesizer with region={self.region}")
                 synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config, audio_config=None)
-                future = synthesizer.get_voices_async()
-                logger.debug(f"get_voices_async() called, awaiting result...")
-                result = future.get()
-                logger.debug(f"get_voices result: reason={result.reason}, error_details={getattr(result, 'error_details', 'N/A')!r}")
+                result = synthesizer.get_voices_async().get()
                 if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
                     break
                 logger.warning(f"get_voices attempt {attempt + 1} failed ({result.reason}), error_details={getattr(result, 'error_details', 'N/A')!r}, retrying...")
