@@ -23,6 +23,16 @@ Afer changing code affecing both clients, run:
 scripts/build_all.sh
 ```
 
+## git-aware-file-management
+
+> **Always follow this rule.**
+
+When renaming or moving files, always use `git mv` to maintain git history.
+When adding new files that are meant to be tracked by git, always use `git add` to add them to the staging area.
+When removing files, always use `git rm` to remove them from the repository.
+
+Do not git add temp work files used for debugging or one-time operations.
+
 ## no-mixed-language-files
 
 > **Always follow this rule.**
