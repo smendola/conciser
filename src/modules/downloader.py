@@ -360,8 +360,10 @@ class VideoDownloader:
 
             ydl_opts = {
                 'format': format_string,
-                'outtmpl': output_template,
-                'paths': {'home': str(video_folder)},  # Explicitly set download directory
+                'outtmpl': {
+                    'default': output_template,
+                    'thumbnail': thumbnail_template,
+                },
                 'quiet': True,
                 'no_warnings': True,
                 'ignoreconfig': True,
@@ -379,18 +381,7 @@ class VideoDownloader:
                 'writesubtitles': False,
                 'writeautomaticsub': False,
                 'ignoreerrors': False,
-                'writethumbnail': True,
-                'outtmpl': {
-                    'default': output_template,
-                    'thumbnail': thumbnail_template,
-                },
-                'writesubtitles': False,
-                'writeautomaticsub': False,
-                'ignoreerrors': False,
-                'nopart': True,  # our outtmpl already uses .part suffix; we rename on success ourselves
-                # No postprocessors - use native format (webm, mp4, mkv, etc.)
-                # ffmpeg can handle all formats in later pipeline stages
-                # Use web and android clients for better format availability
+
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['web', 'android'],

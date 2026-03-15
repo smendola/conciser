@@ -755,8 +755,6 @@ async function initializePopup() {
   // Check for in-progress jobs and attach to them
   await checkForInProgressJobs(currentTab);
 
-  // Setup event listeners
-  setupEventListeners();
 }
 
 // Fetch and display recent jobs
