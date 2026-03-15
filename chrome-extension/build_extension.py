@@ -55,7 +55,7 @@ def _bump_chrome_build_number(extension_dir: Path) -> int:
     return next_value
 
 
-def _generate_manifest(extension_dir: Path, version: str) -> None:
+def _generate_manifest(extension_dir: Path, version: str, include_key: bool = True) -> None:
     template_path = extension_dir / 'manifest.template.json'
     if not template_path.exists():
         raise FileNotFoundError(f"Missing manifest template: {template_path}")
@@ -63,17 +63,22 @@ def _generate_manifest(extension_dir: Path, version: str) -> None:
     manifest = _read_json_file(template_path)
     manifest['version'] = version
 
-    key_path = extension_dir / 'manifest.key.json'
-    if key_path.exists():
-        key_data = _read_json_file(key_path)
-        if isinstance(key_data, dict) and 'key' in key_data and key_data['key']:
-            manifest['key'] = key_data['key']
+    if include_key:
+        key_path = extension_dir / 'manifest.key.json'
+        if key_path.exists():
+            key_data = _read_json_file(key_path)
+            if isinstance(key_data, dict) and 'key' in key_data and key_data['key']:
+                manifest['key'] = key_data['key']
 
     manifest_path = extension_dir / 'manifest.json'
     _write_json_file(manifest_path, manifest)
 
-def build_extension():
-    """Package the chrome extension into a zip file."""
+def build_extension(store: bool = False):
+    """Package the chrome extension into a zip file.
+
+    Args:
+        store: If True, build for Chrome Web Store upload (omits the 'key' field).
+    """
     # Paths
     extension_dir = Path(__file__).parent  # chrome-extension/
     project_root = _find_project_root(extension_dir)
@@ -95,7 +100,9 @@ def build_extension():
     else:
         print(f"Warning: {pem_path.name} not found — extension ID will not be stable")
 
-    _generate_manifest(extension_dir, version)
+    _generate_manifest(extension_dir, version, include_key=not store)
+    if store:
+        print("Store build: 'key' field omitted from manifest")
 
     output_zip = dist_dir / f'nbj-chrome-extension-{version}.zip'
 
@@ -184,5 +191,9 @@ def build_extension():
     return True
 
 if __name__ == '__main__':
-    success = build_extension()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--store', action='store_true', help='Build for Chrome Web Store (omits key field)')
+    args = parser.parse_args()
+    success = build_extension(store=args.store)
     exit(0 if success else 1)
