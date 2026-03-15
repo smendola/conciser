@@ -1,0 +1,7 @@
+#!/bin/bash -e
+
+test -f .project-root
+
+truncate -s0 nbj.log
+nbj start --detach --reload --restart
+tail -f nbj.log
