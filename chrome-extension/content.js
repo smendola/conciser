@@ -50,14 +50,14 @@ function injectCondenserUI() {
   try {
     const style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = chrome.runtime.getURL('panel.css');
+    style.href = chrome.runtime.getURL('content.css');
     document.head.appendChild(style);
   } catch (e) {
     console.error('[CONCISER] CONTENT_SCRIPT: failed to load CSS', e);
     return;
   }
 
-  // Set the innerHTML to match panel.html content
+  // Set the innerHTML for the injected UI
   container.innerHTML = `
     <!-- Collapsed state - just a button -->
     <div id="nbj-condenser-collapsed">
@@ -103,21 +103,20 @@ function injectCondenserUI() {
         </div>
 
         <div class="setting-group">
-          <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
-          <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
-          <div class="slider-value">
-            <span id="aggressivenessValue">5</span>
+          <div class="slider-label-row">
+            <label class="setting-label" for="aggressivenessSlider">Aggressiveness</label>
+            <span class="slider-value" id="aggressivenessValue">5</span>
           </div>
+          <input type="range" id="aggressivenessSlider" min="1" max="10" value="5" step="1">
           <div id="strategyDesc" class="strategy-desc">Loading...</div>
         </div>
 
         <div class="setting-group">
-          <label class="setting-label" for="speedSlider">Speech Speed</label>
-          <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.01">
-          <div class="slider-value">
-            <span id="speedValue">1.10x</span>
-            <span></span>
+          <div class="slider-label-row">
+            <label class="setting-label" for="speedSlider">Speech Speed</label>
+            <span class="slider-value" id="speedValue">1.10x</span>
           </div>
+          <input type="range" id="speedSlider" min="0.9" max="2.0" value="1.10" step="0.05">
         </div>
 
         <div class="setting-group">

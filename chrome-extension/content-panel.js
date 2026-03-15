@@ -1,6 +1,6 @@
 // NBJ Condenser - Chrome Extension
 
-console.log('[CONCISER] POPUP_BOOT: panel.js loaded');
+console.log('[CONCISER] POPUP_BOOT: content-panel.js loaded');
 
 // Forward declarations - actual implementations after this block
 let currentUrl = null;
@@ -986,10 +986,14 @@ async function loadSettings() {
     await chrome.storage.local.set({ lastServerUrl: serverUrl });
   }
 
-  document.getElementById('aggressivenessSlider').value = settings.aggressiveness;
+  const aggrSlider = document.getElementById('aggressivenessSlider');
+  const spdSlider = document.getElementById('speedSlider');
+  aggrSlider.value = settings.aggressiveness;
   document.getElementById('aggressivenessValue').textContent = settings.aggressiveness;
-  document.getElementById('speedSlider').value = settings.speechSpeed;
+  spdSlider.value = settings.speechSpeed;
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
+  updateSliderFill(aggrSlider);
+  updateSliderFill(spdSlider);
   document.getElementById('videoModeSelect').value = settings.videoMode;
   document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
 
@@ -1037,6 +1041,15 @@ function normalizeServerUrl(value) {
   const trimmed = (value || '').trim();
   if (!trimmed) return DEFAULT_SERVER_URL;
   return trimmed.replace(/\/+$/, '');
+}
+
+// Update slider fill gradient to show progress up to thumb
+function updateSliderFill(slider) {
+  const min = parseFloat(slider.min);
+  const max = parseFloat(slider.max);
+  const val = parseFloat(slider.value);
+  const pct = ((val - min) / (max - min) * 100).toFixed(1) + '%';
+  slider.style.setProperty('--fill-pct', pct);
 }
 
 // Update strategy description based on slider value
@@ -1118,6 +1131,7 @@ function setupEventListeners() {
 
   aggressivenessSlider.addEventListener('input', (e) => {
     document.getElementById('aggressivenessValue').textContent = e.target.value;
+    updateSliderFill(e.target);
     updateStrategyDescription();
     handleSettingChange();
   });
@@ -1125,6 +1139,7 @@ function setupEventListeners() {
   speedSlider.addEventListener('input', (e) => {
     const value = parseFloat(e.target.value);
     document.getElementById('speedValue').textContent = value.toFixed(2) + 'x';
+    updateSliderFill(e.target);
     handleSettingChange();
   });
 
