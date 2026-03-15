@@ -442,3 +442,13 @@ input[type="range"] {
   margin: 0;
 }
 
+
+.nbj-video-title {
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+  font-style: italic;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

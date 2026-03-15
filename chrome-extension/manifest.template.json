@@ -21,7 +21,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://www.youtube.com/watch*", "*://youtube.com/watch*"],
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"],
       "js": ["content-mode-flag.js", "build-info.js", "content-panel.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_end"
@@ -29,7 +29,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content.css", "content-panel.js", "build-info.js", "content-mode-flag.js"],
+      "resources": ["content.css", "content-panel.html", "content-panel.js", "build-info.js", "content-mode-flag.js"],
       "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
     }
   ],
