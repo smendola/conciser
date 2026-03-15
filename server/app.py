@@ -899,9 +899,14 @@ def get_voices():
                         'voices': []
                     }), 400
 
+                import logging as _logging
+                _logging.getLogger('src.modules.azure_tts').setLevel(_logging.DEBUG)
+                logger.debug(f"Azure voices request: key={settings.azure_speech_key[:8]}...{settings.azure_speech_key[-4:]}, region={settings.azure_speech_region!r}, lang={lang!r}")
                 from src.modules.azure_tts import AzureTTS
                 azure = AzureTTS(settings.azure_speech_key, settings.azure_speech_region)
+                logger.debug("AzureTTS instance created, calling list_voices...")
                 all_voices = azure.list_voices(locale_filter=lang)
+                logger.debug(f"list_voices returned {len(all_voices)} voices")
                 locale_match = (lambda v: v['locale'] == lang) if exact_locale else (lambda v: v['locale'].startswith(lang + '-'))
                 filtered_voices = sorted(
                     [

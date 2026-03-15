@@ -1,5 +1,6 @@
 """Azure TTS module using Microsoft Azure Cognitive Services Speech API."""
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -10,7 +11,26 @@ logger = logging.getLogger(__name__)
 
 _voices_cache: List[dict] = []
 _voices_cache_time: float = 0.0
-_VOICES_CACHE_TTL = 3600  # seconds
+_VOICES_CACHE_TTL = 3600 * 24  # 24 hours — voices list rarely changes
+_VOICES_DISK_CACHE = Path(__file__).parent.parent.parent / ".cache" / "azure_voices.json"
+
+
+def _load_disk_cache() -> tuple[List[dict], float]:
+    try:
+        if _VOICES_DISK_CACHE.exists():
+            data = json.loads(_VOICES_DISK_CACHE.read_text())
+            return data.get("voices", []), data.get("time", 0.0)
+    except Exception as e:
+        logger.debug(f"Could not load disk voice cache: {e}")
+    return [], 0.0
+
+
+def _save_disk_cache(voices: List[dict], ts: float) -> None:
+    try:
+        _VOICES_DISK_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _VOICES_DISK_CACHE.write_text(json.dumps({"voices": voices, "time": ts}))
+    except Exception as e:
+        logger.debug(f"Could not save disk voice cache: {e}")
 
 
 class AzureTTS:
@@ -209,15 +229,32 @@ class AzureTTS:
             List of voice dictionaries with name, gender, locale
         """
         global _voices_cache, _voices_cache_time
+        # Populate in-memory cache from disk on first call
+        if not _voices_cache:
+            _voices_cache, _voices_cache_time = _load_disk_cache()
         if _voices_cache and (time.time() - _voices_cache_time) < _VOICES_CACHE_TTL:
+            logger.debug(f"list_voices: returning {len(_voices_cache)} cached voices (age={int(time.time()-_voices_cache_time)}s)")
             return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
         try:
+            logger.debug(f"list_voices called: api_key={self.api_key[:8]}...{self.api_key[-4:]}, region={self.region}, locale_filter={locale_filter!r}")
+            import socket
+            try:
+                endpoint = f"{self.region}.tts.speech.microsoft.com"
+                addr = socket.getaddrinfo(endpoint, 443)
+                logger.debug(f"DNS OK: {endpoint} -> {addr[0][4][0]}")
+            except Exception as dns_err:
+                logger.error(f"DNS resolution failed for {endpoint}: {dns_err}")
+
             for attempt in range(3):
-                synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config)
-                result = synthesizer.get_voices_async().get()
+                logger.debug(f"get_voices attempt {attempt + 1}: creating SpeechSynthesizer with region={self.region}")
+                synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config, audio_config=None)
+                future = synthesizer.get_voices_async()
+                logger.debug(f"get_voices_async() called, awaiting result...")
+                result = future.get()
+                logger.debug(f"get_voices result: reason={result.reason}, error_details={getattr(result, 'error_details', 'N/A')!r}")
                 if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
                     break
-                logger.warning(f"get_voices attempt {attempt + 1} failed ({result.reason}), retrying...")
+                logger.warning(f"get_voices attempt {attempt + 1} failed ({result.reason}), error_details={getattr(result, 'error_details', 'N/A')!r}, retrying...")
                 time.sleep(1.5 ** attempt)  # 1s, 1.5s
 
             if result.reason == speechsdk.ResultReason.VoicesListRetrieved:
@@ -234,6 +271,7 @@ class AzureTTS:
                     })
                 _voices_cache = all_voices
                 _voices_cache_time = time.time()
+                _save_disk_cache(_voices_cache, _voices_cache_time)
             else:
                 logger.error(f"Failed to retrieve voices after retries: {result.reason}")
             return [v for v in _voices_cache if not locale_filter or v['locale'].startswith(locale_filter)]
