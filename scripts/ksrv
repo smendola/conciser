@@ -3,5 +3,6 @@
 test -f .project-root
 
 truncate -s0 nbj.log
-nbj start --detach --reload --restart
+release-port 5000
+nbj start --detach --reload
 tail -f nbj.log
