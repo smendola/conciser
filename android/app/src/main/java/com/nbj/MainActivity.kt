@@ -1960,6 +1960,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         isForeground = true
         refreshRecentJobsUI()
+        fetchVoicesAndStrategiesIfMissing()
 
         val jobId = currentJobId
         if (jobId != null && (currentState == AppState.PROCESSING || currentState == AppState.SUBMITTING)) {
@@ -2053,6 +2054,9 @@ class MainActivity : AppCompatActivity() {
 
         // Check for in-progress jobs after switching tabs
         checkForInProgressJobs()
+
+        // Retry loading voices/strategies if a previous attempt failed
+        fetchVoicesAndStrategiesIfMissing()
     }
 
     // -------------------------------------------------------------------------
