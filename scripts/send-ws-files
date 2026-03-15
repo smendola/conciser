@@ -1,6 +1,12 @@
 #!/bin/bash
 
-tar Jcf conciser-ws-files.tar chrome-extension.crx chrome-extension.pem condenser_chains.json .env build-settings.json android/app/nbj-release.jks server/voice_whitelist.yaml
+tar Jcf conciser-ws-files.tar \
+        chrome-extension.crx \
+        chrome-extension.pem \
+        condenser_chains.json \
+        build-settings.json \
+        android/app/nbj-release.jks \
+        .env
 
 echo scp conciser-ws-files.tar ...
 
