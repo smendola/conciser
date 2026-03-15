@@ -133,7 +133,7 @@ tasks.register('incrementAndroidBuildNumber') {
         def current = buildNumberFile.text.trim().isInteger() ? buildNumberFile.text.trim().toInteger() : 0
         def next = current + 1
         buildNumberFile.text = next.toString() + System.lineSeparator()
-        println("Incremented Android build number: ${current} -> ${next}")
+        println("Incremented Android build number: ${current} -> \033[32m${next}\033[0m")
     }
 }
 
