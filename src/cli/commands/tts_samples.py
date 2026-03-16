@@ -11,8 +11,8 @@ from ..app import cli
 @click.option(
     '--provider',
     type=click.Choice(['edge', 'elevenlabs', 'azure']),
-    default='edge',
-    help='TTS provider to generate samples for. Default: edge'
+    default='azure',
+    help='TTS provider to generate samples for. Default: azure'
 )
 @click.option(
     '--file', '-f',

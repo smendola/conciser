@@ -12,8 +12,9 @@ Optional API keys:
 
 - `ANTHROPIC_API_KEY` — use Claude as the condensation provider instead of
   OpenAI
-- `ELEVENLABS_API_KEY` — paid voice cloning (Edge TTS is free and used by
-  default)
+- `AZURE_SPEECH_KEY` + `AZURE_SPEECH_REGION` — Azure TTS (default provider,
+  paid, supports SSML for best quality)
+- `ELEVENLABS_API_KEY` — paid voice cloning TTS
 - `DID_API_KEY` — D-ID avatar video mode only
 
 ## Installation

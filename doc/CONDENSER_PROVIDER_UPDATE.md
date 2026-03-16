@@ -7,9 +7,9 @@ This document is kept for historical reference. The current state is reflected i
 The condensation module (`src/modules/condenser.py`) supports two providers:
 
 - **OpenAI** (default): model `gpt-5.2`, uses OpenAI Responses API
-- **Claude** (optional): model `claude-sonnet-4-20250514`
+- **Anthropic** (optional): model `claude-sonnet-4.6`
 
-Configured via `CONDENSER_SERVICE=openai|claude` in `.env`.
+Configured via `CONDENSATION_PROVIDER=openai|anthropic` in `.env`.
 
 OpenAI is the default because it supports the Responses API chain pre-initialization feature
 (`init_chains()` in condenser.py, cached in `condenser_chains.json`), which reduces latency

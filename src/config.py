@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     transcription_method: str = Field(default="chained", description="youtube (YouTube API only), whisper (Whisper only), or chained (try YouTube, fallback to Whisper)")
     transcription_service: str = Field(default="groq", description="groq (free Whisper via Groq) or openai (paid Whisper via OpenAI)")
     condenser_service: str = Field(default="openai", description="openai or anthropic")
-    tts_provider: str = Field(default="edge", description="edge (free), elevenlabs (paid), or azure (paid with SSML)")
+    tts_provider: str = Field(default="azure", description="azure (paid, SSML), edge (free), or elevenlabs (paid)")
     video_service: str = Field(default="did", description="did, heygen, or wav2lip")
 
     # LLM provider and model selection

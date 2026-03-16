@@ -52,7 +52,7 @@ from ..app import cli  # noqa: E402
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
     default=None,
-    help='TTS provider for audio output. Default: TTS_PROVIDER env var or edge'
+    help='TTS provider for audio output. Default: TTS_PROVIDER env var or azure'
 )
 @click.option(
     '--speech-rate',

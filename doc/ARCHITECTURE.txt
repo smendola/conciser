@@ -31,8 +31,9 @@ PIPELINE STAGES
    - Resume: skips if video already in temp/
 
 2. TRANSCRIBE (transcriber.py)
-   - ffmpeg extracts 16kHz WAV audio
-   - OpenAI Whisper API returns timestamped transcript
+   - Primary: fetches captions directly from YouTube via youtube_transcript_api
+   - Fallback (if captions unavailable): ffmpeg extracts 16kHz WAV audio,
+     then Whisper API returns timestamped transcript (Groq default, OpenAI fallback)
    - Resume: skips if transcript.json already exists
 
 3. CONDENSE (condenser.py)
@@ -45,8 +46,9 @@ PIPELINE STAGES
    - Optional: pre-initialized Responses API chains (chain_store.py)
 
 4. TTS / SPEECH GENERATION
-   - Edge TTS (default, free): edge_tts.py, Microsoft neural voices
-   - ElevenLabs (optional, paid): voice_cloner.py, voice cloning
+   - Azure TTS (default, paid): azure_tts.py, SSML support (aggressiveness >= 4)
+   - Edge TTS (optional, free): edge_tts.py, Microsoft neural voices
+   - ElevenLabs (optional, paid): tts.py, voice cloning
 
 5. VIDEO GENERATION / COMPOSITION
    - slideshow (default): scene-detected keyframes -> MP4
@@ -72,7 +74,7 @@ Key options for `nbj condense`:
   --quality, -q         720p, 1080p, 4k (default: 1080p)
   --video-gen-mode      slideshow, audio_only, static, avatar
   --voice               e.g. "edge/ryan" or "en-GB-RyanNeural"
-  --tts-provider        edge (default, free), elevenlabs (paid), or azure (paid, SSML)
+  --tts-provider        edge (free, default), elevenlabs (paid), or azure (paid, SSML)
   --speech-rate         e.g. "+10%", "-25%"
   --prepend-intro       Add numbered key take-aways intro
   --resume/--no-resume  Resume from intermediate files (default: resume)
@@ -102,7 +104,8 @@ KEY FILES
   src/modules/transcriber.py  Whisper API wrapper
   src/modules/condenser.py    OpenAI/Anthropic condensation
   src/modules/edge_tts.py     Edge TTS (free, default)
-  src/modules/voice_cloner.py ElevenLabs voice cloning (optional)
+  src/modules/azure_tts.py   Azure TTS (paid, SSML support)
+  src/modules/tts.py          ElevenLabs voice cloning (optional)
   src/modules/video_generator.py  D-ID avatar (optional)
   src/modules/compositor.py   ffmpeg video assembly
   src/utils/audio_utils.py    Audio processing helpers
@@ -118,8 +121,9 @@ KEY FILES
 REQUIRED API KEYS (.env)
 -------------------------
 
-  OPENAI_API_KEY      Required (Whisper + default condensation)
-  ANTHROPIC_API_KEY   Optional (Claude condensation provider)
+  OPENAI_API_KEY      Required (Whisper fallback + default condensation)
+  GROQ_API_KEY        Recommended (free Whisper transcription via Groq, default)
+  ANTHROPIC_API_KEY   Optional (Anthropic/Claude condensation provider)
   ELEVENLABS_API_KEY  Optional (voice cloning TTS)
   DID_API_KEY         Optional (avatar video mode only)
   AZURE_SPEECH_KEY    Optional (Azure TTS with SSML support)
@@ -135,6 +139,11 @@ LLM PROVIDER AND MODEL CONFIGURATION (.env)
   CONDENSATION_MODEL_ANTHROPIC     Model for Anthropic condensation (default: claude-sonnet-4.6)
   TAKEAWAYS_MODEL_OPENAI           Model for OpenAI takeaways (default: gpt-5-nano)
   TAKEAWAYS_MODEL_ANTHROPIC        Model for Anthropic takeaways (default: claude-haiku-4-5-20251001)
+
+  TRANSCRIPTION_SERVICE            groq (default, free) or openai (paid)
+  TRANSCRIPTION_METHOD             chained (default), youtube, or whisper
+
+  TTS_PROVIDER                     azure (default, paid, SSML), edge (free), or elevenlabs (paid)
 
 
 DEPENDENCIES

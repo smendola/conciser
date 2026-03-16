@@ -59,7 +59,7 @@ from ..app import cli  # noqa: E402
     '--tts-provider',
     type=click.Choice(['elevenlabs', 'edge', 'azure']),
     default=None,
-    help='TTS provider: elevenlabs (paid, high quality), edge (free, good quality), or azure (paid, SSML support). Default: TTS_PROVIDER env var or edge'
+    help='TTS provider: azure (paid, SSML support), edge (free, good quality), or elevenlabs (paid, high quality). Default: TTS_PROVIDER env var or azure'
 )
 @click.option(
     '--slideshow-frames',

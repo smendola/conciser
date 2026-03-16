@@ -10,7 +10,8 @@ nbj-condenser/
 │   │   ├── transcriber.py         # Stage 2: Whisper transcription
 │   │   ├── condenser.py           # Stage 3: LLM condensation (OpenAI/Claude)
 │   │   ├── edge_tts.py            # Stage 4: Edge TTS (free, default)
-│   │   ├── voice_cloner.py        # Stage 4 alt: ElevenLabs voice cloning
+│   │   ├── azure_tts.py           # Stage 4 alt: Azure TTS (paid, SSML support)
+│   │   ├── tts.py                 # Stage 4 alt: ElevenLabs voice cloning
 │   │   ├── video_generator.py     # Stage 5: D-ID avatar (optional)
 │   │   └── compositor.py          # Stage 5: ffmpeg video assembly
 │   └── utils/
@@ -18,6 +19,7 @@ nbj-condenser/
 │       ├── audio_utils.py         # Audio processing helpers
 │       ├── video_utils.py         # Video processing + scene detection
 │       ├── prompt_templates.py    # LLM prompt templates (L1/L2/L3)
+│       ├── llm_schemas.py         # JSON schema definitions for LLM structured output
 │       ├── chain_store.py         # OpenAI Responses API chain cache
 │       └── exceptions.py          # Custom exception types
 │
@@ -57,7 +59,8 @@ nbj-condenser/
 │   └── test_voice_shortcut.py     # Voice name resolution tests
 │
 ├── tests/
-│   └── test_pipeline.py           # Unit tests (legacy)
+│   ├── test_pipeline.py           # Unit tests
+│   └── cli_integration/           # CLI integration tests
 │
 ├── scripts/
 │   ├── install.sh                 # Installation helper
@@ -77,11 +80,19 @@ nbj-condenser/
 ├── setup.py                       # Package setup
 ├── videos.txt                     # Example video URLs for testing
 │
-├── ARCHITECTURE.md                # Full technical architecture docs
-├── ARCHITECTURE.txt               # Plain-text architecture summary
-├── PROJECT_STRUCTURE.txt          # This file
+├── doc/
+│   ├── ARCHITECTURE.md            # Full technical architecture docs
+│   ├── ARCHITECTURE.txt           # Plain-text architecture summary
+│   ├── PROJECT_STRUCTURE.txt      # This file
+│   ├── QUICKSTART.md              # Quick setup guide
+│   ├── ANDROID_APP_SUMMARY.md     # Android app details
+│   ├── CHROME_EXTENSION_INSTALL.md  # Chrome extension install guide
+│   ├── DEPLOY.md                  # Deployment workflow
+│   ├── DEPLOY-QUICK.md            # Quick deploy reference
+│   ├── PRODUCTION.md              # Production deployment guide
+│   ├── PORTS.md                   # Port configuration guide
+│   ├── SCRIPTS.md                 # Deployment scripts guide
+│   └── SENTRY_ANDROID_SETUP.md   # Sentry error tracking setup
+│
 ├── README.md                      # Project overview and setup
-├── QUICKSTART.md                  # Quick setup guide
-├── ANDROID_APP_SUMMARY.md         # Android app details
-├── CHROME_EXTENSION_INSTALL.md    # Chrome extension install guide
 └── LICENSE

@@ -81,9 +81,9 @@ OpenAI API + ffmpeg (fallback)
 
 **Module**: `src/modules/condenser.py`
 
-- Supports two LLM providers: **OpenAI** (default, `gpt-5.2`) or **Claude**
-  (`claude-sonnet-4-20250514`)
-- Configured via `CONDENSER_SERVICE=openai|claude` in `.env`
+- Supports two LLM providers: **OpenAI** (default, `gpt-5.2`) or **Anthropic**
+  (`claude-sonnet-4.6`)
+- Configured via `CONDENSATION_PROVIDER=openai|anthropic` in `.env`
 - Uses a three-level prompt structure:
   - **System prompt (L1)**: Core condensation instructions
   - **Strategy prompt (L2)**: Aggressiveness-level-specific rules (1–10 scale)
@@ -104,10 +104,18 @@ OpenAI API + ffmpeg (fallback)
 
 ### Stage 4: Text-to-Speech
 
-**Module**: `src/modules/edge_tts.py` (default) or `src/modules/voice_cloner.py`
-(ElevenLabs)
+**Module**: `src/modules/azure_tts.py` (default), `src/modules/edge_tts.py`
+(Edge), or `src/modules/tts.py` (ElevenLabs)
 
-**Edge TTS** (default, free):
+**Azure TTS** (default, paid):
+
+- Uses Azure Cognitive Services Speech SDK
+- Requires `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION`
+- Supports SSML input for richer prosody control (see SSML rewrite section)
+- Configurable voice and speech rate
+- Voice list browsable via `nbj voices --provider azure`
+
+**Edge TTS** (free, optional):
 
 - Uses Microsoft Edge TTS via the `edge-tts` Python package
 - No API key required
@@ -133,9 +141,9 @@ OpenAI API + ffmpeg (fallback)
   provider, voice selection, rate, and whether the input to TTS was plain text
   vs SSML.
 
-**SSML rewrite (Edge TTS only, aggressiveness >= 4)**:
+**SSML rewrite (Azure TTS only, aggressiveness >= 4)**:
 
-- For aggressiveness levels 4 and up, when using `tts_provider=edge`, the
+- For aggressiveness levels 4 and up, when using `tts_provider=azure`, the
   pipeline adds an additional LLM step that rewrites the condensed script into
   **valid SSML** optimized for listening.
 - The SSML rewrite includes any optional `prepend_intro` content so the final
@@ -145,8 +153,8 @@ OpenAI API + ffmpeg (fallback)
 - If the SSML output is invalid (not parseable as XML / SSML), the pipeline
   falls back to plain text for TTS and logs an error.
 
-**External Dependencies**: `edge-tts` package (Edge TTS) or ElevenLabs API
-(optional)
+**External Dependencies**: `edge-tts` package (Edge TTS); Azure Cognitive
+Services Speech SDK + keys (Azure TTS); ElevenLabs API (optional)
 
 ---
 
@@ -154,7 +162,8 @@ OpenAI API + ffmpeg (fallback)
 
 **Module**: `src/modules/video_generator.py`, `src/modules/compositor.py`
 
-Three modes, selected via `--format`:
+Three modes, selectable via `--format` (CLI supports `slideshow`, `audio_only`,
+`avatar`; `static` is available in the pipeline but not exposed via the CLI):
 
 | Mode         | Description                                      | Output           |
 | ------------ | ------------------------------------------------ | ---------------- |
@@ -219,32 +228,42 @@ mode only)
 
 ### Commands
 
-| Command                 | Purpose                                |
-| ----------------------- | -------------------------------------- |
-| `nbj condense <url>`    | Main condensation command              |
-| `nbj info <url>`        | Display video metadata                 |
-| `nbj init`              | Interactive setup wizard (API keys)    |
-| `nbj check`             | Configuration diagnostics              |
-| `nbj voices`            | List available TTS voices              |
-| `nbj tts <file>`        | Convert text file to speech            |
-| `nbj tts-samples`       | Generate audio samples for all voices  |
-| `nbj show-script <url>` | Display transcript or condensed script |
+| Command                  | Purpose                                             |
+| ------------------------ | --------------------------------------------------- |
+| `nbj condense <url>`     | Main condensation command                           |
+| `nbj info <url>`         | Display video metadata                              |
+| `nbj init`               | Interactive setup wizard (API keys)                 |
+| `nbj setup`              | Interactive setup wizard (alias for init)           |
+| `nbj check`              | Configuration diagnostics                           |
+| `nbj voices`             | List available TTS voices                           |
+| `nbj tts <file>`         | Convert text file to speech                         |
+| `nbj tts-samples`        | Generate audio samples for all voices               |
+| `nbj show-script <url>`  | Display transcript or condensed script              |
+| `nbj transcript <url>`   | Fetch and display video transcript                  |
+| `nbj takeaways <url>`    | Extract key takeaways from a video                  |
+| `nbj jobs`               | List recent jobs                                    |
+| `nbj start`              | Start the Flask server                              |
+| `nbj stop`               | Stop the Flask server                               |
+| `nbj logs`               | View server/pipeline logs                           |
+| `nbj expire-jobs`        | Remove stale job records                            |
+| `nbj clean-cache`        | Clean up cached intermediate files                  |
 
 ### `nbj condense` Options
 
-| Option                   | Default      | Description                                        |
-| ------------------------ | ------------ | -------------------------------------------------- |
-| `--aggressiveness`, `-a` | `5`          | Condensing level 1–10 (1=conservative, 10=maximum) |
-| `--quality`, `-q`        | `1080p`      | Output quality: `720p`, `1080p`, `4k`              |
-| `--output`, `-o`         | auto         | Output file path                                   |
-| `--reduction`            | None         | Target reduction % (overrides aggressiveness)      |
-| `--resume/--no-resume`   | `--resume`   | Resume from existing intermediate files            |
-| `--format`               | `slideshow`  | `static`, `slideshow`, `avatar`, `audio_only`      |
-| `--voice`                | None         | Voice (e.g., `edge/ryan`, `en-GB-RyanNeural`)      |
-| `--tts-provider`         | `elevenlabs` | `elevenlabs` or `edge`                             |
-| `--slideshow-frames`     | auto         | Max frames for slideshow mode                      |
-| `--speech-rate`          | `+0%`        | TTS speed (e.g., `+50%`, `-25%`)                   |
-| `--prepend-intro`        | off          | Prepend numbered key take-aways to TTS script      |
+| Option                   | Default     | Description                                                              |
+| ------------------------ | ----------- | ------------------------------------------------------------------------ |
+| `--aggressiveness`, `-a` | `5`         | Condensing level 1–10 (1=conservative, 10=maximum)                       |
+| `--quality`, `-q`        | `1080p`     | Output quality: `720p`, `1080p`, `4k`                                    |
+| `--output`, `-o`         | auto        | Output file path                                                         |
+| `--resume/--no-resume`   | `--resume`  | Resume from existing intermediate files                                  |
+| `--format`               | `slideshow` | `slideshow`, `audio_only`, `avatar`                                      |
+| `--voice`                | None        | Voice (e.g., `edge/ryan`, `azure/aria`, `en-GB-RyanNeural`)              |
+| `--tts-provider`         | `azure`     | `azure` (paid, SSML), `edge` (free), or `elevenlabs` (paid)             |
+| `--slideshow-frames`     | auto        | Max frames for slideshow mode                                            |
+| `--speech-rate`          | `+0%`       | TTS speed (e.g., `+50%`, `-25%`). Works with Edge and Azure providers.  |
+| `--prepend-intro`        | off         | Prepend numbered key take-aways to TTS script                            |
+| `--llm-progress`         | None        | Show LLM streaming output: `dots`, `text`, or `wordcount`               |
+| `--xdg-open`, `-O`       | off         | Open output file with xdg-open after completion                          |
 
 ---
 
@@ -361,16 +380,29 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 
 ### Key Settings
 
-| Variable             | Description                                                |
-| -------------------- | ---------------------------------------------------------- |
-| `GROQ_API_KEY`       | Groq key (free Whisper transcription, default)             |
-| `OPENAI_API_KEY`     | OpenAI key (condensation; Whisper fallback if no Groq key) |
-| `ANTHROPIC_API_KEY`  | Anthropic key (optional Claude condensation)               |
-| `ELEVENLABS_API_KEY` | ElevenLabs key (optional voice cloning TTS)                |
-| `DID_API_KEY`        | D-ID key (optional avatar video mode only)                 |
-| `CONDENSER_SERVICE`  | `openai` (default) or `claude`                             |
-| `TEMP_DIR`           | Temporary files directory (default: `temp/`)               |
-| `OUTPUT_DIR`         | Final output directory (default: `output/`)                |
+| Variable                          | Description                                                              |
+| --------------------------------- | ------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`                  | OpenAI key (condensation; Whisper fallback if no Groq key)               |
+| `ANTHROPIC_API_KEY`               | Anthropic key (optional Claude condensation)                             |
+| `GROQ_API_KEY`                    | Groq key (free Whisper transcription, default)                           |
+| `ELEVENLABS_API_KEY`              | ElevenLabs key (optional voice cloning TTS)                              |
+| `DID_API_KEY`                     | D-ID key (optional avatar video mode only)                               |
+| `AZURE_SPEECH_KEY`                | Azure Speech Services key (optional Azure TTS)                           |
+| `AZURE_SPEECH_REGION`             | Azure region (e.g., `eastus`); required with `AZURE_SPEECH_KEY`          |
+| `HEYGEN_API_KEY`                  | HeyGen key (alternative to D-ID; not yet wired up)                       |
+| `YOUTUBE_COOKIE_FILE`             | Path to Netscape-format YouTube cookies file for yt-dlp authentication   |
+| `YOUTUBE_PROXY_URL`               | Optional proxy URL for YouTube access                                    |
+| `CONDENSATION_PROVIDER`           | `openai` (default) or `anthropic`                                        |
+| `TAKEAWAYS_EXTRACTION_PROVIDER`   | `openai` (default) or `anthropic`                                        |
+| `CONDENSATION_MODEL_OPENAI`       | OpenAI model for condensation (default: `gpt-5.2`)                       |
+| `CONDENSATION_MODEL_ANTHROPIC`    | Anthropic model for condensation (default: `claude-sonnet-4.6`)          |
+| `TAKEAWAYS_MODEL_OPENAI`          | OpenAI model for takeaways (default: `gpt-5-nano`)                       |
+| `TAKEAWAYS_MODEL_ANTHROPIC`       | Anthropic model for takeaways (default: `claude-haiku-4-5-20251001`)     |
+| `TTS_PROVIDER`                    | `azure` (default, paid, SSML), `edge` (free), or `elevenlabs` (paid)    |
+| `TRANSCRIPTION_SERVICE`           | `groq` (default, free) or `openai`                                       |
+| `TRANSCRIPTION_METHOD`            | `chained` (default), `youtube` (captions only), or `whisper` (only)      |
+| `TEMP_DIR`                        | Temporary files directory (default: `temp/`)                             |
+| `OUTPUT_DIR`                      | Final output directory (default: `output/`)                              |
 
 ---
 
@@ -399,7 +431,7 @@ YouTube URL
     ├─ prepend_intro=True → numbered intro prepended       │
     │                                                      │
     ▼                                                      │
-[TTS] Edge TTS (default) → generated_speech.mp3            │
+[TTS] Azure TTS (default) → generated_speech.mp3            │
     │                                                      │
     ├── audio_only → output/*.mp3 → DONE                   │
     │                                                      │
@@ -430,14 +462,16 @@ nbj-condenser/
 │   │   ├── downloader.py       # Stage 1: Video download (yt-dlp)
 │   │   ├── transcriber.py      # Stage 2: Transcription (YouTube captions → Whisper via Groq/OpenAI)
 │   │   ├── condenser.py        # Stage 3: LLM condensation
-│   │   ├── edge_tts.py         # Stage 4: Edge TTS (free)
-│   │   ├── voice_cloner.py     # Stage 4 alt: ElevenLabs voice cloning
+│   │   ├── azure_tts.py        # Stage 4: Azure TTS (default, paid, SSML)
+│   │   ├── edge_tts.py         # Stage 4 alt: Edge TTS (free)
+│   │   ├── tts.py              # Stage 4 alt: ElevenLabs voice cloning
 │   │   ├── video_generator.py  # Stage 5: D-ID avatar (optional)
 │   │   └── compositor.py       # Stage 5: ffmpeg composition
 │   └── utils/
 │       ├── audio_utils.py      # Audio processing helpers
 │       ├── video_utils.py      # Video processing + scene detection
 │       ├── prompt_templates.py # LLM prompt templates (L1/L2/L3)
+│       ├── llm_schemas.py      # JSON schema definitions for LLM structured output
 │       ├── chain_store.py      # OpenAI Responses API chain cache
 │       └── exceptions.py       # Custom exception types
 ├── server/
@@ -456,9 +490,10 @@ nbj-condenser/
 │       ├── SettingsActivity.kt
 │       └── ConciSerApi.kt
 ├── test/
-│   ├── test_condense.py        # Batch condensation tester
-│   ├── test_condense.py        # Condensation quality tester
-│   └── test_speech_rate.py     # TTS rate validation
+│   ├── test_condense.py        # Batch condensation quality tester
+│   ├── test_speech_rate.py     # TTS rate validation
+│   ├── test_rate_validation.py # Speech rate format tests
+│   └── test_voice_shortcut.py  # Voice name resolution tests
 ├── tts_samples/                # Pre-generated voice preview audio
 ├── temp/                       # Per-video intermediate files
 ├── output/                     # CLI output files
@@ -498,7 +533,7 @@ nbj-condenser/
 2. **Transcribe**: ~5s via YouTube captions; or ~10–60s via Whisper (Groq is
    much faster than OpenAI)
 3. **Condense**: 10–30s (LLM API call)
-4. **TTS (Edge)**: 5–15s (async, very fast)
+4. **TTS (Azure)**: 5–15s
 5. **Slideshow composition**: 30–90s (ffmpeg)
 
 ### Resource Usage
@@ -517,8 +552,9 @@ nbj-condenser/
 | Groq Whisper (whisper-large-v3) | Transcription fallback (default)        | Free                |
 | OpenAI Whisper (whisper-1)      | Transcription fallback (if no Groq key) | ~$0.006/min audio   |
 | OpenAI (gpt-5.2)                | Condensation (default)                  | varies              |
-| Anthropic Claude                | Condensation (optional)                 | ~$3–15/M tokens     |
-| Edge TTS                        | Speech generation (default)             | Free                |
+| Anthropic (claude-sonnet-4.6)   | Condensation (optional)                 | ~$3–15/M tokens     |
+| Azure TTS                       | Speech generation (default, SSML)       | varies              |
+| Edge TTS                        | Speech generation (optional, free)      | Free                |
 | ElevenLabs                      | Speech generation (optional)            | ~$0.24/1K chars     |
 | D-ID                            | Avatar video (optional)                 | per second of video |
 
@@ -546,6 +582,7 @@ nbj-condenser/
 
 - `anthropic` — Claude condensation provider
 - `elevenlabs` — Voice cloning TTS
+- `azure-cognitiveservices-speech` — Azure TTS with SSML support
 - `scenedetect` — Scene change detection for slideshow
 - `requests` — D-ID API calls (avatar mode)
 

@@ -212,7 +212,7 @@ class JobService:
         format_type = (params.get("format_type") or "text").strip().lower()
         top = params.get("top")
         voice = params.get("voice")
-        tts_provider = (params.get("tts_provider") or self.settings.tts_provider or "edge").strip().lower()
+        tts_provider = (params.get("tts_provider") or self.settings.tts_provider or "azure").strip().lower()
         speech_rate = (params.get("speech_rate") or "+0%").strip()
 
         if format_type not in {"text", "audio"}:
