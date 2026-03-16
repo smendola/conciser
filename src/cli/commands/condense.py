@@ -45,9 +45,9 @@ from ..app import cli  # noqa: E402
 )
 @click.option(
     '--format',
-    type=click.Choice(['slideshow', 'audio_only', 'avatar']),
+    type=click.Choice(['slideshow', 'audio_only', 'avatar', 'text']),
     default='slideshow',
-    help='Video generation mode: slideshow (scene-detected frames), audio_only (MP3 output, fastest), avatar (expensive, D-ID). Default: slideshow'
+    help='Output mode: slideshow (scene-detected frames), audio_only (MP3), text (condensed script as markdown), avatar (expensive, D-ID). Default: slideshow'
 )
 @click.option(
     '--voice',
@@ -218,8 +218,14 @@ def condense(url, aggressiveness, quality, output, resume, format, voice, tts_pr
                 click.echo(f"{Fore.YELLOW}Warning: --speech-rate only works with Edge and Azure TTS. Ignoring.{Style.RESET_ALL}")
                 speech_rate = '+0%'  # Reset to default for non-Edge/Azure providers
 
+        # Text mode: no TTS or voice needed
+        if format == 'text':
+            voice_id = None
+            skip_voice_clone = True
+            tts_provider = tts_provider or 'edge'  # won't be used, just needs a valid value
+
         # Handle voice selection based on TTS provider
-        if tts_provider == 'edge':
+        elif tts_provider == 'edge':
             # Edge TTS: resolve voice name or use default
             if voice:
                 from ...modules.edge_tts import EdgeTTS
@@ -273,15 +279,16 @@ def condense(url, aggressiveness, quality, output, resume, format, voice, tts_pr
         if not settings.anthropic_api_key:
             click.echo(f"{Fore.RED}Error: ANTHROPIC_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
             sys.exit(1)
-        # ElevenLabs only required if using elevenlabs provider
-        if tts_provider == 'elevenlabs' and not settings.elevenlabs_api_key:
-            click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
-            click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
-            sys.exit(1)
-        if tts_provider == 'azure' and (not settings.azure_speech_key or not settings.azure_speech_region):
-            click.echo(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set. Please configure in .env file.{Style.RESET_ALL}")
-            click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
-            sys.exit(1)
+        # TTS-related checks only apply when actually generating audio
+        if format != 'text':
+            if tts_provider == 'elevenlabs' and not settings.elevenlabs_api_key:
+                click.echo(f"{Fore.RED}Error: ELEVENLABS_API_KEY not set. Please configure in .env file.{Style.RESET_ALL}")
+                click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
+                sys.exit(1)
+            if tts_provider == 'azure' and (not settings.azure_speech_key or not settings.azure_speech_region):
+                click.echo(f"{Fore.RED}Error: AZURE_SPEECH_KEY and AZURE_SPEECH_REGION not set. Please configure in .env file.{Style.RESET_ALL}")
+                click.echo(f"{Fore.YELLOW}Hint: Use --tts-provider=edge for free TTS without API key.{Style.RESET_ALL}")
+                sys.exit(1)
         # D-ID only required for avatar mode
         if format == 'avatar' and not settings.did_api_key:
             click.echo(f"{Fore.RED}Error: DID_API_KEY not set. Required for avatar mode.{Style.RESET_ALL}")
@@ -326,10 +333,14 @@ def condense(url, aggressiveness, quality, output, resume, format, voice, tts_pr
         print(f"{Fore.GREEN}Condensation Complete!{Style.RESET_ALL}")
         print(f"{Fore.GREEN}{'='*60}{Style.RESET_ALL}\n")
 
-        print(f"Output video: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
+        if format == 'text':
+            print(f"Output script: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
+        else:
+            print(f"Output video: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
         print(f"\nStatistics:")
         print(f"  Original duration: {result['stats']['original_duration_minutes']:.1f} minutes")
-        print(f"  Condensed duration: {result['stats']['condensed_duration_minutes']:.1f} minutes")
+        if format != 'text':
+            print(f"  Condensed duration: {result['stats']['condensed_duration_minutes']:.1f} minutes")
         print(f"  Reduction: {result['stats']['reduction_percentage']:.1f}%")
         print(f"\nKey points preserved:")
         for i, point in enumerate(result['condensed_result'].get('key_points_preserved', [])[:5], 1):

@@ -767,14 +767,20 @@ class MainActivity : AppCompatActivity() {
             resetReadyStateDueToSettingsChange("condense_prepend_intro")
         }
 
+        fun updateCondenseVoiceVisibility(videoMode: String) {
+            binding.layoutCondenseVoice.isVisible = (videoMode != "text")
+        }
+
         // Video mode (condense)
         binding.toggleVideoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             val value = when (checkedId) {
                 binding.btnVideoModeAudioOnly.id -> "audio_only"
+                binding.btnVideoModeText.id -> "text"
                 binding.btnVideoModeSlideshow.id -> "slideshow"
                 else -> "slideshow"
             }
+            updateCondenseVoiceVisibility(value)
             if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
             prefs.edit().putString("video_mode", value).apply()
             resetReadyStateDueToSettingsChange("condense_video_mode")
@@ -785,8 +791,10 @@ class MainActivity : AppCompatActivity() {
         val savedVideoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
         when (savedVideoMode) {
             "audio_only" -> binding.toggleVideoMode.check(binding.btnVideoModeAudioOnly.id)
+            "text" -> binding.toggleVideoMode.check(binding.btnVideoModeText.id)
             else -> binding.toggleVideoMode.check(binding.btnVideoModeSlideshow.id)
         }
+        updateCondenseVoiceVisibility(savedVideoMode)
         suppressAutoSave = false
 
         // Takeaways controls (buttons)
@@ -2241,7 +2249,11 @@ class MainActivity : AppCompatActivity() {
         val videoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
         val prependIntro = prefs.getBoolean("prepend_intro", false)
 
-        currentOutputFormat = if (videoMode == "audio_only") "audio" else "video"
+        currentOutputFormat = when (videoMode) {
+            "audio_only" -> "audio"
+            "text" -> "text"
+            else -> "video"
+        }
 
         val req = CreateJobRequest(
             type = "condense",

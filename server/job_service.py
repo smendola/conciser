@@ -163,22 +163,21 @@ class JobService:
         jobs_dir = self.settings.output_dir / "jobs"
         jobs_dir.mkdir(parents=True, exist_ok=True)
 
-        video_id = None
-        try:
-            video_id = CondenserPipeline._extract_video_id(job["url"])
-        except Exception:
-            pass
+        video_mode = (params.get("video_mode") or "slideshow").strip().lower()
 
-        suffix = f"_vid-{video_id}" if video_id else ""
-        output_ext = "mp3" if params.get("video_mode") == "audio_only" else "mp4"
-        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
+        if video_mode == "text":
+            output_path = jobs_dir / f"{job_id}_condensed_script.md"
+        elif video_mode == "audio_only":
+            output_path = jobs_dir / f"{job_id}_audio.mp3"
+        else:
+            output_path = jobs_dir / f"{job_id}_slideshow.mp4"
 
         result = pipeline.run(
             video_url=job["url"],
             aggressiveness=params.get("aggressiveness", 5),
             output_path=output_path,
             quality="1080p",
-            video_gen_mode=params.get("video_mode", "slideshow"),
+            video_gen_mode=video_mode,
             tts_provider=params.get("tts_provider", self.settings.tts_provider),
             voice_id=params.get("voice", "en-US-AriaNeural"),
             tts_rate=params.get("speech_rate", "+0%"),
@@ -187,6 +186,15 @@ class JobService:
             resume=self.settings.resume,
             prepend_intro=params.get("prepend_intro", False),
         )
+
+        # For audio/video modes, also write the condensed script as a text artifact
+        if video_mode != "text":
+            script_path = jobs_dir / f"{job_id}_condensed_script.md"
+            if not (self.settings.resume and script_path.exists()):
+                video_title = result.get("metadata", {}).get("title", "")
+                condensed_script = result.get("condensed_result", {}).get("condensed_script", "")
+                md_content = f"# {video_title}\n\n{condensed_script}\n"
+                script_path.write_text(md_content, encoding="utf-8")
 
         self.mark_completed(job_id, str(output_path))
 
@@ -199,15 +207,8 @@ class JobService:
         jobs_dir = self.settings.output_dir / "jobs"
         jobs_dir.mkdir(parents=True, exist_ok=True)
 
-        video_id = None
-        try:
-            video_id = CondenserPipeline._extract_video_id(job["url"])
-        except Exception:
-            pass
-
-        suffix = f"_vid-{video_id}" if video_id else ""
         output_ext = "mp3" if params.get("format_type") == "audio" else "md"
-        output_path = jobs_dir / f"{job_id}{suffix}.{output_ext}"
+        output_path = jobs_dir / f"{job_id}_takeaways.{output_ext}"
 
         format_type = (params.get("format_type") or "text").strip().lower()
         top = params.get("top")

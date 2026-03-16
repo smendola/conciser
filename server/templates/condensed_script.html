@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Condensed Script - Job {{ job_id }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='takeaways.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>{{ page_title }}</h1>
+            <div class="job-id">
+                {% if channel_name %}
+                {{ channel_name }}
+                {% if youtube_url %}|{% endif %}
+                {% endif %}
+                {% if youtube_url %}
+                <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer" class="youtube-link">Watch on YouTube</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="content">
+            {{ html_content | safe }}
+        </div>
+
+        <div class="footer">
+            <p><strong>NBJ Condenser</strong></p>
+        </div>
+    </div>
+</body>
+
+</html>

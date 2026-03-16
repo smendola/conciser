@@ -165,8 +165,8 @@ class CondenserPipeline:
                     metadata = existing_metadata
                     video_folder = video_path.parent  # Video folder is parent of video file
                 else:
-                    # For audio_only mode, try metadata-only first to avoid unnecessary download
-                    if video_gen_mode == "audio_only":
+                    # For audio_only and text mode, try metadata-only first to avoid unnecessary download
+                    if video_gen_mode in ("audio_only", "text"):
                         update_progress("FETCH", f"Fetching metadata for {video_id}...")
                         download_result = self._download_video(video_url, quality, name_override, metadata_only=True)
                     else:
@@ -177,8 +177,8 @@ class CondenserPipeline:
                     metadata = download_result['metadata']
                     video_folder = download_result['video_folder']
             else:
-                # For audio_only mode, try metadata-only first to avoid unnecessary download
-                if video_gen_mode == "audio_only":
+                # For audio_only and text mode, try metadata-only first to avoid unnecessary download
+                if video_gen_mode in ("audio_only", "text"):
                     update_progress("FETCH", f"Fetching metadata for {video_id}...")
                     download_result = self._download_video(video_url, quality, name_override, metadata_only=True)
                 else:
@@ -258,6 +258,28 @@ class CondenserPipeline:
             
             condensed_script = condensed_result['condensed_script']
             logger.info(f"CONDENSE: {time.time() - _t:.1f} sec")
+
+            # Text-only mode: write condensed script as markdown and return early
+            if video_gen_mode == "text":
+                video_title = metadata.get('title', '')
+                if output_path is None:
+                    base_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_condensed_script"
+                    final_path = self.settings.output_dir / f"{base_filename}.md"
+                else:
+                    final_path = output_path
+                if not (resume and final_path.exists()):
+                    final_path.parent.mkdir(parents=True, exist_ok=True)
+                    md_content = f"# {video_title}\n\n{condensed_script}\n"
+                    final_path.write_text(md_content, encoding='utf-8')
+                stats = {
+                    'original_duration_minutes': duration_minutes,
+                    'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'],
+                    'reduction_percentage': condensed_result['reduction_percentage'],
+                    'aggressiveness': aggressiveness,
+                    'quality': quality,
+                }
+                update_progress("COMPLETE", f"Condensed script written: {final_path}")
+                return {'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result}
 
             if prepend_intro:
                 key_points = condensed_result.get('key_points_preserved', [])

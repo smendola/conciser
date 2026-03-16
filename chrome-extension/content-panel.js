@@ -961,6 +961,14 @@ function updateVoiceSelectForLocale(voiceSelectId, locale) {
   }
 }
 
+function updateCondenseVoiceVisibility(videoMode) {
+  const voiceGroup = document.getElementById('condenseVoiceGroup');
+  const speechGroup = document.getElementById('condenseSpeechGroup');
+  const isText = videoMode === 'text';
+  if (voiceGroup) voiceGroup.style.display = isText ? 'none' : '';
+  if (speechGroup) speechGroup.style.display = isText ? 'none' : '';
+}
+
 // Load settings from storage
 async function loadSettings() {
   const storage = await chrome.storage.local.get(['settings']);
@@ -992,7 +1000,9 @@ async function loadSettings() {
   document.getElementById('speedValue').textContent = settings.speechSpeed.toFixed(2) + 'x';
   updateSliderFill(aggrSlider);
   updateSliderFill(spdSlider);
-  document.getElementById('videoModeSelect').value = settings.videoMode;
+  const vmEl = document.querySelector(`input[name="videoMode"][value="${settings.videoMode}"]`);
+  if (vmEl) vmEl.checked = true;
+  updateCondenseVoiceVisibility(settings.videoMode || 'slideshow');
   document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
 
   const normalizedTakeawaysFormat = (settings.takeawaysFormat || 'text').toString().trim().toLowerCase();
@@ -1028,7 +1038,7 @@ async function saveSettings() {
     takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
     takeawaysFormat: takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
-    videoMode: document.getElementById('videoModeSelect').value,
+    videoMode: (document.querySelector('input[name="videoMode"]:checked') || {}).value || 'slideshow',
     prependIntro: document.getElementById('prependIntroCheck').checked
   };
 
@@ -1118,7 +1128,6 @@ function setupEventListeners() {
   const takeawaysLocaleSelect = document.getElementById('takeawaysLocaleSelect');
   const voiceSelect = document.getElementById('voiceSelect');
   const takeawaysVoiceSelect = document.getElementById('takeawaysVoiceSelect');
-  const videoModeSelect = document.getElementById('videoModeSelect');
   const prependIntroCheck = document.getElementById('prependIntroCheck');
   const condenseBtn = document.getElementById('condenseBtn');
   const takeawaysBtn = document.getElementById('takeawaysBtn');
@@ -1165,9 +1174,12 @@ function setupEventListeners() {
     takeawaysVoiceSelect.addEventListener('change', handleSettingChange);
   }
 
-  if (videoModeSelect) {
-    videoModeSelect.addEventListener('change', handleSettingChange);
-  }
+  document.querySelectorAll('input[name="videoMode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      updateCondenseVoiceVisibility(radio.value);
+      handleSettingChange();
+    });
+  });
 
   if (prependIntroCheck) {
     prependIntroCheck.addEventListener('change', handleSettingChange);
@@ -1185,7 +1197,7 @@ function setupEventListeners() {
       const voice = document.getElementById('voiceSelect').value;
       const speechSpeed = parseFloat(document.getElementById('speedSlider').value);
       const speechRate = convertSpeedToRate(speechSpeed);
-      const videoMode = document.getElementById('videoModeSelect').value;
+      const videoMode = (document.querySelector('input[name="videoMode"]:checked') || {}).value || 'slideshow';
       const prependIntro = document.getElementById('prependIntroCheck').checked;
 
       const response = await fetchWithAuth(`${serverUrl}/api/jobs`, {

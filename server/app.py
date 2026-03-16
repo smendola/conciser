@@ -255,23 +255,34 @@ def _artifact_mime_from_suffix(suffix: str) -> str:
     return 'application/octet-stream'
 
 
-def _artifact_name_for_job(job: dict) -> str:
-    """Stable logical artifact names.
+def _expected_artifacts_for_job(job: dict) -> list:
+    """Return ordered list of (artifact_name, ext) tuples the job should have produced.
 
-    - condense: slideshow/mp4, audio/mp3 (when audio_only)
-    - takeaways: takeaways/md (or mp3 when format_type=audio)
+    Files are named {job_id}_{artifact_name}.{ext} on disk.
+    The first entry is the primary artifact (the one stored in output_file).
     """
     jt = _job_type_to_type(job.get('job_type'))
     params = job.get('params') or {}
 
     if jt == 'takeaways':
-        return 'takeaways'
+        format_type = (params.get('format_type') or 'text').strip().lower()
+        if format_type == 'audio':
+            return [('takeaways', 'mp3')]
+        return [('takeaways', 'md')]
 
     # condense
     video_mode = (params.get('video_mode') or 'slideshow').strip().lower()
+    if video_mode == 'text':
+        return [('condensed_script', 'md')]
     if video_mode == 'audio_only':
-        return 'audio'
-    return 'slideshow'
+        return [('audio', 'mp3'), ('condensed_script', 'md')]
+    # slideshow (and any other video mode)
+    return [('slideshow', 'mp4'), ('audio', 'mp3'), ('condensed_script', 'md')]
+
+
+def _primary_artifact_for_job(job: dict) -> tuple:
+    """Return (artifact_name, ext) for the primary artifact."""
+    return _expected_artifacts_for_job(job)[0]
 
 
 def _artifact_ext_for_output_path(output_path: Path) -> str:
@@ -304,17 +315,16 @@ def _job_repr(job: dict) -> dict:
     return rep
 
 
-def _artifact_repr(job: dict, output_path: Path) -> dict:
-    artifact_name = _artifact_name_for_job(job)
-    raw_ext = _artifact_ext_for_output_path(output_path)
-    render_ext = _artifact_render_ext_for_output_path(output_path)
+def _artifact_repr(job: dict, artifact_name: str, artifact_path: Path) -> dict:
+    raw_ext = _artifact_ext_for_output_path(artifact_path)
+    render_ext = _artifact_render_ext_for_output_path(artifact_path)
 
     return {
         'name': artifact_name,
         'ext': raw_ext,
-        'kind': _artifact_kind_from_suffix(output_path.suffix),
-        'mime': _artifact_mime_from_suffix(output_path.suffix),
-        'filename': output_path.name,
+        'kind': _artifact_kind_from_suffix(artifact_path.suffix),
+        'mime': _artifact_mime_from_suffix(artifact_path.suffix),
+        'filename': artifact_path.name,
         'raw_url': url_for('raw_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=raw_ext, cid=job.get('client_id')),
         'render_url': url_for('render_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=render_ext, cid=job.get('client_id')),
     }
@@ -332,7 +342,7 @@ def _thumbnail_artifact_repr(job: dict) -> dict:
     }
 
 
-def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None):
+def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None, template='takeaways.html'):
     import markdown
 
     md_content = output_path.read_text(encoding='utf-8')
@@ -355,7 +365,7 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
     html_content = markdown.markdown(md_content, extensions=['extra', 'codehilite'])
 
     return render_template(
-        'takeaways.html',
+        template,
         job_id=job_id,
         page_title=page_title,
         html_content=html_content,
@@ -529,14 +539,21 @@ def api_list_artifacts(job_id: str):
     if job.get('status') != 'completed' or not job.get('output_file'):
         return jsonify({'error': 'Job not ready'}), 409
 
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
+    primary_path = _resolve_output_path(job['output_file'])
+    if not primary_path.exists():
         return jsonify({'error': 'Output file not found'}), 404
 
-    artifacts = [_artifact_repr(job, output_path)]
+    jobs_dir = primary_path.parent
+    job_id = job.get('id')
+    expected = _expected_artifacts_for_job(job)
+
+    artifacts = []
+    for artifact_name, ext in expected:
+        artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{ext}"
+        if artifact_path.exists():
+            artifacts.append(_artifact_repr(job, artifact_name, artifact_path))
 
     # Expose a stable thumbnail artifact if we can derive a YouTube thumbnail.
-    # This gives users/clients a URL like /raw/<job_id>/thumbnail.jpg
     yt_thumb = _youtube_thumbnail_url(job.get('url') or '')
     if yt_thumb:
         artifacts.append(_thumbnail_artifact_repr(job))
@@ -556,16 +573,18 @@ def raw_artifact(job_id: str, artifact_name: str, ext: str):
         error_message = 'Job not ready' if status_code == 409 else 'Job not found'
         return jsonify({'error': error_message}), status_code
 
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    expected_name = _artifact_name_for_job(job)
-    expected_ext = _artifact_ext_for_output_path(output_path)
-    if artifact_name != expected_name or ext.lower() != expected_ext:
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    expected_names = {name for name, _ in expected}
+    if artifact_name not in expected_names:
         return jsonify({'error': 'Artifact not found'}), 404
 
-    return send_file(output_path, as_attachment=True, download_name=output_path.name)
+    artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{ext.lower()}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    return send_file(artifact_path, as_attachment=True, download_name=artifact_path.name)
 
 
 @app.route('/raw/<job_id>/thumbnail.jpg', methods=['GET'])
@@ -603,28 +622,35 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
         error_message = 'Job not ready' if status_code == 409 else 'Job not found'
         return jsonify({'error': error_message}), status_code
 
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    expected_name = _artifact_name_for_job(job)
-    if artifact_name != expected_name:
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    expected_names = {name for name, _ in expected}
+    if artifact_name not in expected_names:
         return jsonify({'error': 'Artifact not found'}), 404
 
     # We only support HTML render endpoints.
     if ext.lower() != 'html':
         return jsonify({'error': 'Unsupported render format'}), 400
 
-    suffix = output_path.suffix.lower()
+    # Find the artifact file on disk
+    matching = [(n, e) for n, e in expected if n == artifact_name]
+    artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{matching[0][1]}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    suffix = artifact_path.suffix.lower()
 
     if suffix == '.md':
+        template = 'condensed_script.html' if artifact_name == 'condensed_script' else 'takeaways.html'
         try:
             return _render_markdown_output(
                 job_id,
                 client_id,
-                output_path,
+                artifact_path,
                 youtube_url=job.get('url'),
                 channel_name=job.get('channel_name'),
+                template=template,
             )
         except Exception as e:
             return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
@@ -633,15 +659,15 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
         return jsonify({'error': f'Unsupported file type for render: {suffix or "unknown"}'}), 400
 
     media_kind = 'audio' if suffix == '.mp3' else 'video'
-    media_url = url_for('render_artifact_content', job_id=job_id, cid=client_id)
-    raw_url = url_for('raw_artifact', job_id=job_id, artifact_name=expected_name, ext=_artifact_ext_for_output_path(output_path), cid=client_id)
+    media_url = url_for('render_artifact_content', job_id=job_id, artifact_name=artifact_name, cid=client_id)
+    raw_url = url_for('raw_artifact', job_id=job_id, artifact_name=artifact_name, ext=matching[0][1], cid=client_id)
 
     params = job.get('params') or {}
     aggressiveness = params.get('aggressiveness')
     voice = params.get('voice')
     thumbnail_url = None
     if media_kind == 'audio':
-        cover_path = _cover_path_for_output(output_path)
+        cover_path = _cover_path_for_output(artifact_path)
         if cover_path.exists():
             thumbnail_url = url_for('render_artifact_cover', job_id=job_id, cid=client_id, v=str(uuid.uuid4())[:8])
         else:
@@ -660,7 +686,7 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
         media_kind=media_kind,
         media_url=media_url,
         download_url=raw_url,
-        file_name=output_path.name,
+        file_name=artifact_path.name,
         youtube_url=job.get('url') or None,
     )
 
@@ -677,22 +703,19 @@ def render_artifact_cover(job_id: str):
         error_message = 'Job not ready' if status_code == 409 else 'Job not found'
         return jsonify({'error': error_message}), status_code
 
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
-
-    if output_path.suffix.lower() != '.mp3':
+    primary_path = _resolve_output_path(job['output_file'])
+    if primary_path.suffix.lower() != '.mp3':
         return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
 
-    cover_path = _cover_path_for_output(output_path)
+    cover_path = _cover_path_for_output(primary_path)
     if not cover_path.exists():
         return jsonify({'error': 'Cover image not found'}), 404
 
     return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
 
 
-@app.route('/render/<job_id>/content', methods=['GET'])
-def render_artifact_content(job_id: str):
+@app.route('/render/<job_id>/content/<artifact_name>', methods=['GET'])
+def render_artifact_content(job_id: str, artifact_name: str):
     client_id, error_response = _client_id_response()
     if error_response:
         return error_response
@@ -703,16 +726,23 @@ def render_artifact_content(job_id: str):
         error_message = 'Job not ready' if status_code == 409 else 'Job not found'
         return jsonify({'error': error_message}), status_code
 
-    output_path = _resolve_output_path(job['output_file'])
-    if not output_path.exists():
-        return jsonify({'error': 'Output file not found'}), 404
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    matching = [(n, e) for n, e in expected if n == artifact_name]
+    if not matching:
+        return jsonify({'error': 'Artifact not found'}), 404
 
-    suffix = output_path.suffix.lower()
+    artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{matching[0][1]}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    suffix = artifact_path.suffix.lower()
     if suffix not in {'.mp3', '.mp4'}:
         return jsonify({'error': f'Unsupported file type for content: {suffix or "unknown"}'}), 400
 
     mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
-    return send_file(output_path, as_attachment=False, mimetype=mimetype, download_name=output_path.name)
+    return send_file(artifact_path, as_attachment=False, mimetype=mimetype, download_name=artifact_path.name)
 
 
 @app.route('/api/health', methods=['GET'])

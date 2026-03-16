@@ -21,14 +21,24 @@
   <div class="tab-content active" id="condense-tab">
     <div class="settings" id="settings">
       <div class="setting-group">
-        <label class="setting-label" for="videoModeSelect">Output Mode</label>
-        <select id="videoModeSelect">
-          <option value="slideshow">Slideshow</option>
-          <option value="audio_only">Audio Only (MP3)</option>
-        </select>
+        <label class="setting-label">Output Mode</label>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" id="vmVideo" name="videoMode" value="slideshow" checked>
+            <label for="vmVideo">🎥&#xFE0E; Video</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="vmAudio" name="videoMode" value="audio_only">
+            <label for="vmAudio">&#x1F5E3;&#xFE0E; Voice</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" id="vmText" name="videoMode" value="text">
+            <label for="vmText">📄&#xFE0E; Text</label>
+          </div>
+        </div>
       </div>
 
-      <div class="setting-group-grid">
+      <div class="setting-group-grid" id="condenseVoiceGroup">
         <div class="setting-group">
           <label class="setting-label" for="localeSelect">Language</label>
           <select id="localeSelect">
@@ -52,7 +62,7 @@
         <div id="strategyDesc" class="strategy-desc">Loading...</div>
       </div>
 
-      <div class="setting-group">
+      <div class="setting-group" id="condenseSpeechGroup">
         <div class="slider-label-row">
           <label class="setting-label" for="speedSlider">Speech Speed</label>
           <span class="slider-value" id="speedValue">1.10x</span>
