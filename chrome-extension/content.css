@@ -445,7 +445,7 @@ input[type="range"] {
 }
 
 .radio-option input[name="videoMode"] + label {
-  font-size: 2em;
+  font-size: 1.75em;
 }
 
 .recent-job-details {
