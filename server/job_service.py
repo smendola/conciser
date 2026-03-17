@@ -105,6 +105,9 @@ class JobService:
         """Mark job as completed with output file."""
         self.store.set_output_file(job_id, output_file)
         self.store.update_status(job_id, "completed")
+        job = self.store.get_job(job_id)
+        client_id = job.get("client_id") if job else None
+        self.store.create_shareable(job_id, client_id)
         logger.info(f"Job {job_id} completed: {output_file}")
 
     def mark_error(self, job_id: str, error: str) -> None:

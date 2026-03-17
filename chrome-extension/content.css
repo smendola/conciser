@@ -173,6 +173,29 @@ button:disabled {
   background: #218838;
 }
 
+.copy-link-btn {
+  background: #6c757d;
+}
+
+.copy-link-btn:hover {
+  background: #5a6268;
+}
+
+.recent-job-share {
+  width: auto;
+  border: 0;
+  background: transparent;
+  color: #aaa;
+  font-size: 13px;
+  padding: 2px 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.recent-job-share:hover {
+  color: #4285f4;
+}
+
 .error {
   color: #d32f2f;
   margin-top: 8px;
@@ -373,6 +396,18 @@ input[type="range"] {
 
 .recent-job:hover {
   background: #f0f0f0;
+}
+
+.recent-job--running {
+  cursor: default;
+}
+
+.recent-job--running .recent-job-title {
+  color: #9e9e9e;
+}
+
+.recent-job--running .recent-job-badge {
+  background-color: #bdbdbd !important;
 }
 
 .recent-job-badge {

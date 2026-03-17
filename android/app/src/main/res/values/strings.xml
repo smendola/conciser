@@ -25,6 +25,7 @@
     <string name="speech_speed">Speech Speed</string>
     <string name="condense_video">Condense Video</string>
     <string name="watch_video">Watch Video</string>
+    <string name="share_link">Share Link</string>
     <string name="waiting_for_video">Share a YouTube video to start</string>
     <string name="recent_jobs">Recent</string>
     <string name="prepend_intro">Prepend key take-aways intro</string>

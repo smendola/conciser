@@ -1,0 +1,10 @@
+{
+  "sentry_dsn": "https://..... get it from Sentry",
+  "sentry_verbose_lang_voice_logging": false,
+  "default_server_index": 1,
+  "preset_servers": [
+      { "name": "cuda-linux", "url": "https://cuda-linux.puma-garibaldi.ts.net" },
+      { "name": "x13", "url": "https://x13.puma-garibaldi.ts.net" },
+      { "name": "p43s", "url": "https://p43s.puma-garibaldi.ts.net" }
+  ]
+}

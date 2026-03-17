@@ -72,7 +72,8 @@ data class ArtifactItem(
 )
 
 data class ArtifactsResponse(
-    val artifacts: List<ArtifactItem>
+    val artifacts: List<ArtifactItem>,
+    val share_id: String? = null
 )
 
 data class VoiceItem(

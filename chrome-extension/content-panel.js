@@ -292,6 +292,15 @@ async function openJobInNewTab(jobId) {
   }
 }
 
+async function copyShareLink(jobId) {
+  const data = await fetchArtifacts(jobId);
+  const artifacts = (data && Array.isArray(data.artifacts)) ? data.artifacts : [];
+  const artifact = artifacts[0];
+  const renderUrl = artifact ? toServerAbsoluteUrl(artifact.render_url) : null;
+  if (!renderUrl) throw new Error('No share link available');
+  await navigator.clipboard.writeText(renderUrl);
+}
+
 async function deleteJob(jobId) {
   const response = await fetchWithAuth(`${serverUrl}/api/jobs/${jobId}`, { method: 'DELETE' });
   if (!response.ok) {
@@ -414,9 +423,8 @@ function showCompleted(data) {
       ✅ Video ready!<br>
       Job ID: ${currentJobId}
     </div>
-    <button class="download-btn" id="downloadBtn">
-      Watch Video
-    </button>
+    <button class="download-btn" id="downloadBtn">Watch Video</button>
+    <button class="download-btn copy-link-btn" id="copyLinkBtn">Copy Link</button>
   `;
 
   const downloadBtn = document.getElementById('downloadBtn');
@@ -429,6 +437,19 @@ function showCompleted(data) {
       const statusContainer = document.getElementById('statusContainer');
       if (statusContainer) statusContainer.innerHTML = '';
       currentJobId = null;
+    });
+  }
+
+  const copyLinkBtn = document.getElementById('copyLinkBtn');
+  if (copyLinkBtn) {
+    copyLinkBtn.addEventListener('click', async () => {
+      try {
+        await copyShareLink(currentJobId);
+        copyLinkBtn.textContent = 'Copied!';
+        setTimeout(() => { copyLinkBtn.textContent = 'Copy Link'; }, 2000);
+      } catch (err) {
+        console.error(err);
+      }
     });
   }
 }
@@ -618,9 +639,8 @@ function showTakeawaysCompleted(data) {
       ✅ Takeaways ready!<br>
       Job ID: ${currentTakeawaysJobId}
     </div>
-    <button class="download-btn" id="downloadTakeawaysBtn">
-      View Takeaways
-    </button>
+    <button class="download-btn" id="downloadTakeawaysBtn">View Takeaways</button>
+    <button class="download-btn copy-link-btn" id="copyTakeawaysLinkBtn">Copy Link</button>
   `;
 
   const downloadBtn = document.getElementById('downloadTakeawaysBtn');
@@ -633,6 +653,19 @@ function showTakeawaysCompleted(data) {
       const statusContainer = document.getElementById('takeawaysStatusContainer');
       if (statusContainer) statusContainer.innerHTML = '';
       currentTakeawaysJobId = null;
+    });
+  }
+
+  const copyTakeawaysLinkBtn = document.getElementById('copyTakeawaysLinkBtn');
+  if (copyTakeawaysLinkBtn) {
+    copyTakeawaysLinkBtn.addEventListener('click', async () => {
+      try {
+        await copyShareLink(currentTakeawaysJobId);
+        copyTakeawaysLinkBtn.textContent = 'Copied!';
+        setTimeout(() => { copyTakeawaysLinkBtn.textContent = 'Copy Link'; }, 2000);
+      } catch (err) {
+        console.error(err);
+      }
     });
   }
 }
@@ -769,11 +802,11 @@ async function loadRecentJobs() {
     const jobs = Array.isArray(data.jobs) ? data.jobs : [];
 
     const condenseJobs = jobs.filter(job =>
-      job.status === 'completed' && job.type === 'condense'
+      job.status !== 'error' && job.type === 'condense'
     ).slice(0, 5);
 
     const takeawaysJobs = jobs.filter(job =>
-      job.status === 'completed' && job.type === 'takeaways'
+      job.status !== 'error' && job.type === 'takeaways'
     ).slice(0, 5);
 
     const renderJobs = (container, list, jobs) => {
@@ -786,14 +819,22 @@ async function loadRecentJobs() {
           const displayTitle = job.title || videoId;
 
           const { badgeClass, badgeText } = getRecentJobBadge('unknown', job.type);
+          const isCompleted = job.status === 'completed';
+          const runningClass = isCompleted ? '' : ' recent-job--running';
+          const statusStr = job.status === 'queued' ? 'queued\u2026' : 'processing\u2026';
+          const subtitleStr = isCompleted ? dateStr : `${statusStr} &middot; ${dateStr}`;
+          const shareBtn = isCompleted
+            ? `<button class="recent-job-share" data-job-id="${job.id}" aria-label="Copy link">↗</button>`
+            : '';
 
           const jobHtml = `
-            <div class="recent-job" data-job-id="${job.id}">
+            <div class="recent-job${runningClass}" data-job-id="${job.id}" data-completed="${isCompleted}">
               <div class="recent-job-badge ${badgeClass}">${badgeText}</div>
               <div class="recent-job-details">
                 <div class="recent-job-title">${displayTitle}</div>
-                <div class="recent-job-timestamp">${dateStr}</div>
+                <div class="recent-job-timestamp">${subtitleStr}</div>
               </div>
+              ${shareBtn}
               <button class="recent-job-delete" data-job-id="${job.id}" aria-label="Delete">×</button>
             </div>
           `;
@@ -805,9 +846,25 @@ async function loadRecentJobs() {
         container.style.display = 'block';
 
         list.querySelectorAll('.recent-job').forEach(el => {
+          if (el.getAttribute('data-completed') !== 'true') return;
           el.addEventListener('click', () => {
             const jobId = el.getAttribute('data-job-id');
             openJobInNewTab(jobId).catch(err => console.error(err));
+          });
+        });
+
+        list.querySelectorAll('.recent-job-share').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const jobId = btn.getAttribute('data-job-id');
+            try {
+              await copyShareLink(jobId);
+              btn.textContent = '✓';
+              setTimeout(() => { btn.textContent = '↗'; }, 2000);
+            } catch (err) {
+              console.error(err);
+            }
           });
         });
 

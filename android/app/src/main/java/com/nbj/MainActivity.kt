@@ -528,6 +528,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun shareCurrentResult(jobId: String) {
+        lifecycleScope.launch {
+            try {
+                val (renderUrl, _) = firstArtifactUrls(jobId)
+                if (renderUrl.isNullOrBlank()) {
+                    Toast.makeText(this@MainActivity, "No share link available", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, renderUrl)
+                }
+                startActivity(Intent.createChooser(intent, "Share link"))
+            } catch (e: Exception) {
+                Sentry.captureException(e)
+                Toast.makeText(this@MainActivity, "Failed to get share link", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     private fun openRecentJob(job: RecentJob) {
         lifecycleScope.launch {
             try {
@@ -1345,6 +1365,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val sorted = jobs
+                    .filter { it.status != "error" }
                     .sortedByDescending { parseIsoToEpochMs(it.created_at) }
                     .take(10)
 
@@ -1371,6 +1392,7 @@ class MainActivity : AppCompatActivity() {
             val createdAt = parseIsoToEpochMs(job.created_at)
             val displayTitle = getRecentJobDisplayTitle(job)
             val badge = getRecentJobBadge(job)
+            val isCompleted = job.status == "completed"
 
             val swipeContainer = android.widget.FrameLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
@@ -1405,13 +1427,13 @@ class MainActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, (10 * density).toInt(), 0, (10 * density).toInt())
-                isClickable = true
-                isFocusable = true
-                val tv = TypedValue()
-                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
-                setBackgroundResource(tv.resourceId)
-                setOnClickListener {
-                    openRecentServerJob(job, serverUrl)
+                isClickable = isCompleted
+                isFocusable = isCompleted
+                if (isCompleted) {
+                    val tv = TypedValue()
+                    context.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+                    setBackgroundResource(tv.resourceId)
+                    setOnClickListener { openRecentServerJob(job, serverUrl) }
                 }
             }
 
@@ -1423,7 +1445,7 @@ class MainActivity : AppCompatActivity() {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFFFFFFFF.toInt())
-                setBackgroundColor(badge.bgColor)
+                setBackgroundColor(if (isCompleted) badge.bgColor else 0xFFBDBDBD.toInt())
                 setPadding((4 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1439,13 +1461,20 @@ class MainActivity : AppCompatActivity() {
             val titleView = TextView(this).apply {
                 text = displayTitle
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                setTextColor(0xFF212121.toInt())
+                setTextColor(if (isCompleted) 0xFF212121.toInt() else 0xFF9E9E9E.toInt())
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
 
+            val subtitleText = if (!isCompleted) {
+                val label = if (job.status == "queued") "queued…" else "processing…"
+                val time = createdAt?.let { dateFormat.format(Date(it)) }
+                if (time != null) "$label  ·  $time" else label
+            } else {
+                createdAt?.let { dateFormat.format(Date(it)) } ?: ""
+            }
             val timeView = TextView(this).apply {
-                text = createdAt?.let { dateFormat.format(Date(it)) } ?: ""
+                text = subtitleText
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 setTextColor(0xFF757575.toInt())
             }
@@ -1455,6 +1484,46 @@ class MainActivity : AppCompatActivity() {
 
             row.addView(badgeView)
             row.addView(textCol)
+
+            if (isCompleted) {
+                val shareBtn = TextView(this).apply {
+                    text = "↗"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                    setTextColor(0xFF9E9E9E.toInt())
+                    setPadding((8 * density).toInt(), (2 * density).toInt(), (4 * density).toInt(), (2 * density).toInt())
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = "Share link"
+                    setOnClickListener { v ->
+                        v.isEnabled = false
+                        lifecycleScope.launch {
+                            try {
+                                val api = ConciserApi.createService(serverUrl, ClientIdentity.getOrCreate(this@MainActivity))
+                                val artifacts = withContext(Dispatchers.IO) {
+                                    api.getArtifacts(job.id).artifacts
+                                }
+                                val renderUrl = artifacts.firstOrNull()?.render_url
+                                val abs = toAbsoluteUrl(serverUrl, renderUrl)
+                                if (abs.isNullOrBlank()) {
+                                    Toast.makeText(this@MainActivity, "No share link available", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_TEXT, abs)
+                                    }
+                                    startActivity(Intent.createChooser(intent, "Share link"))
+                                }
+                            } catch (e: Exception) {
+                                Sentry.captureException(e)
+                                Toast.makeText(this@MainActivity, "Failed to get share link", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                v.isEnabled = true
+                            }
+                        }
+                    }
+                }
+                row.addView(shareBtn)
+            }
 
             swipeContainer.addView(deleteBg)
             swipeContainer.addView(row)
@@ -2029,6 +2098,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnWatch.setOnClickListener {
             currentJobId?.let { jobId -> openCurrentResult(jobId) }
         }
+        binding.btnShare.setOnClickListener {
+            currentJobId?.let { jobId -> shareCurrentResult(jobId) }
+        }
 
         // Default to condense mode
         binding.toggleMode.check(binding.btnModeCondense.id)
@@ -2102,6 +2174,7 @@ class MainActivity : AppCompatActivity() {
                 binding.layoutStatus.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
                 binding.btnWatch.visibility = View.GONE
+                binding.btnShare.visibility = View.GONE
             }
 
             AppState.READY -> {
@@ -2115,6 +2188,7 @@ class MainActivity : AppCompatActivity() {
                 binding.layoutStatus.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
                 binding.btnWatch.visibility = View.GONE
+                binding.btnShare.visibility = View.GONE
             }
 
             AppState.SUBMITTING -> {
@@ -2131,6 +2205,7 @@ class MainActivity : AppCompatActivity() {
                 binding.tvProgress.visibility = View.GONE
                 binding.btnCancel.visibility = View.VISIBLE
                 binding.btnWatch.visibility = View.GONE
+                binding.btnShare.visibility = View.GONE
             }
 
             AppState.PROCESSING -> {
@@ -2152,6 +2227,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 binding.btnCancel.visibility = View.VISIBLE
                 binding.btnWatch.visibility = View.GONE
+                binding.btnShare.visibility = View.GONE
             }
 
             AppState.COMPLETED -> {
@@ -2169,6 +2245,7 @@ class MainActivity : AppCompatActivity() {
                     else -> "Play Video"
                 }
                 binding.btnWatch.visibility = View.VISIBLE
+                binding.btnShare.visibility = View.VISIBLE
             }
 
             AppState.ERROR -> {
@@ -2186,6 +2263,7 @@ class MainActivity : AppCompatActivity() {
                 binding.tvProgress.visibility = View.GONE
                 binding.btnCancel.visibility = View.GONE
                 binding.btnWatch.visibility = View.GONE
+                binding.btnShare.visibility = View.GONE
             }
         }
     }

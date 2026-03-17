@@ -97,9 +97,18 @@ class JobStore:
                     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS shareable (
+                    secure_id TEXT PRIMARY KEY,
+                    job_id TEXT NOT NULL,
+                    client_id TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
                 CREATE INDEX IF NOT EXISTS idx_jobs_client_id ON jobs(client_id);
                 CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id);
+                CREATE INDEX IF NOT EXISTS idx_shareable_job_id ON shareable(job_id);
             """)
             conn.commit()
 
@@ -314,6 +323,41 @@ class JobStore:
             )
             conn.commit()
             return cursor.rowcount > 0
+
+    def create_shareable(self, job_id: str, client_id: Optional[str]) -> str:
+        """Create a shareable token for a job. Idempotent — returns existing token if already created."""
+        import secrets
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT secure_id FROM shareable WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            if row:
+                return row["secure_id"]
+            secure_id = secrets.token_urlsafe(32)
+            conn.execute(
+                "INSERT INTO shareable (secure_id, job_id, client_id) VALUES (?, ?, ?)",
+                (secure_id, job_id, client_id),
+            )
+            conn.commit()
+            return secure_id
+
+    def get_shareable_for_job(self, job_id: str) -> Optional[str]:
+        """Return the secure_id for a job, or None if not yet created."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT secure_id FROM shareable WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            return row["secure_id"] if row else None
+
+    def get_job_by_shareable(self, secure_id: str) -> Optional[Dict[str, Any]]:
+        """Resolve a secure_id to its job, or None if not found."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT job_id FROM shareable WHERE secure_id = ?", (secure_id,)
+            ).fetchone()
+            if not row:
+                return None
+            return self.get_job(row["job_id"])
 
     def get_job_events(self, job_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Get progress events for a job."""

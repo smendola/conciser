@@ -564,6 +564,17 @@
             app:backgroundTint="@color/success"
             style="@style/Widget.Material3.Button" />
 
+        <!-- Share button: shown in COMPLETED state alongside Watch -->
+        <Button
+            android:id="@+id/btnShare"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/share_link"
+            android:visibility="gone"
+            app:backgroundTint="#6c757d"
+            style="@style/Widget.Material3.Button" />
+
         <!-- Recent jobs header — gone when list is empty -->
         <TextView
             android:id="@+id/tvRecentJobsHeader"

@@ -14,6 +14,8 @@ from pathlib import Path
 import yaml
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template, send_from_directory, redirect, url_for, Response
+from werkzeug.serving import WSGIRequestHandler
+from werkzeug._internal import _log as _werkzeug_log
 from urllib.parse import quote_plus
 from flask_cors import CORS
 import requests
@@ -34,6 +36,26 @@ from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
 from src.utils.prompt_templates import get_strategy_description
 from server.job_service import JobService
+
+class _NoDateRequestHandler(WSGIRequestHandler):
+    def log_request(self, code='-', size='-'):
+        environ = getattr(self, 'environ', {}) or {}
+        query_string = environ.get('QUERY_STRING', '')
+        cid = None
+        for param in query_string.split('&'):
+            if param.startswith('cid='):
+                cid = param[4:]
+                break
+        if not cid:
+            cid = environ.get('HTTP_X_USER_ID', '') or None
+        client_label = f"[{cid}] " if cid else ""
+        address = self.address_string().replace('%', '%%')
+        _werkzeug_log('info', f'{client_label}{address} - - "{self.requestline}" {code} {size}\n')
+
+    def log(self, type, message, *args):
+        address = self.address_string().replace('%', '%%')
+        _werkzeug_log(type, f"{address} - - {message}\n", *args)
+
 
 app = Flask(__name__)
 CORS(app, resources={
@@ -315,9 +337,16 @@ def _job_repr(job: dict) -> dict:
     return rep
 
 
-def _artifact_repr(job: dict, artifact_name: str, artifact_path: Path) -> dict:
+def _artifact_repr(job: dict, artifact_name: str, artifact_path: Path, secure_id=None) -> dict:
     raw_ext = _artifact_ext_for_output_path(artifact_path)
     render_ext = _artifact_render_ext_for_output_path(artifact_path)
+
+    if secure_id:
+        raw_url = f"/shared/{secure_id}/raw/{artifact_name}.{raw_ext}"
+        render_url = f"/shared/{secure_id}/render/{artifact_name}.{render_ext}"
+    else:
+        raw_url = url_for('raw_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=raw_ext, cid=job.get('client_id'))
+        render_url = url_for('render_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=render_ext, cid=job.get('client_id'))
 
     return {
         'name': artifact_name,
@@ -325,19 +354,23 @@ def _artifact_repr(job: dict, artifact_name: str, artifact_path: Path) -> dict:
         'kind': _artifact_kind_from_suffix(artifact_path.suffix),
         'mime': _artifact_mime_from_suffix(artifact_path.suffix),
         'filename': artifact_path.name,
-        'raw_url': url_for('raw_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=raw_ext, cid=job.get('client_id')),
-        'render_url': url_for('render_artifact', job_id=job.get('id'), artifact_name=artifact_name, ext=render_ext, cid=job.get('client_id')),
+        'raw_url': raw_url,
+        'render_url': render_url,
     }
 
 
-def _thumbnail_artifact_repr(job: dict) -> dict:
+def _thumbnail_artifact_repr(job: dict, secure_id=None) -> dict:
+    if secure_id:
+        raw_url = f"/shared/{secure_id}/raw/thumbnail.jpg"
+    else:
+        raw_url = url_for('raw_thumbnail', job_id=job.get('id'), cid=job.get('client_id'))
     return {
         'name': 'thumbnail',
         'ext': 'jpg',
         'kind': 'image',
         'mime': 'image/jpeg',
         'filename': 'thumbnail.jpg',
-        'raw_url': url_for('raw_thumbnail', job_id=job.get('id'), cid=job.get('client_id')),
+        'raw_url': raw_url,
         'render_url': None,
     }
 
@@ -547,18 +580,20 @@ def api_list_artifacts(job_id: str):
     job_id = job.get('id')
     expected = _expected_artifacts_for_job(job)
 
+    secure_id = job_service.store.get_shareable_for_job(job_id)
+
     artifacts = []
     for artifact_name, ext in expected:
         artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{ext}"
         if artifact_path.exists():
-            artifacts.append(_artifact_repr(job, artifact_name, artifact_path))
+            artifacts.append(_artifact_repr(job, artifact_name, artifact_path, secure_id=secure_id))
 
     # Expose a stable thumbnail artifact if we can derive a YouTube thumbnail.
     yt_thumb = _youtube_thumbnail_url(job.get('url') or '')
     if yt_thumb:
-        artifacts.append(_thumbnail_artifact_repr(job))
+        artifacts.append(_thumbnail_artifact_repr(job, secure_id=secure_id))
 
-    return jsonify({'artifacts': artifacts})
+    return jsonify({'artifacts': artifacts, 'share_id': secure_id})
 
 
 @app.route('/raw/<job_id>/<artifact_name>.<ext>', methods=['GET'])
@@ -743,6 +778,168 @@ def render_artifact_content(job_id: str, artifact_name: str):
 
     mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
     return send_file(artifact_path, as_attachment=False, mimetype=mimetype, download_name=artifact_path.name)
+
+
+def _get_job_by_shareable(secure_id: str):
+    """Resolve a secure_id to its completed job. Returns (job, None) or (None, error_response)."""
+    job = job_service.store.get_job_by_shareable(secure_id)
+    if not job:
+        return None, (jsonify({'error': 'Not found'}), 404)
+    if job['status'] != 'completed' or not job['output_file']:
+        return None, (jsonify({'error': 'Job not ready'}), 400)
+    return job, None
+
+
+@app.route('/shared/<secure_id>/raw/thumbnail.jpg', methods=['GET'])
+def shared_raw_thumbnail(secure_id: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    thumb_url = _youtube_thumbnail_url(job.get('url') or '')
+    if not thumb_url:
+        return jsonify({'error': 'Thumbnail not available'}), 404
+
+    r = requests.get(thumb_url, timeout=10)
+    if r.status_code != 200:
+        return jsonify({'error': 'Thumbnail fetch failed'}), 502
+
+    return Response(r.content, mimetype='image/jpeg')
+
+
+@app.route('/shared/<secure_id>/raw/<artifact_name>.<ext>', methods=['GET'])
+def shared_raw_artifact(secure_id: str, artifact_name: str, ext: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    expected_names = {name for name, _ in expected}
+    if artifact_name not in expected_names:
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    artifact_path = jobs_dir / f"{job['id']}_{artifact_name}.{ext.lower()}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    return send_file(artifact_path, as_attachment=True, download_name=artifact_path.name)
+
+
+@app.route('/shared/<secure_id>/render/cover.jpg', methods=['GET'])
+def shared_render_cover(secure_id: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    primary_path = _resolve_output_path(job['output_file'])
+    if primary_path.suffix.lower() != '.mp3':
+        return jsonify({'error': 'Cover art is only available for MP3 outputs'}), 400
+
+    cover_path = _cover_path_for_output(primary_path)
+    if not cover_path.exists():
+        return jsonify({'error': 'Cover image not found'}), 404
+
+    return send_file(cover_path, as_attachment=False, mimetype='image/jpeg', download_name=cover_path.name)
+
+
+@app.route('/shared/<secure_id>/render/content/<artifact_name>', methods=['GET'])
+def shared_render_content(secure_id: str, artifact_name: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    matching = [(n, e) for n, e in expected if n == artifact_name]
+    if not matching:
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    artifact_path = jobs_dir / f"{job['id']}_{artifact_name}.{matching[0][1]}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    suffix = artifact_path.suffix.lower()
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for content: {suffix or "unknown"}'}), 400
+
+    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    return send_file(artifact_path, as_attachment=False, mimetype=mimetype, download_name=artifact_path.name)
+
+
+@app.route('/shared/<secure_id>/render/<artifact_name>.<ext>', methods=['GET'])
+def shared_render_artifact(secure_id: str, artifact_name: str, ext: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    job_id = job['id']
+    primary_path = _resolve_output_path(job['output_file'])
+    jobs_dir = primary_path.parent
+    expected = _expected_artifacts_for_job(job)
+    expected_names = {name for name, _ in expected}
+    if artifact_name not in expected_names:
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    if ext.lower() != 'html':
+        return jsonify({'error': 'Unsupported render format'}), 400
+
+    matching = [(n, e) for n, e in expected if n == artifact_name]
+    artifact_path = jobs_dir / f"{job_id}_{artifact_name}.{matching[0][1]}"
+    if not artifact_path.exists():
+        return jsonify({'error': 'Artifact not found'}), 404
+
+    suffix = artifact_path.suffix.lower()
+
+    if suffix == '.md':
+        template = 'condensed_script.html' if artifact_name == 'condensed_script' else 'takeaways.html'
+        try:
+            return _render_markdown_output(
+                job_id,
+                None,
+                artifact_path,
+                youtube_url=job.get('url'),
+                channel_name=job.get('channel_name'),
+                template=template,
+            )
+        except Exception as e:
+            return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+
+    if suffix not in {'.mp3', '.mp4'}:
+        return jsonify({'error': f'Unsupported file type for render: {suffix or "unknown"}'}), 400
+
+    media_kind = 'audio' if suffix == '.mp3' else 'video'
+    media_url = f"/shared/{secure_id}/render/content/{artifact_name}"
+    raw_url = f"/shared/{secure_id}/raw/{artifact_name}.{matching[0][1]}"
+
+    params = job.get('params') or {}
+    aggressiveness = params.get('aggressiveness')
+    voice = params.get('voice')
+    thumbnail_url = None
+    if media_kind == 'audio':
+        cover_path = _cover_path_for_output(artifact_path)
+        if cover_path.exists():
+            thumbnail_url = f"/shared/{secure_id}/render/cover.jpg?v={str(uuid.uuid4())[:8]}"
+        else:
+            if _youtube_thumbnail_url(job.get('url') or ''):
+                thumbnail_url = f"/shared/{secure_id}/raw/thumbnail.jpg"
+
+    return render_template(
+        'media_player.html',
+        job_id=job_id,
+        video_title=job.get('title') or None,
+        channel_name=job.get('channel_name') or None,
+        aggressiveness=aggressiveness,
+        voice=voice,
+        thumbnail_url=thumbnail_url,
+        media_kind=media_kind,
+        media_url=media_url,
+        download_url=raw_url,
+        file_name=artifact_path.name,
+        youtube_url=job.get('url') or None,
+    )
 
 
 @app.route('/api/health', methods=['GET'])
@@ -1045,4 +1242,4 @@ if __name__ == '__main__':
         worker_thread.start()
         print("Concurrent mode enabled with JobService")
 
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=use_reloader)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=use_reloader, request_handler=_NoDateRequestHandler)
