@@ -1026,9 +1026,27 @@ class CondenserPipeline:
         frames_out_dir = output_json_path.parent / f"{output_json_path.stem}_frames"
         frames_out_dir.mkdir(parents=True, exist_ok=True)
 
+        # Frame 0: thumbnail (static cover image shown from the start)
         manifest_frames = []
+        thumb_candidates = [p for p in video_folder.glob("thumbnail.*") if p.suffix.lower() in {'.jpg', '.jpeg', '.png', '.webp'}]
+        if thumb_candidates:
+            thumb_src = thumb_candidates[0]
+            thumb_dest = frames_out_dir / "000.jpg"
+            if thumb_src.suffix.lower() == '.webp':
+                import subprocess as _sp
+                _sp.run(['ffmpeg', '-y', '-i', str(thumb_src), '-frames:v', '1', '-q:v', '2', str(thumb_dest)],
+                        capture_output=True, check=False)
+                if not thumb_dest.exists():
+                    shutil.copy(str(thumb_src), str(thumb_dest))
+            else:
+                shutil.copy(str(thumb_src), str(thumb_dest))
+            manifest_frames.append({"file": "000.jpg", "t": 0.0})
+            frame_offset = 1
+        else:
+            frame_offset = 0
+
         for i, ft in enumerate(frame_timings):
-            dest_filename = f"{i:03d}.jpg"
+            dest_filename = f"{i + frame_offset:03d}.jpg"
             shutil.copy(str(ft['path']), str(frames_out_dir / dest_filename))
             manifest_frames.append({"file": dest_filename, "t": round(ft['show_at'], 3)})
 

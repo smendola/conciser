@@ -129,16 +129,8 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginEnd="4dp"
-                        android:text="Video"
-                        style="@style/Widget.Material3.Button.OutlinedButton" />
-
-                    <Button
-                        android:id="@+id/btnVideoModeAudioOnly"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="4dp"
-                        android:text="Audio"
+                        android:text="🎞️ + 🗣️"
+                        android:textSize="28sp"
                         style="@style/Widget.Material3.Button.OutlinedButton" />
 
                     <Button
@@ -146,7 +138,8 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="Text"
+                        android:text="📄"
+                        android:textSize="28sp"
                         style="@style/Widget.Material3.Button.OutlinedButton" />
 
                 </com.google.android.material.button.MaterialButtonToggleGroup>

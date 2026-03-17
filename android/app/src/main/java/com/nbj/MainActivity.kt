@@ -628,8 +628,8 @@ class MainActivity : AppCompatActivity() {
         val voice: VoiceItem
     )
 
-    private val videoModeValues = listOf("slideshow", "audio_only")
-    private val videoModeLabels = listOf("Slideshow", "Audio Only (MP3)")
+    private val videoModeValues = listOf("slideshow", "text")
+    private val videoModeLabels = listOf("🎞️+🗣️", "📄")
 
     // Takeaways mode
     private var appMode: String = "condense" // "condense" or "takeaways"
@@ -795,7 +795,6 @@ class MainActivity : AppCompatActivity() {
         binding.toggleVideoMode.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             val value = when (checkedId) {
-                binding.btnVideoModeAudioOnly.id -> "audio_only"
                 binding.btnVideoModeText.id -> "text"
                 binding.btnVideoModeSlideshow.id -> "slideshow"
                 else -> "slideshow"
@@ -810,7 +809,6 @@ class MainActivity : AppCompatActivity() {
         suppressAutoSave = true
         val savedVideoMode = prefs.getString("video_mode", "slideshow") ?: "slideshow"
         when (savedVideoMode) {
-            "audio_only" -> binding.toggleVideoMode.check(binding.btnVideoModeAudioOnly.id)
             "text" -> binding.toggleVideoMode.check(binding.btnVideoModeText.id)
             else -> binding.toggleVideoMode.check(binding.btnVideoModeSlideshow.id)
         }
@@ -1086,7 +1084,7 @@ class MainActivity : AppCompatActivity() {
 
             val videoMode = prefsGetStringLogged(prefs, "video_mode", "slideshow", "loadSettingsToUI") ?: "slideshow"
             when (videoMode) {
-                "audio_only" -> binding.toggleVideoMode.check(binding.btnVideoModeAudioOnly.id)
+                "text" -> binding.toggleVideoMode.check(binding.btnVideoModeText.id)
                 else -> binding.toggleVideoMode.check(binding.btnVideoModeSlideshow.id)
             }
 
@@ -1602,7 +1600,7 @@ class MainActivity : AppCompatActivity() {
         editor.putBoolean("prepend_intro", binding.switchPrependIntro.isChecked)
 
         val videoMode = when (binding.toggleVideoMode.checkedButtonId) {
-            binding.btnVideoModeAudioOnly.id -> "audio_only"
+            binding.btnVideoModeText.id -> "text"
             binding.btnVideoModeSlideshow.id -> "slideshow"
             else -> "slideshow"
         }
@@ -2328,9 +2326,8 @@ class MainActivity : AppCompatActivity() {
         val prependIntro = prefs.getBoolean("prepend_intro", false)
 
         currentOutputFormat = when (videoMode) {
-            "audio_only" -> "audio"
             "text" -> "text"
-            else -> "video"
+            else -> "slideshow"
         }
 
         val req = CreateJobRequest(
