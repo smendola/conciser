@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ video_title if video_title else ('Slideshow - Job ' ~ job_id) }}</title>
+    <link rel="stylesheet" href="/static/media_player.css">
+    <style>
+        .slideshow-frame {
+            display: block;
+            width: 100%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9;
+            object-fit: contain;
+            background: #000;
+            border-radius: 6px;
+            margin: 0 auto;
+        }
+        .slideshow-audio {
+            width: 100%;
+            margin-top: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="title">{{ video_title if video_title else ('Slideshow - Job ' ~ job_id) }}</h1>
+            <div class="meta">
+                {% if channel_name %}{{ channel_name }}{% endif %}
+                {% if aggressiveness is not none %} | Aggressiveness: {{ aggressiveness }}/10{% endif %}
+                {% if voice %} | Voice: {{ voice }}{% endif %}
+                {% if youtube_url %} | <a href="{{ youtube_url }}" target="_blank" rel="noopener noreferrer" style="color: #4a9eff;">Watch on YouTube</a>{% endif %}
+            </div>
+        </div>
+
+        <div class="player-shell">
+            {% if manifest.frames %}
+            <img id="ss-frame" class="slideshow-frame"
+                 src="{{ frames_base }}{{ manifest.frames[0].file }}{% if cid %}?cid={{ cid }}{% endif %}"
+                 alt="Video frame">
+            {% endif %}
+
+            <audio id="ss-audio" class="slideshow-audio" controls preload="metadata">
+                <source src="{{ audio_url }}" type="audio/mpeg">
+                Your browser does not support audio playback.
+            </audio>
+
+            <div class="actions">
+                <a class="button button-primary" href="{{ audio_download_url }}">Download Audio</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var FRAMES = {{ manifest.frames | tojson }};
+        var FRAMES_BASE = {{ frames_base | tojson }};
+        var CID = {{ (cid or '') | tojson }};
+
+        var frameImg = document.getElementById('ss-frame');
+        var audio = document.getElementById('ss-audio');
+        if (!frameImg || !audio || FRAMES.length === 0) return;
+
+        function frameUrl(file) {
+            return FRAMES_BASE + file + (CID ? '?cid=' + encodeURIComponent(CID) : '');
+        }
+
+        // Preload all frames
+        FRAMES.forEach(function (f) {
+            var img = new Image();
+            img.src = frameUrl(f.file);
+        });
+
+        var currentIdx = 0;
+
+        function syncFrame() {
+            var t = audio.currentTime;
+            var idx = 0;
+            for (var i = FRAMES.length - 1; i >= 0; i--) {
+                if (t >= FRAMES[i].t) { idx = i; break; }
+            }
+            if (idx !== currentIdx) {
+                currentIdx = idx;
+                frameImg.src = frameUrl(FRAMES[idx].file);
+            }
+        }
+
+        audio.addEventListener('timeupdate', syncFrame);
+        audio.addEventListener('seeked', syncFrame);
+    })();
+    </script>
+</body>
+</html>

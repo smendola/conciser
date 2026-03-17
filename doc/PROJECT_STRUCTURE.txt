@@ -13,7 +13,7 @@ nbj-condenser/
 │   │   ├── azure_tts.py           # Stage 4 alt: Azure TTS (paid, SSML support)
 │   │   ├── tts.py                 # Stage 4 alt: ElevenLabs voice cloning
 │   │   ├── video_generator.py     # Stage 5: D-ID avatar (optional)
-│   │   └── compositor.py          # Stage 5: ffmpeg video assembly
+│   │   └── compositor.py          # Stage 5: ffmpeg video assembly (static/avatar only)
 │   └── utils/
 │       ├── __init__.py
 │       ├── audio_utils.py         # Audio processing helpers

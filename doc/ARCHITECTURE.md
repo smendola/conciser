@@ -165,22 +165,23 @@ Services Speech SDK + keys (Azure TTS); ElevenLabs API (optional)
 Three modes, selectable via `--format` (CLI supports `slideshow`, `audio_only`,
 `avatar`; `static` is available in the pipeline but not exposed via the CLI):
 
-| Mode         | Description                                      | Output           |
-| ------------ | ------------------------------------------------ | ---------------- |
-| `slideshow`  | Scene-detected keyframes assembled into MP4      | `.mp4` (default) |
-| `audio_only` | Skip video entirely, output TTS audio as-is      | `.mp3` (fastest) |
-| `static`     | Single extracted frame as video background       | `.mp4`           |
-| `avatar`     | D-ID talking-head video (expensive, rarely used) | `.mp4`           |
+| Mode         | Description                                                        | Output                      |
+| ------------ | ------------------------------------------------------------------ | --------------------------- |
+| `slideshow`  | Scene-detected keyframes + JS player (no ffmpeg encode)            | `.json` manifest (default)  |
+| `audio_only` | Skip video entirely, output TTS audio as-is                        | `.mp3` (fastest)            |
+| `static`     | Single extracted frame as video background                         | `.mp4`                      |
+| `avatar`     | D-ID talking-head video (expensive, rarely used)                   | `.mp4`                      |
 
-**Slideshow details** (`video_utils.py`):
+**Slideshow details** (`pipeline.py` — `_build_slideshow_package()`):
 
 - Detects scene changes using PySceneDetect
-- Extracts keyframe images at each scene boundary
-- Compositor builds timed slideshow synced to TTS audio
+- Extracts keyframe JPEGs at scene boundaries (runs in parallel with Transcribe → Condense → TTS)
+- Proportionally maps original scene timestamps to the condensed audio timeline
+- Outputs a JSON timing manifest + a `{job_id}_slideshow_frames/` directory of sequentially-named JPEGs
+- No ffmpeg video encoding — the server renders the slideshow as a JS player in the browser
 - `--slideshow-frames N` limits number of frames used
 
-**External Dependencies**: ffmpeg, PySceneDetect (slideshow); D-ID API (avatar
-mode only)
+**External Dependencies**: PySceneDetect (slideshow); D-ID API (avatar mode only)
 
 ---
 
@@ -436,17 +437,33 @@ YouTube URL
     ├── audio_only → output/*.mp3 → DONE                   │
     │                                                      │
     ▼          waits for frame extraction to finish ───────┘
-[VIDEO] slideshow / static / avatar → final composition
+[SLIDESHOW] timing manifest + copied JPEGs → output/*.json + frames/
+    │          (no ffmpeg — browser JS player syncs frames to audio)
+    ├── slideshow → output/{id}_slideshow.json + {id}_slideshow_frames/ → DONE
     │
-    ▼
-output/*.mp4
+    ▼   (static / avatar only)
+[VIDEO] static / avatar → ffmpeg composition → output/*.mp4
 ```
 
 **Parallelism**: In `slideshow` mode, scene detection and frame extraction
 (`_extract_frames_early`) starts immediately after the download completes, in a
 background `ThreadPoolExecutor` thread. This runs concurrently with Transcribe →
 Condense → TTS. By the time TTS finishes, the frames are typically ready,
-eliminating most of the scene detection wait.
+eliminating the scene detection wait entirely.
+
+**Slideshow manifest format** (`{job_id}_slideshow.json`):
+```json
+{
+  "duration": 187.4,
+  "frames": [
+    {"file": "000.jpg", "t": 0.0},
+    {"file": "001.jpg", "t": 15.2},
+    ...
+  ]
+}
+```
+The browser player listens to `audio.ontimeupdate` and swaps the displayed JPEG
+whenever `currentTime >= frame.t`.
 
 ---
 
@@ -466,7 +483,7 @@ nbj-condenser/
 │   │   ├── edge_tts.py         # Stage 4 alt: Edge TTS (free)
 │   │   ├── tts.py              # Stage 4 alt: ElevenLabs voice cloning
 │   │   ├── video_generator.py  # Stage 5: D-ID avatar (optional)
-│   │   └── compositor.py       # Stage 5: ffmpeg composition
+│   │   └── compositor.py       # Stage 5: ffmpeg composition (static/avatar modes only)
 │   └── utils/
 │       ├── audio_utils.py      # Audio processing helpers
 │       ├── video_utils.py      # Video processing + scene detection
@@ -534,7 +551,7 @@ nbj-condenser/
    much faster than OpenAI)
 3. **Condense**: 10–30s (LLM API call)
 4. **TTS (Azure)**: 5–15s
-5. **Slideshow composition**: 30–90s (ffmpeg)
+5. **Slideshow package**: ~1–2s (file copy + JSON write, no ffmpeg)
 
 ### Resource Usage
 

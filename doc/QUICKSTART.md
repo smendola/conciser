@@ -68,7 +68,7 @@ nbj check
 
 ## Your First Condensed Video
 
-### Option A: Slideshow (default, MP4 output)
+### Option A: Slideshow (default)
 
 ```bash
 nbj condense "https://youtube.com/watch?v=VIDEO_ID"
@@ -80,9 +80,9 @@ Pipeline stages:
 2. **Transcribe** — Whisper API transcribes audio (~1–2 min)
 3. **Condense** — OpenAI/Claude rewrites the script (~15–30s)
 4. **TTS** — Edge TTS generates speech (~5–15s)
-5. **Slideshow** — ffmpeg builds a video from scene keyframes (~30–90s)
+5. **Slideshow** — writes timing manifest + copies JPEG frames (~1–2s, no ffmpeg)
 
-Total: **3–5 minutes** for a typical 10-minute video.
+Total: **2–4 minutes** for a typical 10-minute video.
 
 ### Option B: Audio Only (fastest, MP3 output)
 

@@ -412,7 +412,7 @@ class CondenserPipeline:
                 voice_snake = re.sub(r'[^a-z0-9_]', '', used_voice_id.lower().replace('-', '_'))
                 rate_str = _encode_rate(tts_rate)
                 base_filename = f"{video_id}_{normalized_title}_a{aggressiveness}_{tts_provider}_{voice_snake}_{rate_str}_{tts_mode}"
-                extension = "mp3" if video_gen_mode == "audio_only" else "mp4"
+                extension = "mp3" if video_gen_mode == "audio_only" else ("json" if video_gen_mode == "slideshow" else "mp4")
                 final_path = self.settings.output_dir / f"{base_filename}.{extension}"
             else:
                 final_path = output_path
@@ -468,7 +468,23 @@ class CondenserPipeline:
                 update_progress("COMPLETE", f"Audio condensed successfully: {final_path}")
                 return { 'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result }
 
-            # --- Video Generation (for non-audio-only modes) ---
+            # --- Video Generation (for non-audio-only, non-slideshow modes) ---
+            if video_gen_mode == "slideshow":
+                if frame_extraction_future:
+                    update_progress("VIDEO_GENERATE", "Waiting for frame extraction to complete...")
+                    try:
+                        frame_extraction_future.result(timeout=300)
+                        logger.info("Frame extraction completed in parallel")
+                    except Exception as e:
+                        logger.warning(f"Parallel frame extraction failed: {e}, will retry")
+                update_progress("VIDEO_GENERATE", "Building slideshow package...")
+                final_path.parent.mkdir(parents=True, exist_ok=True)
+                self._build_slideshow_package(video_path, generated_audio_path, video_folder, final_path, slideshow_max_frames)
+                logger.info(f"VIDEO_GENERATE: {time.time() - _t:.1f} sec")
+                stats = { 'original_duration_minutes': duration_minutes, 'condensed_duration_minutes': condensed_result['estimated_condensed_duration_minutes'], 'reduction_percentage': condensed_result['reduction_percentage'], 'aggressiveness': aggressiveness, 'quality': quality, }
+                update_progress("COMPLETE", f"Slideshow package created: {final_path}")
+                return { 'output_video': final_path, 'metadata': metadata, 'stats': stats, 'condensed_result': condensed_result, 'audio_path': generated_audio_path }
+
             existing_generated_video = self._find_existing_generated_video(video_folder, video_gen_mode) if resume else None
             if existing_generated_video:
                 update_progress("VIDEO_GENERATE", f"Resuming from step VIDEO_GENERATE - found existing generated video: {existing_generated_video.name}")
@@ -476,16 +492,6 @@ class CondenserPipeline:
             elif video_gen_mode == "avatar":
                 update_progress("VIDEO_GENERATE", "Generating talking head video with D-ID...")
                 generated_video_path = self._generate_video_avatar(video_path, generated_audio_path, video_folder)
-            elif video_gen_mode == "slideshow":
-                if frame_extraction_future:
-                    update_progress("VIDEO_GENERATE", "Waiting for frame extraction to complete...")
-                    try:
-                        frame_extraction_future.result(timeout=300)
-                        logger.info("Frame extraction completed in parallel")
-                    except Exception as e:
-                        logger.warning(f"Parallel frame extraction failed: {e}, will retry during video generation")
-                update_progress("VIDEO_GENERATE", "Creating slideshow video...")
-                generated_video_path = self._generate_video_slideshow(video_path, generated_audio_path, video_folder, slideshow_max_frames)
             else:  # static
                 update_progress("VIDEO_GENERATE", "Creating static image video...")
                 generated_video_path = self._generate_video_static(video_path, generated_audio_path, video_folder)
@@ -931,39 +937,32 @@ class CondenserPipeline:
 
         except Exception as e:
             logger.error(f"Early frame extraction failed: {e}")
-            # Don't raise - let _generate_video_slideshow handle it
+            # Don't raise - let _build_slideshow_package handle it
 
-    def _generate_video_slideshow(
+    def _build_slideshow_package(
         self,
         source_video_path: Path,
         audio_path: Path,
         video_folder: Path,
+        output_json_path: Path,
         max_frames: int = None
     ) -> Path:
         """
-        Generate slideshow video with scene-detected frames.
+        Build a slideshow package: timing manifest JSON + copied JPEG frames.
 
-        Uses PySceneDetect to identify scene changes in the original video,
-        then proportionally maps those scenes to the condensed audio timeline.
-
-        Args:
-            source_video_path: Path to original video
-            audio_path: Path to condensed audio
-            video_folder: Working directory
-            max_frames: Maximum frames to extract (None = auto-calculate)
+        Replaces the old ffmpeg-based slideshow MP4 generation. Outputs:
+          - output_json_path: JSON manifest {"duration": N, "frames": [{"file": "000.jpg", "t": T}, ...]}
+          - output_json_path.parent / f"{output_json_path.stem}_frames/": directory of sequentially-named JPEGs
         """
-        import subprocess
+        import shutil
 
-        # Get durations
         condensed_duration = get_audio_duration(audio_path)
         source_duration = get_audio_duration(source_video_path)
 
-        # Create frames subdirectory for preservation
         frames_dir = video_folder / "frames"
         frames_dir.mkdir(exist_ok=True)
 
-        # Check if frames were already extracted in parallel
-        # Check for both old format (slideshow_frame_*.jpg) and new format (scene_*.jpg)
+        # Use pre-extracted frames if available (from parallel extraction)
         existing_frames = sorted(frames_dir.glob("scene_*.jpg"))
         if not existing_frames:
             existing_frames = sorted(frames_dir.glob("slideshow_frame_*.jpg"))
@@ -971,36 +970,21 @@ class CondenserPipeline:
         if existing_frames:
             logger.info(f"Using {len(existing_frames)} pre-extracted frames from parallel extraction")
             frame_paths = existing_frames
-
-            # Try to load scene data from parallel extraction
             scenes_file = frames_dir / "scenes.json"
             if scenes_file.exists():
-                import json
                 with open(scenes_file, 'r') as f:
                     scenes = json.load(f)
-                logger.info(f"Loaded scene timing data for {len(scenes)} scenes from parallel extraction")
+                logger.info(f"Loaded scene timing data for {len(scenes)} scenes")
             else:
-                logger.warning("No scene data found from parallel extraction, using equal-duration timing")
+                logger.warning("No scene data found, using equal-duration timing")
                 scenes = []
         else:
-            # Frames not extracted yet, do it now
             logger.info(f"Detecting scenes in source video ({source_duration:.1f}s)...")
-
-            # Detect scene changes in source video
             scenes = detect_scene_changes(source_video_path, threshold=27)
 
-            # Fallback to evenly-spaced frames if scene detection fails
             if not scenes:
                 logger.warning("Scene detection failed, using evenly-spaced frames")
-
-                # Calculate fallback frame count
-                if max_frames is None:
-                    num_frames = min(10, int(condensed_duration / 5))
-                    logger.info(f"Auto-calculated fallback frames: {num_frames} (use --slideshow-frames to override)")
-                else:
-                    num_frames = max_frames
-                    logger.info(f"Using user-specified frames for fallback: {num_frames}")
-
+                num_frames = max_frames if max_frames is not None else min(10, int(condensed_duration / 5))
                 frame_paths = []
                 for i in range(num_frames):
                     timestamp = (source_duration / (num_frames + 1)) * (i + 1)
@@ -1008,158 +992,51 @@ class CondenserPipeline:
                     extract_frame(source_video_path, frame_path, timestamp=timestamp)
                     frame_paths.append(frame_path)
             else:
-                # Extract keyframes from detected scenes
                 logger.info(f"Found {len(scenes)} scenes, extracting keyframes...")
-
-                # Save scene data (only when we have scenes)
-                import json
                 scenes_file = frames_dir / "scenes.json"
                 with open(scenes_file, 'w') as f:
                     json.dump(scenes, f, indent=2)
-                logger.info(f"Saved scene timing data to {scenes_file}")
-
-                # Calculate max frames if not specified
                 if max_frames is None:
-                    # Conservative default: 1 frame per 4 seconds, max 15
                     max_frames = min(15, int(condensed_duration / 4))
-                    logger.info(f"Auto-calculated max frames: {max_frames} (use --slideshow-frames to override)")
-                else:
-                    logger.info(f"Using user-specified max frames: {max_frames}")
-
-                frame_paths = extract_scene_keyframes(
-                    source_video_path,
-                    scenes,
-                    frames_dir,  # Save to frames/ subdirectory
-                    max_frames=max_frames
-                )
+                frame_paths = extract_scene_keyframes(source_video_path, scenes, frames_dir, max_frames=max_frames)
                 logger.info(f"Saved {len(frame_paths)} frames to {frames_dir}")
 
-        # Proportional synchronization: map frames to condensed timeline
-        # If scene was at 25% through original, show at 25% through condensed
+        # Proportional timing: map original scene positions to condensed timeline
         frame_timings = []
         if scenes and any('scene_' in str(fp.name) for fp in frame_paths):
-            # We have scene timing info - use proportional mapping
-            # Build a dict for quick scene lookup by scene_id
             scene_dict = {s['scene_id']: s for s in scenes}
-
             for frame_path in frame_paths:
-                # Extract scene_id from filename (e.g., "scene_042.jpg" -> 42)
                 if 'scene_' in frame_path.name:
                     scene_id = int(frame_path.stem.split('_')[-1])
-
-                    # Find the scene by its scene_id
                     scene = scene_dict.get(scene_id)
                     if scene:
-                        # Calculate proportional position
-                        original_position = scene['start_time'] / source_duration  # 0.0 to 1.0
-                        condensed_position = original_position * condensed_duration  # Map to condensed timeline
-
-                        frame_timings.append({
-                            'path': frame_path,
-                            'show_at': condensed_position,
-                            'scene_id': scene_id
-                        })
-
+                        condensed_position = (scene['start_time'] / source_duration) * condensed_duration
+                        frame_timings.append({'path': frame_path, 'show_at': condensed_position})
             if frame_timings:
-                # Sort by show_at time
                 frame_timings.sort(key=lambda x: x['show_at'])
-                logger.info(f"Synchronized {len(frame_timings)} frames to condensed timeline using proportional mapping")
+                logger.info(f"Proportionally mapped {len(frame_timings)} frames to condensed timeline")
 
-        # Fallback to equal duration if we don't have proportional timings
         if not frame_timings:
             logger.info("Using equal-duration timing for frames")
-            # Fallback: equal duration for each frame
             frame_duration = condensed_duration / len(frame_paths)
             for i, frame_path in enumerate(frame_paths):
-                frame_timings.append({
-                    'path': frame_path,
-                    'show_at': i * frame_duration,
-                    'scene_id': i
-                })
-            logger.info(f"Using equal duration ({frame_duration:.1f}s) for {len(frame_paths)} frames")
+                frame_timings.append({'path': frame_path, 'show_at': i * frame_duration})
 
-        # Calculate durations for each frame
-        for i in range(len(frame_timings)):
-            if i < len(frame_timings) - 1:
-                # Duration until next frame
-                frame_timings[i]['duration'] = frame_timings[i + 1]['show_at'] - frame_timings[i]['show_at']
-            else:
-                # Last frame shows until end
-                frame_timings[i]['duration'] = condensed_duration - frame_timings[i]['show_at']
+        # Copy frames to output location and build manifest
+        frames_out_dir = output_json_path.parent / f"{output_json_path.stem}_frames"
+        frames_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create concat file with timed durations (use absolute paths)
-        concat_file = video_folder / "slideshow_concat.txt"
-        logger.debug(f"Writing slideshow concat list: {concat_file}")
-        with open(concat_file, 'w') as f:
-            for ft in frame_timings:
-                # Convert to absolute path for ffmpeg concat demuxer
-                abs_path = ft['path'].resolve() if hasattr(ft['path'], 'resolve') else Path(ft['path']).resolve()
-                f.write(f"file '{abs_path}'\n")
-                f.write(f"duration {ft['duration']:.3f}\n")
-            # Add last frame again to ensure proper duration
-            last_path = frame_timings[-1]['path'].resolve() if hasattr(frame_timings[-1]['path'], 'resolve') else Path(frame_timings[-1]['path']).resolve()
-            f.write(f"file '{last_path}'\n")
+        manifest_frames = []
+        for i, ft in enumerate(frame_timings):
+            dest_filename = f"{i:03d}.jpg"
+            shutil.copy(str(ft['path']), str(frames_out_dir / dest_filename))
+            manifest_frames.append({"file": dest_filename, "t": round(ft['show_at'], 3)})
 
-        # Create slideshow video
-        temp_video = video_folder / "slideshow_no_audio.mp4"
+        manifest = {"duration": round(condensed_duration, 3), "frames": manifest_frames}
+        output_json_path.write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+        logger.info(f"Slideshow manifest written: {output_json_path} ({len(manifest_frames)} frames)")
 
-        cmd = [
-            'ffmpeg', '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', str(concat_file),
-            '-vsync', 'vfr',
-            '-map', '0:v:0',
-            '-an',
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            '-g', '1',               # keyframe at every frame — makes all scene cuts seekable
-            '-movflags', '+faststart',
-            str(temp_video)
-        ]
-
-        try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg slideshow creation failed: {e.stderr}")
-            raise RuntimeError(f"Failed to create slideshow video: {e.stderr}")
-
-        # Combine with audio
-        output_path = video_folder / "generated_video.mp4"
-
-        cmd = [
-            'ffmpeg', '-y',
-            '-i', str(temp_video),
-            '-i', str(audio_path),
-            '-map', '0:v:0',
-            '-map', '1:a:0',
-            '-vsync', '2',
-            '-fflags', '+genpts',
-            '-c:v', 'libx264',       # re-encode (not copy) to preserve keyframes and movflags
-            '-pix_fmt', 'yuv420p',
-            '-g', '1',
-            '-movflags', '+faststart',
-            '-c:a', 'aac',
-            '-b:a', '192k',
-            '-max_muxing_queue_size', '4096',
-            '-shortest',
-            str(output_path)
-        ]
-
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            logger.error(f"FFmpeg audio mux failed: {e.stderr}")
-            raise RuntimeError(f"Failed to mux slideshow video with audio: {e.stderr}")
-        logger.info(f"Created slideshow video with {len(frame_timings)} scene-synchronized frames")
-        logger.info(f"Extracted frames saved to: {frames_dir}")
-
-        # Cleanup temporary files (but keep frames in frames/ directory)
-        concat_file.unlink(missing_ok=True)
-        temp_video.unlink(missing_ok=True)
-
-        return output_path
+        return output_json_path
 
     def _compose_final_video(
         self,

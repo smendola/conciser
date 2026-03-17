@@ -27,7 +27,7 @@ real-time progress and the final result.
   `/api/voices?locale=en`)
 - **Aggressiveness**: Slider 1–10
 - **Speech Speed**: Slider (-50% to +100%)
-- **Output Mode**: Spinner — `Slideshow` (MP4) or `Audio Only` (MP3)
+- **Output Mode**: Spinner — `Slideshow` (JS player) or `Audio Only` (MP3)
 - **Prepend key take-aways intro**: Switch
 
 ### Settings screen (overflow menu)

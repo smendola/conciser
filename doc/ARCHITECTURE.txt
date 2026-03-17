@@ -51,7 +51,8 @@ PIPELINE STAGES
    - ElevenLabs (optional, paid): tts.py, voice cloning
 
 5. VIDEO GENERATION / COMPOSITION
-   - slideshow (default): scene-detected keyframes -> MP4
+   - slideshow (default): scene-detected keyframes -> JSON manifest + JPEG frames
+     (no ffmpeg encode; browser JS player syncs frames to MP3 audio)
    - audio_only: TTS audio output only -> MP3 (fastest)
    - static: single extracted frame -> MP4
    - avatar: D-ID talking head -> MP4 (expensive, optional)
@@ -107,7 +108,7 @@ KEY FILES
   src/modules/azure_tts.py   Azure TTS (paid, SSML support)
   src/modules/tts.py          ElevenLabs voice cloning (optional)
   src/modules/video_generator.py  D-ID avatar (optional)
-  src/modules/compositor.py   ffmpeg video assembly
+  src/modules/compositor.py   ffmpeg video assembly (static/avatar modes only)
   src/utils/audio_utils.py    Audio processing helpers
   src/utils/video_utils.py    Video processing + scene detection
   src/utils/prompt_templates.py   LLM prompt templates

@@ -39,4 +39,4 @@ This file is kept for historical reference. For current status, see README.md an
 - Stage 2: Transcribe (Whisper API)
 - Stage 3: Condense (OpenAI gpt-5.2 default, or Claude)
 - Stage 4: TTS (Edge TTS default, ElevenLabs, or Azure with SSML)
-- Stage 5: Video (slideshow/static/avatar) or audio-only output
+- Stage 5: Slideshow package (JSON manifest + JPEG frames, no ffmpeg), static/avatar MP4, or audio-only output

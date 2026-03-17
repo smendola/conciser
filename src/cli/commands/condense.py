@@ -335,6 +335,10 @@ def condense(url, aggressiveness, quality, output, resume, format, voice, tts_pr
 
         if format == 'text':
             print(f"Output script: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
+        elif format == 'slideshow':
+            print(f"Output manifest: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
+            frames_dir = Path(result['output_video']).parent / f"{Path(result['output_video']).stem}_frames"
+            print(f"Output frames:   {Fore.CYAN}{frames_dir}{Style.RESET_ALL}")
         else:
             print(f"Output video: {Fore.CYAN}{result['output_video']}{Style.RESET_ALL}")
         print(f"\nStatistics:")

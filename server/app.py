@@ -259,6 +259,8 @@ def _artifact_kind_from_suffix(suffix: str) -> str:
         return 'image'
     if s in {'.md', '.txt'}:
         return 'text'
+    if s == '.json':
+        return 'slideshow'
     return 'file'
 
 
@@ -274,6 +276,8 @@ def _artifact_mime_from_suffix(suffix: str) -> str:
         return 'text/markdown'
     if s == '.txt':
         return 'text/plain'
+    if s == '.json':
+        return 'application/json'
     return 'application/octet-stream'
 
 
@@ -299,7 +303,7 @@ def _expected_artifacts_for_job(job: dict) -> list:
     if video_mode == 'audio_only':
         return [('audio', 'mp3'), ('condensed_script', 'md')]
     # slideshow (and any other video mode)
-    return [('slideshow', 'mp4'), ('audio', 'mp3'), ('condensed_script', 'md')]
+    return [('slideshow', 'json'), ('audio', 'mp3'), ('condensed_script', 'md')]
 
 
 def _primary_artifact_for_job(job: dict) -> tuple:
@@ -690,6 +694,31 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
         except Exception as e:
             return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
 
+    if suffix == '.json' and artifact_name == 'slideshow':
+        import json as _json
+        try:
+            manifest = _json.loads(artifact_path.read_text(encoding='utf-8'))
+        except Exception as e:
+            return jsonify({'error': f'Failed to read slideshow manifest: {e}'}), 500
+        params = job.get('params') or {}
+        audio_url = url_for('render_artifact_content', job_id=job_id, artifact_name='audio', cid=client_id)
+        audio_download_url = url_for('raw_artifact', job_id=job_id, artifact_name='audio', ext='mp3', cid=client_id)
+        frames_base = f"/render/{job_id}/frames/"
+        return render_template(
+            'slideshow_player.html',
+            job_id=job_id,
+            video_title=job.get('title') or None,
+            channel_name=job.get('channel_name') or None,
+            aggressiveness=params.get('aggressiveness'),
+            voice=params.get('voice'),
+            youtube_url=job.get('url') or None,
+            manifest=manifest,
+            frames_base=frames_base,
+            cid=client_id,
+            audio_url=audio_url,
+            audio_download_url=audio_download_url,
+        )
+
     if suffix not in {'.mp3', '.mp4'}:
         return jsonify({'error': f'Unsupported file type for render: {suffix or "unknown"}'}), 400
 
@@ -724,6 +753,28 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
         file_name=artifact_path.name,
         youtube_url=job.get('url') or None,
     )
+
+
+@app.route('/render/<job_id>/frames/<path:filename>', methods=['GET'])
+def render_slideshow_frame(job_id: str, filename: str):
+    client_id, error_response = _client_id_response()
+    if error_response:
+        return error_response
+
+    job, job_error = _get_authorized_completed_job(job_id, client_id)
+    if job_error:
+        status_code = 409 if job_error[1] == 400 else 404
+        return jsonify({'error': 'Job not ready' if status_code == 409 else 'Job not found'}), status_code
+
+    if '/' in filename or '..' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    primary_path = _resolve_output_path(job['output_file'])
+    frames_dir = primary_path.parent / f"{primary_path.stem}_frames"
+    if not frames_dir.exists():
+        return jsonify({'error': 'Frames not found'}), 404
+
+    return send_from_directory(str(frames_dir), filename, mimetype='image/jpeg')
 
 
 @app.route('/render/<job_id>/cover.jpg', methods=['GET'])
@@ -773,10 +824,15 @@ def render_artifact_content(job_id: str, artifact_name: str):
         return jsonify({'error': 'Artifact not found'}), 404
 
     suffix = artifact_path.suffix.lower()
-    if suffix not in {'.mp3', '.mp4'}:
+    if suffix not in {'.mp3', '.mp4', '.json'}:
         return jsonify({'error': f'Unsupported file type for content: {suffix or "unknown"}'}), 400
 
-    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    if suffix == '.json':
+        mimetype = 'application/json'
+    elif suffix == '.mp3':
+        mimetype = 'audio/mpeg'
+    else:
+        mimetype = 'video/mp4'
     return send_file(artifact_path, as_attachment=False, mimetype=mimetype, download_name=artifact_path.name)
 
 
@@ -862,11 +918,33 @@ def shared_render_content(secure_id: str, artifact_name: str):
         return jsonify({'error': 'Artifact not found'}), 404
 
     suffix = artifact_path.suffix.lower()
-    if suffix not in {'.mp3', '.mp4'}:
+    if suffix not in {'.mp3', '.mp4', '.json'}:
         return jsonify({'error': f'Unsupported file type for content: {suffix or "unknown"}'}), 400
 
-    mimetype = 'audio/mpeg' if suffix == '.mp3' else 'video/mp4'
+    if suffix == '.json':
+        mimetype = 'application/json'
+    elif suffix == '.mp3':
+        mimetype = 'audio/mpeg'
+    else:
+        mimetype = 'video/mp4'
     return send_file(artifact_path, as_attachment=False, mimetype=mimetype, download_name=artifact_path.name)
+
+
+@app.route('/shared/<secure_id>/render/frames/<path:filename>', methods=['GET'])
+def shared_render_slideshow_frame(secure_id: str, filename: str):
+    job, err = _get_job_by_shareable(secure_id)
+    if err:
+        return err
+
+    if '/' in filename or '..' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+
+    primary_path = _resolve_output_path(job['output_file'])
+    frames_dir = primary_path.parent / f"{primary_path.stem}_frames"
+    if not frames_dir.exists():
+        return jsonify({'error': 'Frames not found'}), 404
+
+    return send_from_directory(str(frames_dir), filename, mimetype='image/jpeg')
 
 
 @app.route('/shared/<secure_id>/render/<artifact_name>.<ext>', methods=['GET'])
@@ -906,6 +984,31 @@ def shared_render_artifact(secure_id: str, artifact_name: str, ext: str):
             )
         except Exception as e:
             return jsonify({'error': f'Failed to render markdown: {str(e)}'}), 500
+
+    if suffix == '.json' and artifact_name == 'slideshow':
+        import json as _json
+        try:
+            manifest = _json.loads(artifact_path.read_text(encoding='utf-8'))
+        except Exception as e:
+            return jsonify({'error': f'Failed to read slideshow manifest: {e}'}), 500
+        params = job.get('params') or {}
+        audio_url = f"/shared/{secure_id}/render/content/audio"
+        audio_download_url = f"/shared/{secure_id}/raw/audio.mp3"
+        frames_base = f"/shared/{secure_id}/render/frames/"
+        return render_template(
+            'slideshow_player.html',
+            job_id=job_id,
+            video_title=job.get('title') or None,
+            channel_name=job.get('channel_name') or None,
+            aggressiveness=params.get('aggressiveness'),
+            voice=params.get('voice'),
+            youtube_url=job.get('url') or None,
+            manifest=manifest,
+            frames_base=frames_base,
+            cid=None,
+            audio_url=audio_url,
+            audio_download_url=audio_download_url,
+        )
 
     if suffix not in {'.mp3', '.mp4'}:
         return jsonify({'error': f'Unsupported file type for render: {suffix or "unknown"}'}), 400

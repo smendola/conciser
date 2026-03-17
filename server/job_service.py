@@ -173,7 +173,7 @@ class JobService:
         elif video_mode == "audio_only":
             output_path = jobs_dir / f"{job_id}_audio.mp3"
         else:
-            output_path = jobs_dir / f"{job_id}_slideshow.mp4"
+            output_path = jobs_dir / f"{job_id}_slideshow.json"
 
         result = pipeline.run(
             video_url=job["url"],
@@ -189,6 +189,15 @@ class JobService:
             resume=self.settings.resume,
             prepend_intro=params.get("prepend_intro", False),
         )
+
+        # For slideshow mode, copy the generated audio as a named artifact
+        if video_mode == "slideshow":
+            import shutil as _shutil
+            audio_src = result.get("audio_path")
+            if audio_src:
+                audio_dest = jobs_dir / f"{job_id}_audio.mp3"
+                if not (self.settings.resume and audio_dest.exists()):
+                    _shutil.copy(str(audio_src), str(audio_dest))
 
         # For audio/video modes, also write the condensed script as a text artifact
         if video_mode != "text":
