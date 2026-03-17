@@ -1193,6 +1193,7 @@ def _print_startup_banner():
         public_url = None
     if public_url:
         print(f"\nPublic URL: {public_url}")
+
     print("\nEndpoints:")
     print("  GET    /                         - Redirect to /start")
     print("  GET    /start                    - Extension download & installation guide")
@@ -1211,14 +1212,22 @@ def _print_startup_banner():
     print("  GET    /api/jobs/<id>/stream     - SSE stream for job updates")
     print("  GET    /api/jobs/<id>/artifacts  - List artifacts")
     print("  DELETE /api/jobs/<id>            - Delete job")
+
+    if False:
+      print("")
+      print("  GET    /raw/<job_id>/<artifact>.<ext>   - Download raw artifact")
+      print("  GET    /raw/<job_id>/thumbnail.jpg      - Proxied YouTube thumbnail for job")
+      print("  GET    /render/<job_id>/<artifact>.html - Render artifact (HTML player/markdown)")
+      print("  GET    /render/<job_id>/cover.jpg       - Cover art for audio job")
+      print("  GET    /render/<job_id>/content         - Raw media stream for player")
+
     print("")
-    print("  GET    /raw/<job_id>/<artifact>.<ext>   - Download raw artifact")
-    print("  GET    /raw/<job_id>/thumbnail.jpg      - Proxied YouTube thumbnail for job")
-    print("  GET    /render/<job_id>/<artifact>.html - Render artifact (HTML player/markdown)")
-    print("  GET    /render/<job_id>/cover.jpg       - Cover art for audio job")
-    print("  GET    /render/<job_id>/content         - Raw media stream for player")
+    print("  GET    /shared/<secure_id>/raw/<artifact_name>.<ext>    - Shareable link to raw artifact")
+    print("  GET    /shared/<secure_id>/render/<artifact_name>.<ext> - Shareable link to render artifact")
+
     if public_url:
         print(f"\n👉 Share this link: {public_url.rstrip('/')}/start")
+
     print("\n" + "=" * 60 + "\n")
 
 
