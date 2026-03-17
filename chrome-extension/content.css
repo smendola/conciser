@@ -337,7 +337,7 @@ input[type="range"] {
   border-radius: 4px;
   text-align: center;
   cursor: pointer;
-  font-size: 2em;
+  font-size: 12px;
   transition: all 0.2s;
 }
 
@@ -430,6 +430,22 @@ input[type="range"] {
 
 .recent-job-badge.txt {
   background-color: #212121;
+}
+
+.recent-job-badge.slideshow {
+  font-size: 14px;
+  background-color: #1a73e8;
+  padding: 1px 3px;
+}
+
+.recent-job-badge.txt-emoji {
+  font-size: 14px;
+  background-color: #28a745;
+  padding: 1px 3px;
+}
+
+.radio-option input[name="videoMode"] + label {
+  font-size: 2em;
 }
 
 .recent-job-details {

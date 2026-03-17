@@ -203,6 +203,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     save(); // Save and ping when focus is lost
   });
 
+  document.getElementById('downloadClientBtn').addEventListener('click', () => {
+    const selectEl = document.getElementById('serverUrlSelect');
+    const inputEl = document.getElementById('serverUrl');
+    const serverUrl = selectEl.value && selectEl.value !== 'custom'
+      ? normalizeServerUrl(selectEl.value)
+      : normalizeServerUrl(inputEl.value);
+    if (!serverUrl) {
+      setStatus('No server URL configured', 'error');
+      return;
+    }
+    window.open(`${serverUrl}/extension.zip`, '_blank');
+  });
+
   document.getElementById('resetStateBtn').addEventListener('click', async () => {
     try {
       await resetAllState();

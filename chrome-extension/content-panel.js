@@ -145,9 +145,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
 
   if (haveVoices) {
     populateLocaleSelect('localeSelect');
-    populateLocaleSelect('takeawaysLocaleSelect');
     updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
-    updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
     const storage = await chrome.storage.local.get(['settings']);
     const settings = storage.settings || {};
 
@@ -204,7 +202,6 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
     };
 
     applySelection('localeSelect', 'voiceSelect', 'condenseLocale', 'condenseVoice');
-    applySelection('takeawaysLocaleSelect', 'takeawaysVoiceSelect', 'takeawaysLocale', 'takeawaysVoice');
   }
 
   if (allowNetwork) {
@@ -212,9 +209,7 @@ async function ensureServerMetadataLoaded({ allowNetwork = false } = {}) {
     if (!haveStrategies) tasks.push(fetchAndCacheStrategiesForCurrentServer());
     if (!haveVoices) tasks.push(fetchAndCacheVoicesForCurrentServer(locale).then(() => {
       populateLocaleSelect('localeSelect');
-      populateLocaleSelect('takeawaysLocaleSelect');
       updateVoiceSelectForLocale('voiceSelect', document.getElementById('localeSelect').value);
-      updateVoiceSelectForLocale('takeawaysVoiceSelect', document.getElementById('takeawaysLocaleSelect').value);
     }));
     if (tasks.length) {
       await Promise.allSettled(tasks);
@@ -324,7 +319,11 @@ function getRecentJobBadge(outputFormat, jobType) {
   }
 
   if (normalizedFormat === 'text' || normalizedFormat === 'txt' || normalizedFormat === 'markdown' || normalizedFormat === 'md') {
-    return { badgeClass: 'txt', badgeText: 'TXT' };
+    return { badgeClass: 'txt-emoji', badgeText: '📄' };
+  }
+
+  if (normalizedFormat === 'slideshow') {
+    return { badgeClass: 'slideshow', badgeText: '🎞️' };
   }
 
   if (normalizedFormat === 'video' || normalizedFormat === 'mp4') {
@@ -332,10 +331,10 @@ function getRecentJobBadge(outputFormat, jobType) {
   }
 
   if (jobType === 'takeaways') {
-    return { badgeClass: 'txt', badgeText: 'TXT' };
+    return { badgeClass: 'txt-emoji', badgeText: '📄' };
   }
 
-  return { badgeClass: 'mp4', badgeText: 'MP4' };
+  return { badgeClass: 'slideshow', badgeText: '🎞️' };
 }
 
 function toServerAbsoluteUrl(url) {
@@ -418,13 +417,15 @@ function showCompleted(data) {
   const condenseBtn = document.getElementById('condenseBtn');
   if (condenseBtn) condenseBtn.style.display = 'none';
 
+  const videoMode = (document.querySelector('input[name="videoMode"]:checked') || {}).value || 'slideshow';
+  const ctaLabel = videoMode === 'text' ? 'Read Now' : 'Watch+Listen';
+  const completedMsg = videoMode === 'text' ? '✅ Script ready!' : '✅ Slideshow ready!';
   container.innerHTML = `
     <div class="status completed">
-      ✅ Video ready!<br>
+      ${completedMsg}<br>
       Job ID: ${currentJobId}
     </div>
-    <button class="download-btn" id="downloadBtn">Watch Video</button>
-    <button class="download-btn copy-link-btn" id="copyLinkBtn">Copy Link</button>
+    <button class="download-btn" id="downloadBtn">${ctaLabel}</button>
   `;
 
   const downloadBtn = document.getElementById('downloadBtn');
@@ -640,7 +641,6 @@ function showTakeawaysCompleted(data) {
       Job ID: ${currentTakeawaysJobId}
     </div>
     <button class="download-btn" id="downloadTakeawaysBtn">View Takeaways</button>
-    <button class="download-btn copy-link-btn" id="copyTakeawaysLinkBtn">Copy Link</button>
   `;
 
   const downloadBtn = document.getElementById('downloadTakeawaysBtn');
@@ -818,7 +818,8 @@ async function loadRecentJobs() {
           const videoId = job.url.match(/[?&]v=([^&]+)/)?.[1] || job.id;
           const displayTitle = job.title || videoId;
 
-          const { badgeClass, badgeText } = getRecentJobBadge('unknown', job.type);
+          const jobFormat = job.output_kind || (job.params && (job.params.video_mode || job.params.output_format)) || '';
+          const { badgeClass, badgeText } = getRecentJobBadge(jobFormat, job.type);
           const isCompleted = job.status === 'completed';
           const runningClass = isCompleted ? '' : ' recent-job--running';
           const statusStr = job.status === 'queued' ? 'queued\u2026' : 'processing\u2026';
@@ -941,15 +942,6 @@ async function setupTabs() {
     });
   });
 
-  // Format radio buttons - show/hide voice select AND reset completed state
-  const formatRadios = document.querySelectorAll('input[name="format"]');
-  formatRadios.forEach(radio => {
-    radio.addEventListener('change', () => {
-      const voiceGroup = document.getElementById('takeawaysVoiceGroup');
-      voiceGroup.style.display = radio.value === 'audio' ? 'block' : 'none';
-      handleSettingChange();
-    });
-  });
 
   // Top radio buttons - reset completed state on change
   const topRadios = document.querySelectorAll('input[name="top"]');
@@ -1062,17 +1054,6 @@ async function loadSettings() {
   updateCondenseVoiceVisibility(settings.videoMode || 'slideshow');
   document.getElementById('prependIntroCheck').checked = settings.prependIntro || false;
 
-  const normalizedTakeawaysFormat = (settings.takeawaysFormat || 'text').toString().trim().toLowerCase();
-  const takeawaysFormatValue = normalizedTakeawaysFormat === 'audio' ? 'audio' : 'text';
-  const formatTextEl = document.getElementById('formatText');
-  const formatAudioEl = document.getElementById('formatAudio');
-  if (takeawaysFormatValue === 'audio') {
-    if (formatAudioEl) formatAudioEl.checked = true;
-  } else {
-    if (formatTextEl) formatTextEl.checked = true;
-  }
-  const voiceGroup = document.getElementById('takeawaysVoiceGroup');
-  if (voiceGroup) voiceGroup.style.display = takeawaysFormatValue === 'audio' ? 'block' : 'none';
 }
 
 // Save settings to storage
@@ -1081,19 +1062,12 @@ async function saveSettings() {
   const existing = storage.settings || {};
 
   const condenseLocale = document.getElementById('localeSelect').value;
-  const takeawaysLocale = document.getElementById('takeawaysLocaleSelect').value;
-  const selectedFormat = document.querySelector('input[name="format"]:checked');
-  const takeawaysFormat = selectedFormat ? selectedFormat.value : 'text';
-
   const settings = {
     ...existing,
     serverUrl: normalizeServerUrl(existing.serverUrl || serverUrl),
     aggressiveness: parseInt(document.getElementById('aggressivenessSlider').value),
     condenseLocale,
     condenseVoice: document.getElementById('voiceSelect').value,
-    takeawaysLocale,
-    takeawaysVoice: document.getElementById('takeawaysVoiceSelect').value,
-    takeawaysFormat: takeawaysFormat,
     speechSpeed: parseFloat(document.getElementById('speedSlider').value),
     videoMode: (document.querySelector('input[name="videoMode"]:checked') || {}).value || 'slideshow',
     prependIntro: document.getElementById('prependIntroCheck').checked
@@ -1312,10 +1286,9 @@ function setupEventListeners() {
     try {
       // Get takeaways settings
       const topRadio = document.querySelector('input[name="top"]:checked');
-      const formatRadio = document.querySelector('input[name="format"]:checked');
       const top = topRadio.value === 'auto' ? null : parseInt(topRadio.value);
-      const format = formatRadio.value;
-      const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
+      const format = 'text';
+      const voice = null;
 
       const params = {
         format_type: format
@@ -1552,10 +1525,9 @@ document.getElementById('takeawaysBtn').addEventListener('click', async () => {
   try {
     // Get takeaways settings
     const topRadio = document.querySelector('input[name="top"]:checked');
-    const formatRadio = document.querySelector('input[name="format"]:checked');
     const top = topRadio.value === 'auto' ? null : parseInt(topRadio.value);
-    const format = formatRadio.value;
-    const voice = format === 'audio' ? document.getElementById('takeawaysVoiceSelect').value : null;
+    const format = 'text';
+    const voice = null;
 
     const params = {
       format_type: format

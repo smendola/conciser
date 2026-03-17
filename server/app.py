@@ -322,6 +322,8 @@ def _artifact_render_ext_for_output_path(output_path: Path) -> str:
 
 def _job_repr(job: dict) -> dict:
     params = job.get('params') or {}
+    output_file = job.get('output_file') or ''
+    output_kind = _artifact_kind_from_suffix(Path(output_file).suffix) if output_file else ''
     rep = {
         'id': job.get('id'),
         'type': _job_type_to_type(job.get('job_type')),
@@ -330,6 +332,7 @@ def _job_repr(job: dict) -> dict:
         'status': job.get('status'),
         'progress': job.get('progress') or None,
         'params': params,
+        'output_kind': output_kind,
         'error': job.get('error') or None,
         'created_at': job.get('created_at'),
         'completed_at': job.get('completed_at') or None,

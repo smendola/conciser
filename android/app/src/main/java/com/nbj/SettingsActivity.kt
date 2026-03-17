@@ -1,6 +1,8 @@
 package com.nbj
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -48,6 +50,17 @@ class SettingsActivity : AppCompatActivity() {
         setupSpinner()
         loadSettings()
 
+
+        binding.btnDownloadClient.setOnClickListener {
+            val prefs = getSharedPreferences("nbj_prefs", Context.MODE_PRIVATE)
+            val serverUrl = normalizeServerUrl(prefs.getString("server_url", "").orEmpty())
+            if (serverUrl.isEmpty()) {
+                Toast.makeText(this, "No server URL configured", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("$serverUrl/android.apk"))
+            startActivity(intent)
+        }
 
         binding.btnResetState.setOnClickListener {
             resetAllState()

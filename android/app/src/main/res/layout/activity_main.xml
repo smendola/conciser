@@ -383,47 +383,9 @@
 
                 </com.google.android.material.button.MaterialButtonToggleGroup>
 
-                <!-- Output Format -->
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Output Format"
-                    android:textSize="12sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_primary" />
-
-                <com.google.android.material.button.MaterialButtonToggleGroup
-                    android:id="@+id/toggleTakeawaysFormat"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="12dp"
-                    app:singleLine="true"
-                    app:singleSelection="true"
-                    app:selectionRequired="true">
-
-                    <Button
-                        android:id="@+id/btnTakeawaysFormatText"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="8dp"
-                        android:text="Text"
-                        style="@style/Widget.Material3.Button.OutlinedButton" />
-
-                    <Button
-                        android:id="@+id/btnTakeawaysFormatAudio"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Audio"
-                        style="@style/Widget.Material3.Button.OutlinedButton" />
-
-                </com.google.android.material.button.MaterialButtonToggleGroup>
-
-                <!-- Language & Voice (shown only when format=audio) -->
+                <!-- Language & Voice (hidden - takeaways is text-only) -->
                 <LinearLayout
-                    android:id="@+id/layoutTakeawaysVoice" 
+                    android:id="@+id/layoutTakeawaysVoice"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"

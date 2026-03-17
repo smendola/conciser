@@ -89,15 +89,18 @@ class MainActivity : AppCompatActivity() {
             return RecentJobBadge("MP3", 0xFF28a745.toInt())
         }
         if (outputFormat == "text" || outputFormat == "txt" || outputFormat == "markdown" || outputFormat == "md") {
-            return RecentJobBadge("TXT", 0xFF212121.toInt())
+            return RecentJobBadge("📄", 0xFF28a745.toInt())
+        }
+        if (outputFormat == "slideshow") {
+            return RecentJobBadge("🎞️", 0xFF1a73e8.toInt())
         }
         if (outputFormat == "video" || outputFormat == "mp4") {
             return RecentJobBadge("MP4", 0xFF1a73e8.toInt())
         }
         if (jobType == "takeaways") {
-            return RecentJobBadge("TXT", 0xFF212121.toInt())
+            return RecentJobBadge("📄", 0xFF28a745.toInt())
         }
-        return RecentJobBadge("MP4", 0xFF1a73e8.toInt())
+        return RecentJobBadge("🎞️", 0xFF1a73e8.toInt())
     }
 
     private fun getRecentJobDisplayTitle(job: JobResponse): String {
@@ -830,13 +833,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        fun readTakeawaysFormatValueFromUI(): String {
-            return when (binding.toggleTakeawaysFormat.checkedButtonId) {
-                binding.btnTakeawaysFormatAudio.id -> "audio"
-                binding.btnTakeawaysFormatText.id -> "text"
-                else -> "text"
-            }
-        }
+        fun readTakeawaysFormatValueFromUI(): String = "text"
 
         binding.toggleTakeawaysTop.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
@@ -852,21 +849,6 @@ class MainActivity : AppCompatActivity() {
             resetReadyStateDueToSettingsChange("takeaways_top")
         }
 
-        binding.toggleTakeawaysFormat.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            val formatValue = when (checkedId) {
-                binding.btnTakeawaysFormatAudio.id -> "audio"
-                binding.btnTakeawaysFormatText.id -> "text"
-                else -> "text"
-            }
-            updateTakeawaysVoiceVisibility(formatValue)
-            if (suppressAutoSave || restoringVoiceSelections) return@addOnButtonCheckedListener
-            prefs.edit().putString(KEY_TAKEAWAYS_FORMAT, formatValue).apply()
-            resetReadyStateDueToSettingsChange("takeaways_format")
-            lifecycleScope.launch {
-                apiLog(getServerUrl(), "takeaways_format_changed", mapOf("value" to formatValue))
-            }
-        }
 
         // Restore saved takeaways selections
         suppressAutoSave = true
@@ -877,12 +859,6 @@ class MainActivity : AppCompatActivity() {
             "10" -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTop10.id)
             else -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTopAuto.id)
         }
-        val savedFormat = prefs.getString(KEY_TAKEAWAYS_FORMAT, "text") ?: "text"
-        when (savedFormat) {
-            "audio" -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatAudio.id)
-            else -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatText.id)
-        }
-        updateTakeawaysVoiceVisibility(savedFormat)
         suppressAutoSave = false
 
         // Persist voice selection changes.
@@ -1096,12 +1072,7 @@ class MainActivity : AppCompatActivity() {
                 else -> binding.toggleTakeawaysTop.check(binding.btnTakeawaysTopAuto.id)
             }
 
-            val takeawaysFormat = prefsGetStringLogged(prefs, KEY_TAKEAWAYS_FORMAT, "text", "loadSettingsToUI") ?: "text"
-            binding.layoutTakeawaysVoice.isVisible = (takeawaysFormat == "audio")
-            when (takeawaysFormat) {
-                "audio" -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatAudio.id)
-                else -> binding.toggleTakeawaysFormat.check(binding.btnTakeawaysFormatText.id)
-            }
+            binding.layoutTakeawaysVoice.isVisible = false
         } finally {
             suppressAutoSave = false
             sentryBreadcrumb("settings:loadSettingsToUI:end")
@@ -1440,7 +1411,7 @@ class MainActivity : AppCompatActivity() {
 
             val badgeView = TextView(this).apply {
                 text = badge.badgeText
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, if (badge.badgeText.any { it.isHighSurrogate() }) 14f else 9f)
                 setTypeface(null, Typeface.BOLD)
                 setTextColor(0xFFFFFFFF.toInt())
                 setBackgroundColor(if (isCompleted) badge.bgColor else 0xFFBDBDBD.toInt())
@@ -1533,7 +1504,7 @@ class MainActivity : AppCompatActivity() {
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         (1 * density).toInt()
                     )
-                    setBackgroundColor(0xFFEEEEEE.toInt())
+                    setBackgroundColor(0xFF666666.toInt())
                 }
                 container.addView(divider)
             }
@@ -1615,11 +1586,7 @@ class MainActivity : AppCompatActivity() {
         }
         editor.putString("takeaways_top", takeawaysTop)
 
-        val takeawaysFormat = when (binding.toggleTakeawaysFormat.checkedButtonId) {
-            binding.btnTakeawaysFormatAudio.id -> "audio"
-            binding.btnTakeawaysFormatText.id -> "text"
-            else -> "text"
-        }
+        val takeawaysFormat = "text"
         editor.putString("takeaways_format", takeawaysFormat)
 
         val locale = binding.spinnerLocale.selectedItem as? String
@@ -2378,18 +2345,8 @@ class MainActivity : AppCompatActivity() {
         }
         val top = if (topValue == "auto") null else topValue.toIntOrNull()
 
-        val format = when (binding.toggleTakeawaysFormat.checkedButtonId) {
-            binding.btnTakeawaysFormatAudio.id -> "audio"
-            binding.btnTakeawaysFormatText.id -> "text"
-            else -> "text"
-        }
-
-        val voice = if (format == "audio") {
-            val savedVoice = prefs.getString("takeaways_voice", null)
-            val selectedLocale = binding.spinnerTakeawaysLocale.selectedItem as? String
-            val selected = if (!savedVoice.isNullOrBlank()) savedVoice else getSelectedVoiceOption(binding.spinnerTakeawaysVoice, selectedLocale)?.id
-            selected
-        } else null
+        val format = "text"
+        val voice = null
 
         currentJobType = "takeaways"
         currentOutputFormat = format  // "text" or "audio"
