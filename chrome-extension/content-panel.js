@@ -278,7 +278,7 @@ async function openJobInNewTab(jobId) {
     throw new Error('No render_url available');
   }
   // Check if we're in content script context or popup context
-  if (document.getElementById('nbj-condenser-container')) {
+  if (document.getElementById('conciser')) {
     // Content script context - use window.open
     window.open(renderUrl, '_blank');
   } else {

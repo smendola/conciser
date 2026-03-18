@@ -36,7 +36,7 @@ async function injectCondenserUI() {
   }
 
   // Check if we've already injected (or injection is in progress)
-  if (injecting || document.getElementById('nbj-condenser-container')) {
+  if (injecting || document.getElementById('conciser')) {
     console.log('[CONCISER] CONTENT_SCRIPT: UI already injected or injection in progress');
     return;
   }
@@ -46,7 +46,7 @@ async function injectCondenserUI() {
 
   // Create container
   const container = document.createElement('div');
-  container.id = 'nbj-condenser-container';
+  container.id = 'conciser';
   // Add some inline styles to make it visible and override any YouTube CSS
   container.style.cssText = 'display: block !important; visibility: visible !important; background: white; padding: 16px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 16px; width: 100%; box-sizing: border-box; position: relative; z-index: 1000;';
 
@@ -129,7 +129,7 @@ async function injectCondenserUI() {
 
 function resetForNavigation() {
   injecting = false;
-  const old = document.getElementById('nbj-condenser-container');
+  const old = document.getElementById('conciser');
   if (old) old.remove();
 }
 
