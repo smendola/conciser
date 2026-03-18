@@ -344,7 +344,7 @@ Requirements:
 EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE = """
 You are analyzing a video transcript to extract the most important key concepts.
 
-First, analyze the content to determine the optimal number of key takeaways (between 3-10).
+First, analyze the content to determine the optimal number of key takeaways. 
 Consider:
 - Video length and content density
 - Complexity of topics covered
