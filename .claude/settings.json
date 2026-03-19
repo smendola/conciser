@@ -1,5 +1,9 @@
 {
   "permissions": {
-    "allow": ["Edit(*)", "Write(*)"]
+    "allow": [
+      "Edit(*)",
+      "Write(*)",
+      "Bash(nbj:)"
+    ]
   }
 }

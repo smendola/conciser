@@ -398,7 +398,7 @@ class VideoDownloader:
             if not video_folder.exists():
                 raise RuntimeError(f"Failed to create video folder: {video_folder}")
 
-            logger.info(f"Downloading to: {output_template}")
+            logger.info(f"Downloading video (.part file)")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # Download the video
