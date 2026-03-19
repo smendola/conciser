@@ -350,7 +350,6 @@ Consider:
 - Complexity of topics covered
 - Natural information hierarchy
 - Avoiding redundancy while capturing all major concepts
-- Fewer is better
 
 Then extract that optimal number of key takeaways. For each:
 - Focus on the core concept or insight

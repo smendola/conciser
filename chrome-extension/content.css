@@ -439,6 +439,7 @@
 
 #conciser .radio-option input[name="videoMode"] + label {
   font-size: 1.75em;
+  padding: 3px;
 }
 
 #conciser .recent-job-details {
