@@ -272,6 +272,7 @@ class JobService:
             if youtube_transcript:
                 transcript = youtube_transcript["text"]
             else:
+                logger.warning("YouTube transcript unavailable for takeaways job; falling back to Whisper transcription")
                 self.update_progress(job_id, "FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
                 video_info_full = downloader.download(
                     job["url"],

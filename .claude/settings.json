@@ -3,7 +3,8 @@
     "allow": [
       "Edit(*)",
       "Write(*)",
-      "Bash(nbj:)"
+      "Bash(nbj:)",
+      "Bash(pip:*)"
     ]
   }
 }

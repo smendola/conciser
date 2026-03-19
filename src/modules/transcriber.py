@@ -1,11 +1,9 @@
 """Audio transcription module using OpenAI Whisper."""
 
 import json
-import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
-from contextlib import contextmanager
 from openai import OpenAI
 from src.utils.audio_utils import split_audio_by_size, get_audio_duration
 
@@ -38,30 +36,6 @@ class Transcriber:
         self.youtube_proxy_url = youtube_proxy_url.strip()
         self.client = None
         self.model = self.OPENAI_MODEL
-
-    @contextmanager
-    def _youtube_proxy_env(self):
-        """Temporarily set HTTP(S)_PROXY for YouTube transcript API calls."""
-        if not self.youtube_proxy_url:
-            yield
-            return
-
-        previous_http = os.environ.get('HTTP_PROXY')
-        previous_https = os.environ.get('HTTPS_PROXY')
-        os.environ['HTTP_PROXY'] = self.youtube_proxy_url
-        os.environ['HTTPS_PROXY'] = self.youtube_proxy_url
-        try:
-            yield
-        finally:
-            if previous_http is None:
-                os.environ.pop('HTTP_PROXY', None)
-            else:
-                os.environ['HTTP_PROXY'] = previous_http
-
-            if previous_https is None:
-                os.environ.pop('HTTPS_PROXY', None)
-            else:
-                os.environ['HTTPS_PROXY'] = previous_https
 
     def _ensure_client(self) -> None:
         """Initialize Whisper client on first transcription call."""
@@ -101,13 +75,15 @@ class Transcriber:
                 NoTranscriptFound,
                 VideoUnavailable
             )
+            from youtube_transcript_api.proxies import GenericProxyConfig
 
             logger.info(f"Attempting to fetch YouTube transcript for video: {video_id}")
 
-            # Fetch transcript from YouTube using correct API
-            with self._youtube_proxy_env():
-                ytt_api = YouTubeTranscriptApi()
-                transcript_list = ytt_api.fetch(video_id)
+            proxy_config = GenericProxyConfig(https_url=self.youtube_proxy_url) if self.youtube_proxy_url else None
+            if proxy_config:
+                logger.info(f"Using proxy for YouTube transcript fetch")
+            ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
+            transcript_list = ytt_api.fetch(video_id)
 
             # Preserve raw API payload for debugging/export when available
             if hasattr(transcript_list, 'to_raw_data'):
