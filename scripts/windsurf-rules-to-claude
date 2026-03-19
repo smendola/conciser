@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 rules_dir = Path(".windsurf/rules")
-output = Path("CLAUDE_RULES.md")
+output = Path(".claude/CLAUDE_RULES.md")
 
 TRIGGER_NOTE = {
     "always_on": "> **Always follow this rule.**",

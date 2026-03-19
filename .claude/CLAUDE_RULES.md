@@ -11,16 +11,21 @@ language
 
 > **Always follow this rule.**
 
-After changing code in chrome-extension, run:
+## Chrome Extension
+
+After changing code in chrome-extension, build the extension with:
+
 ```bash
 python chrome-extension/build_extension.py
 ```
 
-After changing code in android, do a release build in the normal way.
+## Android
 
-Afer changing code affecing both clients, run:
+After changing code in android, do a release build:
+
 ```bash
-scripts/build_all.sh
+cd android
+./gradlew assembleRelease
 ```
 
 ## git-aware-file-management
