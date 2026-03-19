@@ -19,11 +19,13 @@ from werkzeug._internal import _log as _werkzeug_log
 from urllib.parse import quote_plus
 from flask_cors import CORS
 import requests
+from dotenv import load_dotenv
 
 from src.utils.project_root import get_project_root
 
 # Add project root to path to import nbj modules (independent of CWD)
 sys.path.insert(0, str(get_project_root()))
+load_dotenv(get_project_root() / ".env")
 
 # Initialize CLI logging for server output
 os.environ.setdefault('NBJ_LOG_STREAM', '0')
@@ -58,7 +60,16 @@ class _NoDateRequestHandler(WSGIRequestHandler):
 
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "expose_headers": "*"}})  # Allow requests from Chrome extension and other origins
+if os.getenv("CORS", "false").lower() == "true":
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "X-User-Id"],
+        }
+    })
+else:
+    CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "expose_headers": "*"}})
 
 # Job service for concurrent processing
 job_service = JobService(max_workers=3)
