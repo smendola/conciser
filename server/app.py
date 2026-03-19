@@ -58,7 +58,7 @@ class _NoDateRequestHandler(WSGIRequestHandler):
 
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "expose_headers": "*"}})  # Allow requests from Chrome extension and other origins
+CORS(app, resources={r"/*": {"origins": "*"}})  # Allow requests from Chrome extension and other origins
 
 # Job service for concurrent processing
 job_service = JobService(max_workers=3)
