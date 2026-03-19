@@ -1689,15 +1689,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        val _buildPrefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
-        val _activeUrl = _buildPrefs.getString("server_url", BuildConfig.DEFAULT_SERVER_URL) ?: BuildConfig.DEFAULT_SERVER_URL
-        val _presetIdx = BuildConfig.PRESET_SERVER_URLS.indexOf(_activeUrl)
-        val _serverLabel = if (_presetIdx >= 0) {
-            BuildConfig.PRESET_SERVER_NAMES[_presetIdx]
-        } else {
-            try { java.net.URL(_activeUrl).host.split('.')[0] } catch (e: Exception) { null }
-        }
-        binding.tvBuildInfo.text = if (_serverLabel != null) "${BuildConfig.BUILD_VERSION} | $_serverLabel" else BuildConfig.BUILD_VERSION
+        updateBuildInfoLabel()
 
         sentryBreadcrumb("lifecycle:onCreate")
 
@@ -2009,6 +2001,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         isForeground = true
+        updateBuildInfoLabel()
         refreshRecentJobsUI()
         fetchVoicesAndStrategiesIfMissing()
 
@@ -2609,6 +2602,18 @@ class MainActivity : AppCompatActivity() {
     private fun convertSpeedToRate(speed: Float): String {
         val percentage = ((speed - 1.0f) * 100).roundToInt()
         return if (percentage >= 0) "+${percentage}%" else "${percentage}%"
+    }
+
+    private fun updateBuildInfoLabel() {
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val activeUrl = prefs.getString("server_url", BuildConfig.DEFAULT_SERVER_URL) ?: BuildConfig.DEFAULT_SERVER_URL
+        val presetIdx = BuildConfig.PRESET_SERVER_URLS.indexOf(activeUrl)
+        val serverLabel = if (presetIdx >= 0) {
+            BuildConfig.PRESET_SERVER_NAMES[presetIdx]
+        } else {
+            try { java.net.URL(activeUrl).host.split('.')[0] } catch (e: Exception) { null }
+        }
+        binding.tvBuildInfo.text = if (serverLabel != null) "${BuildConfig.BUILD_VERSION} | $serverLabel" else BuildConfig.BUILD_VERSION
     }
 
     // -------------------------------------------------------------------------

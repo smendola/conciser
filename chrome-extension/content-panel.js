@@ -732,18 +732,8 @@ async function initializePopup() {
   // Set build version (may not exist if UI is collapsed)
   const buildInfoEl = document.getElementById('buildInfo');
   if (buildInfoEl) {
-    const version = typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : '???';
-    const { settings: storedSettings = {} } = await chrome.storage.local.get(['settings']);
-    const activeUrl = normalizeServerUrl(storedSettings.serverUrl || DEFAULT_SERVER_URL);
-    const presetIdx = PRESET_URLS.map(normalizeServerUrl).indexOf(activeUrl);
-    let serverLabel;
-    if (presetIdx >= 0) {
-      serverLabel = PRESET_NAMES[presetIdx];
-    } else {
-      try { serverLabel = new URL(activeUrl).hostname.split('.')[0]; } catch { serverLabel = null; }
-    }
-    buildInfoEl.textContent = serverLabel ? `${version} | ${serverLabel}` : version;
     buildInfoEl.addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openOptionsPage' }));
+    await updateBuildInfo();
   } else {
     console.log('[CONCISER] buildInfo element not found');
   }
@@ -1080,6 +1070,22 @@ async function saveSettings() {
   await chrome.storage.local.set({ settings });
 }
 
+async function updateBuildInfo() {
+  const buildInfoEl = document.getElementById('buildInfo');
+  if (!buildInfoEl) return;
+  const version = typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : '???';
+  const { settings: s = {} } = await chrome.storage.local.get(['settings']);
+  const activeUrl = normalizeServerUrl(s.serverUrl || DEFAULT_SERVER_URL);
+  const presetIdx = PRESET_URLS.map(normalizeServerUrl).indexOf(activeUrl);
+  let serverLabel;
+  if (presetIdx >= 0) {
+    serverLabel = PRESET_NAMES[presetIdx];
+  } else {
+    try { serverLabel = new URL(activeUrl).hostname.split('.')[0]; } catch { serverLabel = null; }
+  }
+  buildInfoEl.textContent = serverLabel ? `${version} | ${serverLabel}` : version;
+}
+
 function normalizeServerUrl(value) {
   const trimmed = (value || '').trim();
   if (!trimmed) return DEFAULT_SERVER_URL;
@@ -1117,6 +1123,7 @@ function convertSpeedToRate(speed) {
 // Unified settings handler
 async function handleSettingChange() {
   await saveSettings();
+  await updateBuildInfo();
 
   if (currentTab === 'condense') {
     const storage = await chrome.storage.local.get(['completedJobs']);
@@ -1372,6 +1379,13 @@ if (!window.NBJ_CONTENT_SCRIPT_MODE) {
   initializePopup();
 }
 // If we're in content script context, content.js will call initializePopup() and setupEventListeners() after injecting the DOM
+
+// Update build info whenever settings change in storage (e.g. via options page)
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.settings) {
+    updateBuildInfo();
+  }
+});
 
 // Old duplicate code below - keeping for reference but not executing
 /*
