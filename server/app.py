@@ -19,13 +19,11 @@ from werkzeug._internal import _log as _werkzeug_log
 from urllib.parse import quote_plus
 from flask_cors import CORS
 import requests
-from dotenv import load_dotenv
 
 from src.utils.project_root import get_project_root
 
 # Add project root to path to import nbj modules (independent of CWD)
 sys.path.insert(0, str(get_project_root()))
-load_dotenv(get_project_root() / ".env")
 
 # Initialize CLI logging for server output
 os.environ.setdefault('NBJ_LOG_STREAM', '0')
@@ -33,7 +31,7 @@ from src.cli import logging as _logging  # noqa: F401
 
 logger = _logging.logger
 
-from src.config import get_settings
+from src.config import get_settings, Settings
 from src.pipeline import CondenserPipeline
 from src.modules.edge_tts import EdgeTTS
 from src.utils.prompt_templates import get_strategy_description
@@ -60,7 +58,7 @@ class _NoDateRequestHandler(WSGIRequestHandler):
 
 
 app = Flask(__name__)
-if os.getenv("CORS", "false").lower() == "true":
+if Settings().cors:
     CORS(app, resources={
         r"/api/*": {
             "origins": "*",

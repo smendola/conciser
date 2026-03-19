@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     takeaways_model_openai: str = Field(default="gpt-5-nano", description="OpenAI model for takeaways extraction")
     takeaways_model_anthropic: str = Field(default="claude-haiku-4-5-20251001", description="Anthropic model for takeaways extraction")
 
+    # Server behavior
+    cors: bool = Field(default=False, description="If true, restrict CORS to API routes only; if false, fully unrestricted")
+
     # Pipeline behavior
     resume: bool = Field(default=True, description="Resume from existing intermediate files (use cached results)")
 
