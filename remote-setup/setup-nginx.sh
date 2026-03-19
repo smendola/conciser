@@ -18,7 +18,12 @@ fi
 
 # Detect public IP (fallback to hostname -I)
 PUBLIC_IP="$($SUDO curl -s https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd 2>/dev/null)" || REPO_ROOT=""
+# When piped via stdin (bash -s), dirname gives wrong result — detect from git or fall back
+if [ -z "$REPO_ROOT" ] || [ "$REPO_ROOT" = "/" ]; then
+    REPO_ROOT="$(git -C ~ rev-parse --show-toplevel 2>/dev/null | head -1)"
+    [ -z "$REPO_ROOT" ] && REPO_ROOT="$(ls -d ~/conciser ~/nbj-condenser 2>/dev/null | head -1)"
+fi
 STATIC_SRC="$REPO_ROOT/server/static"
 NGINX_SITE="/etc/nginx/sites-available/nbj-condenser"
 
