@@ -395,6 +395,18 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
             page_title = line[2:].strip()
             break
 
+    def _truncate_title(title, max_length=36):
+        if not title:
+            return ""
+        for i, char in enumerate(title):
+            if char in ['.', '?', '!', '(', ')', '[', ']'] and i < max_length:
+                return title[:i].strip() + "..."
+        if len(title) > max_length:
+            return title[:max_length].strip() + "..."
+        return title.strip()
+
+    short_title = _truncate_title(page_title)
+
     md_content = md_content.strip()
     if md_content.startswith('# '):
         first_newline = md_content.find('\n')
@@ -409,6 +421,7 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
         template,
         job_id=job_id,
         page_title=page_title,
+        short_title=short_title,
         html_content=html_content,
         client_id=client_id,
         youtube_url=youtube_url,

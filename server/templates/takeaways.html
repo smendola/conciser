@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Takeaways - Job {{ job_id }}</title>
+    <title>Takeaways{% if channel_name %} - {{ channel_name }}{% endif %}{% if short_title %} - {{ short_title }}{% endif %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='takeaways.css') }}">
 </head>
 
