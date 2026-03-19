@@ -18,8 +18,8 @@ fi
 
 # Detect public IP (fallback to hostname -I)
 PUBLIC_IP="$($SUDO curl -s https://ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')"
-STATIC_SRC="/root/nbj-condenser/server/static"
-STATIC_DEST="/var/www/nbj-condenser-static"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STATIC_SRC="$REPO_ROOT/server/static"
 NGINX_SITE="/etc/nginx/sites-available/nbj-condenser"
 
 echo "🌐 Setting up Nginx reverse proxy..."
@@ -36,15 +36,8 @@ echo "⚙️  Enabling nginx service..."
 $SUDO systemctl enable nginx
 $SUDO systemctl start nginx
 
-# Sync static assets if they exist
-if [ -d "$STATIC_SRC" ]; then
-    echo "🗂️  Syncing static assets to $STATIC_DEST..."
-    $SUDO mkdir -p "$STATIC_DEST"
-    $SUDO rsync -a --delete "$STATIC_SRC/" "$STATIC_DEST/"
-    $SUDO chown -R www-data:www-data "$STATIC_DEST"
-else
+if [ ! -d "$STATIC_SRC" ]; then
     echo "⚠️  Warning: Static source directory $STATIC_SRC not found."
-    echo "    CSS/JS may not load until this path exists."
 fi
 
 # Create nginx config for NBJ Condenser
@@ -73,9 +66,9 @@ server {
         send_timeout 300;
     }
     
-    # Serve static files directly
+    # Serve static files directly from repo (always in sync)
     location /static/ {
-        alias $STATIC_DEST/;
+        alias $STATIC_SRC/;
         access_log off;
         expires 30d;
     }
