@@ -1689,7 +1689,15 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.tvBuildInfo.text = "Build: ${BuildConfig.BUILD_VERSION}"
+        val _buildPrefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val _activeUrl = _buildPrefs.getString("server_url", BuildConfig.DEFAULT_SERVER_URL) ?: BuildConfig.DEFAULT_SERVER_URL
+        val _presetIdx = BuildConfig.PRESET_SERVER_URLS.indexOf(_activeUrl)
+        val _serverLabel = if (_presetIdx >= 0) {
+            BuildConfig.PRESET_SERVER_NAMES[_presetIdx]
+        } else {
+            try { java.net.URL(_activeUrl).host.split('.')[0] } catch (e: Exception) { null }
+        }
+        binding.tvBuildInfo.text = if (_serverLabel != null) "${BuildConfig.BUILD_VERSION} | $_serverLabel" else BuildConfig.BUILD_VERSION
 
         sentryBreadcrumb("lifecycle:onCreate")
 

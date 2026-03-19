@@ -732,13 +732,17 @@ async function initializePopup() {
   // Set build version (may not exist if UI is collapsed)
   const buildInfoEl = document.getElementById('buildInfo');
   if (buildInfoEl) {
-    if (typeof BUILD_VERSION !== 'undefined') {
-      console.log('[CONCISER] BUILD_VERSION found:', BUILD_VERSION);
-      buildInfoEl.textContent = `${BUILD_VERSION}`;
+    const version = typeof BUILD_VERSION !== 'undefined' ? BUILD_VERSION : '???';
+    const { settings: storedSettings = {} } = await chrome.storage.local.get(['settings']);
+    const activeUrl = normalizeServerUrl(storedSettings.serverUrl || DEFAULT_SERVER_URL);
+    const presetIdx = PRESET_URLS.map(normalizeServerUrl).indexOf(activeUrl);
+    let serverLabel;
+    if (presetIdx >= 0) {
+      serverLabel = PRESET_NAMES[presetIdx];
     } else {
-      console.log('[CONCISER] BUILD_VERSION not defined');
-      buildInfoEl.textContent = '???';
+      try { serverLabel = new URL(activeUrl).hostname.split('.')[0]; } catch { serverLabel = null; }
     }
+    buildInfoEl.textContent = serverLabel ? `${version} | ${serverLabel}` : version;
     buildInfoEl.addEventListener('click', () => chrome.runtime.sendMessage({ action: 'openOptionsPage' }));
   } else {
     console.log('[CONCISER] buildInfo element not found');
