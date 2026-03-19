@@ -414,7 +414,7 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
             return truncated.strip() + "..."
         return title.strip()
 
-    short_title = _truncate_title(page_title)
+    short_title = _truncate_title(page_title, partial_last_word='complete')
 
     md_content = md_content.strip()
     if md_content.startswith('# '):
