@@ -17,20 +17,40 @@ def _suppress_httpx_info_logs() -> None:
 from ..app import cli  # noqa: E402
 
 
-def _truncate_title(title: str, max_length: int = 80) -> str:
-    """Truncate title at first punctuation or parenthesis, or after max_length chars."""
+def _truncate_title(title: str, max_length: int = 80, partial_last_word=True) -> str:
+    """Truncate title at first punctuation or parenthesis, or after max_length chars.
+
+    partial_last_word:
+      True (default) - truncate mid-word at max_length
+      'elide'        - remove the partial last word (and preceding space)
+      'complete'     - include the full last word, slightly exceeding max_length
+    """
     if not title:
         return ""
-    
+
     # Look for punctuation or parenthesis within the limit
     for i, char in enumerate(title):
         if char in ['.', '?', '!', '(', ')', '[', ']'] and i < max_length:
             return title[:i].strip() + "..."
-    
+
     # If no punctuation found within limit, truncate at max_length
     if len(title) > max_length:
-        return title[:max_length].strip() + "..."
-    
+        if partial_last_word == 'elide':
+            truncated = title[:max_length]
+            if title[max_length] != ' ':
+                last_space = truncated.rfind(' ')
+                truncated = truncated[:last_space] if last_space != -1 else truncated
+        elif partial_last_word == 'complete':
+            truncated = title[:max_length]
+            if title[max_length] != ' ':
+                next_space = title.find(' ', max_length)
+                if next_space == -1:
+                    return title.strip()
+                truncated = title[:next_space]
+        else:
+            truncated = title[:max_length]
+        return truncated.strip() + "..."
+
     return title.strip()
 
 

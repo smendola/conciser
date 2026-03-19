@@ -395,14 +395,28 @@ def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, ch
             page_title = line[2:].strip()
             break
 
-    def _truncate_title(title, max_length=36):
+    def _truncate_title(title, max_length=36, partial_last_word=True):
         if not title:
             return ""
         for i, char in enumerate(title):
             if char in ['.', '?', '!', '(', ')', '[', ']'] and i < max_length:
                 return title[:i].strip() + "..."
         if len(title) > max_length:
-            return title[:max_length].strip() + "..."
+            if partial_last_word == 'elide':
+                truncated = title[:max_length]
+                if title[max_length] != ' ':
+                    last_space = truncated.rfind(' ')
+                    truncated = truncated[:last_space] if last_space != -1 else truncated
+            elif partial_last_word == 'complete':
+                truncated = title[:max_length]
+                if title[max_length] != ' ':
+                    next_space = title.find(' ', max_length)
+                    if next_space == -1:
+                        return title.strip()
+                    truncated = title[:next_space]
+            else:
+                truncated = title[:max_length]
+            return truncated.strip() + "..."
         return title.strip()
 
     short_title = _truncate_title(page_title)
