@@ -324,7 +324,7 @@ Write out numbers in words, not numerals, e.g.
 
 """
 
-EXTRACT_TAKEAWAYS_PROMPT_BASE = """
+EXTRACT_NUMBERED_TAKEAWAYS_PROMPT_BASE = """
 You are analyzing a video transcript to extract the most important key concepts.
 
 Extract exactly {N} key takeaways from this video. For each takeaway:
@@ -353,10 +353,10 @@ Consider:
 
 Then extract that optimal number of key takeaways. For each:
 - Focus on the core concept or insight
-- Explain in 1 sentence.
-- Make it actionable or memorable
-
-Order by importance (most important first).
+- Use clear, concise language
+- Each point should be 1-2 sentences maximum
+- Order by importance (most important first), not necessarily in the order these
+  points are presented in the source material.
 """
 
 TAKEAWAYS_FORMAT_MARKDOWN = """

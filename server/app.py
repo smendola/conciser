@@ -383,17 +383,12 @@ def _thumbnail_artifact_repr(job: dict, secure_id=None) -> dict:
     }
 
 
-def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None, template='takeaways.html'):
+def _render_markdown_output(job_id, client_id, output_path, youtube_url=None, channel_name=None, video_title=None, template='takeaways.html'):
     import markdown
 
     md_content = output_path.read_text(encoding='utf-8')
 
-    page_title = "Takeaways"
-    lines = md_content.strip().split('\n')
-    for line in lines:
-        if line.startswith('# '):
-            page_title = line[2:].strip()
-            break
+    page_title = video_title or "Takeaways"
 
     def _truncate_title(title, max_length=36, partial_last_word=True):
         if not title:
@@ -720,6 +715,7 @@ def render_artifact(job_id: str, artifact_name: str, ext: str):
                 artifact_path,
                 youtube_url=job.get('url'),
                 channel_name=job.get('channel_name'),
+                video_title=job.get('title') or None,
                 template=template,
             )
         except Exception as e:
@@ -1011,6 +1007,7 @@ def shared_render_artifact(secure_id: str, artifact_name: str, ext: str):
                 artifact_path,
                 youtube_url=job.get('url'),
                 channel_name=job.get('channel_name'),
+                video_title=job.get('title') or None,
                 template=template,
             )
         except Exception as e:

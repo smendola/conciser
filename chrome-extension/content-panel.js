@@ -16,6 +16,7 @@ let currentTab = 'condense';
 let clientId = null;
 let sseReconnectAttempts = 0;
 let takeawaysSseReconnectAttempts = 0;
+let lastServerCallFailed = false;
 const SSE_RECONNECT_DELAY_MS = 1000;
 const SSE_MAX_RECONNECT_ATTEMPTS = 3;
 const POPUP_TAB_STORAGE_KEY = 'lastPopupTab';
@@ -683,6 +684,7 @@ async function checkForInProgressJobs(jobType) {
   try {
     console.log(`[CONCISER] Checking for in-progress ${jobType} jobs...`);
     const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    setServerCallStatus(response.ok);
     if (!response.ok) return;
 
     const data = await response.json();
@@ -721,6 +723,7 @@ async function checkForInProgressJobs(jobType) {
       console.log(`[CONCISER] No in-progress ${jobType} job found for this video`);
     }
   } catch (error) {
+    setServerCallStatus(false);
     console.error(`[CONCISER] Error checking for in-progress ${jobType} jobs:`, error);
   }
 }
@@ -786,8 +789,11 @@ async function initializePopup() {
 
 // Fetch and display recent jobs
 async function loadRecentJobs() {
+  let responseOk = null;
   try {
     const response = await fetchWithAuth(`${serverUrl}/api/jobs`);
+    responseOk = response.ok;
+    setServerCallStatus(responseOk);
     if (response.ok) {
       await ensureServerMetadataLoaded({ allowNetwork: true });
     }
@@ -894,6 +900,7 @@ async function loadRecentJobs() {
     renderJobs(takeawaysContainer, takeawaysList, takeawaysJobs);
 
   } catch (error) {
+    if (responseOk === null) setServerCallStatus(false);
     console.error('Failed to load recent jobs:', error);
   }
 }
@@ -920,6 +927,7 @@ async function setActiveTab(targetTab) {
 
   // Check for in-progress jobs when switching tabs
   await checkForInProgressJobs(targetTab);
+  await loadRecentJobs();
 }
 
 // Setup tab switching
@@ -1086,6 +1094,13 @@ async function updateBuildInfo() {
   buildInfoEl.textContent = serverLabel ? `${version} | ${serverLabel}` : version;
 }
 
+function setServerCallStatus(ok) {
+  lastServerCallFailed = !ok;
+  const buildInfoEl = document.getElementById('buildInfo');
+  if (!buildInfoEl) return;
+  buildInfoEl.style.color = ok ? '' : '#d32f2f';
+}
+
 function normalizeServerUrl(value) {
   const trimmed = (value || '').trim();
   if (!trimmed) return DEFAULT_SERVER_URL;
@@ -1124,6 +1139,7 @@ function convertSpeedToRate(speed) {
 async function handleSettingChange() {
   await saveSettings();
   await updateBuildInfo();
+  setServerCallStatus(true);
 
   if (currentTab === 'condense') {
     const storage = await chrome.storage.local.get(['completedJobs']);

@@ -1333,6 +1333,8 @@ class MainActivity : AppCompatActivity() {
                     api.getJobs().jobs
                 }
 
+                setServerCallStatus(true)
+
                 val sorted = jobs
                     .filter { it.status != "error" }
                     .sortedByDescending { parseIsoToEpochMs(it.created_at) }
@@ -1340,6 +1342,7 @@ class MainActivity : AppCompatActivity() {
 
                 renderRecentJobs(sorted, serverUrl)
             } catch (e: Exception) {
+                setServerCallStatus(false)
                 Sentry.captureException(e)
             }
         }
@@ -2100,6 +2103,7 @@ class MainActivity : AppCompatActivity() {
 
         // Check for in-progress jobs after switching tabs
         checkForInProgressJobs()
+        refreshRecentJobsUI()
 
         // Retry loading voices/strategies if a previous attempt failed
         fetchVoicesAndStrategiesIfMissing()
@@ -2389,6 +2393,7 @@ class MainActivity : AppCompatActivity() {
                 Log.d("JobResume", "Checking for in-progress jobs for current video...")
                 val api = createApi()
                 val response = api.getJobs()
+                setServerCallStatus(true)
                 val jobs = response.jobs
 
                 // Find in-progress job for current URL and type
@@ -2411,6 +2416,7 @@ class MainActivity : AppCompatActivity() {
                     Log.d("JobResume", "No in-progress ${currentJobType} job found for this video")
                 }
             } catch (e: Exception) {
+                setServerCallStatus(false)
                 Log.e("JobResume", "Error checking for in-progress jobs: ${e.message}")
                 // Silently fail - don't interrupt user experience
             }
@@ -2614,6 +2620,13 @@ class MainActivity : AppCompatActivity() {
             try { java.net.URL(activeUrl).host.split('.')[0] } catch (e: Exception) { null }
         }
         binding.tvBuildInfo.text = if (serverLabel != null) "${BuildConfig.BUILD_VERSION} | $serverLabel" else BuildConfig.BUILD_VERSION
+        setServerCallStatus(true)
+    }
+
+    private fun setServerCallStatus(ok: Boolean) {
+        binding.tvBuildInfo.setTextColor(
+            if (ok) Color.parseColor("#757575") else Color.parseColor("#d32f2f")
+        )
     }
 
     // -------------------------------------------------------------------------

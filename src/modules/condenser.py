@@ -742,7 +742,7 @@ class ContentCondenser:
             - Anthropic: TAKEAWAYS_MODEL_ANTHROPIC (vs CONDENSATION_MODEL_ANTHROPIC)
         """
         from ..utils.prompt_templates import (
-            EXTRACT_TAKEAWAYS_PROMPT_BASE,
+            EXTRACT_NUMBERED_TAKEAWAYS_PROMPT_BASE,
             EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE,
             TAKEAWAYS_FORMAT_MARKDOWN,
             TAKEAWAYS_FORMAT_PLAIN_TEXT
@@ -758,7 +758,7 @@ class ContentCondenser:
 
         # Choose base prompt based on whether top is specified
         if top:
-            base_prompt = EXTRACT_TAKEAWAYS_PROMPT_BASE.format(N=top)
+            base_prompt = EXTRACT_NUMBERED_TAKEAWAYS_PROMPT_BASE.format(N=top)
         else:
             base_prompt = EXTRACT_TAKEAWAYS_AUTO_PROMPT_BASE
 
