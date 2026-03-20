@@ -1101,7 +1101,7 @@ def root_redirect():
 @app.route('/privacy')
 def privacy_policy():
     """Privacy policy page (required for Play Store listing)."""
-    return render_template('privacy.html')
+    return send_from_directory('static', 'privacy.html')
 
 
 @app.route('/extension.zip')
