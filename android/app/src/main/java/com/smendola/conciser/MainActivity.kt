@@ -1,4 +1,4 @@
-package com.nbj
+package com.smendola.conciser
 
 import android.content.Context
 import android.content.Intent
@@ -36,7 +36,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.google.android.material.snackbar.Snackbar
-import com.nbj.databinding.ActivityMainBinding
+import com.smendola.conciser.databinding.ActivityMainBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

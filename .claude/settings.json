@@ -4,7 +4,11 @@
       "Edit(*)",
       "Write(*)",
       "Bash(nbj:)",
-      "Bash(pip:*)"
+      "Bash(pip:*)",
+      "Bash(cat:)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Basuh(ls:*)"
     ]
   }
 }

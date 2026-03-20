@@ -1,4 +1,4 @@
-package com.nbj
+package com.smendola.conciser
 
 import android.net.Uri
 import com.google.gson.Gson

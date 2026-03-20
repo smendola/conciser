@@ -1,2 +1,2 @@
 ## Rules
-Project-specific rules are in file `CLAUDE_RULES.md`
+Project-specific rules are in file `.claude/CLAUDE_RULES.md`
