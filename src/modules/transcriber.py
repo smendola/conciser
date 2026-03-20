@@ -81,7 +81,9 @@ class Transcriber:
 
             proxy_config = GenericProxyConfig(https_url=self.youtube_proxy_url) if self.youtube_proxy_url else None
             if proxy_config:
-                logger.info(f"Using proxy for YouTube transcript fetch")
+                logger.info(f"Using proxy for YouTube transcript fetch: {self.youtube_proxy_url}")
+            else:
+                logger.info("No proxy configured for YouTube transcript fetch")
             ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config)
             transcript_list = ytt_api.fetch(video_id)
 

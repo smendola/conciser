@@ -284,28 +284,46 @@ def takeaways(url, top, format, voice, tts_provider, speech_rate, output, resume
         else:
             update_progress("FETCH", "Fetching transcript...")
 
-            # Try YouTube transcript first (no video download needed)
-            youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
+            method = settings.transcription_method.lower()
 
-            if youtube_transcript:
+            if method == "youtube":
+                youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
+                if not youtube_transcript:
+                    raise RuntimeError(
+                        "YouTube transcript not available and TRANSCRIPTION_METHOD=youtube (YouTube-only mode)"
+                    )
                 logger.info("Using YouTube transcript (no Whisper API cost)")
                 transcript = youtube_transcript['text']
-            else:
-                # Need to download video for Whisper transcription
-                logger.warning("YouTube transcript not available, falling back to Whisper transcription")
-                update_progress("FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
 
-                # Use existing video_folder from metadata download
+            elif method == "whisper":
+                update_progress("FETCH", "Downloading video for Whisper transcription...")
                 video_info = downloader.download(
-                    url, 
+                    url,
                     metadata_only=False,
                     existing_folder=video_folder
                 )
                 video_path = video_info['video_path']
                 print(f"  Downloaded: {video_path}")
-
                 transcript_result = transcriber.transcribe(video_path)
                 transcript = transcript_result['text']
+
+            else:  # chained
+                youtube_transcript = transcriber.fetch_youtube_transcript(video_id)
+                if youtube_transcript:
+                    logger.info("Using YouTube transcript (no Whisper API cost)")
+                    transcript = youtube_transcript['text']
+                else:
+                    logger.warning("YouTube transcript not available, falling back to Whisper transcription")
+                    update_progress("FETCH", "YouTube transcript unavailable; downloading video for Whisper...")
+                    video_info = downloader.download(
+                        url,
+                        metadata_only=False,
+                        existing_folder=video_folder
+                    )
+                    video_path = video_info['video_path']
+                    print(f"  Downloaded: {video_path}")
+                    transcript_result = transcriber.transcribe(video_path)
+                    transcript = transcript_result['text']
 
             transcript_path.write_text(transcript, encoding='utf-8')
             logger.info(f"Trascript saved to: {transcript_path}")
