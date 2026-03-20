@@ -1089,7 +1089,7 @@ def start_page():
     """Landing page for extension (desktop) or Play Store (mobile)."""
     user_agent = request.headers.get('User-Agent', '')
     if is_mobile_user_agent(user_agent):
-        return redirect('https://play.google.com/store/apps/details?id=com.smendola.conciser')
+        return redirect('https://play.google.com/apps/internaltest/4701274678701693688')
     return render_template('start.html')
 
 

@@ -3,11 +3,10 @@ Description=NBJ Condenser Server
 After=network.target
 
 [Service]
-User=sal
-WorkingDirectory=/home/sal/conciser
-ExecStart=/home/sal/conciser/venv/bin/python server/app.py
+User=root
+WorkingDirectory=/root/conciser
+ExecStart=/root/conciser/venv/bin/python server/app.py
 Restart=on-failure
-EnvironmentFile=/home/sal/conciser/.env
 
 [Install]
 WantedBy=multi-user.target
