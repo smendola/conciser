@@ -85,6 +85,18 @@ def check(verbose):
     print(f"  ffprobe: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL}" if ffprobe_found else f"  ffprobe: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Not found")
     print()
 
+    # Check YouTube proxy
+    if settings.youtube_proxy_url:
+        print("YouTube Proxy:")
+        proxy_ok, proxy_err = _validate_youtube_proxy(settings.youtube_proxy_url)
+        if proxy_ok:
+            print(f"  {settings.youtube_proxy_url}: {Style.BRIGHT}{Fore.GREEN}{Back.LIGHTBLACK_EX} ✔ {Style.RESET_ALL} Reachable (google.com via proxy)")
+        else:
+            print(f"  {settings.youtube_proxy_url}: {Style.BRIGHT}{Fore.RED}{Back.LIGHTBLACK_EX} ✗ {Style.RESET_ALL} Unreachable")
+            if verbose and proxy_err:
+                print(f"    {Fore.RED}Error: {proxy_err}{Style.RESET_ALL}")
+        print()
+
     # Check API keys with parallel validation
     print("API Keys:")
 
@@ -190,6 +202,22 @@ def check(verbose):
         if not verbose:
             print(f"{Fore.YELLOW}Use 'nbj check --verbose' for detailed error messages.{Style.RESET_ALL}")
         print()
+
+
+def _validate_youtube_proxy(proxy_url: str) -> tuple[bool, str]:
+    """Validate YouTube proxy by making a test request to google.com through it."""
+    try:
+        import requests
+        response = requests.get(
+            "https://www.google.com",
+            proxies={"https": proxy_url, "http": proxy_url},
+            timeout=10,
+        )
+        if response.status_code < 500:
+            return True, None
+        return False, f"HTTP {response.status_code}"
+    except Exception as e:
+        return False, str(e)
 
 
 def _validate_openai_key(api_key: str) -> tuple[bool, str]:
