@@ -49,7 +49,7 @@ Video Players & Editors
 Everyone
 
 ## Contact Email
-(TODO: add your email)
+smendola+conciser@gmail.com
 
 ## Privacy Policy URL
 https://conciser.603apps.net/privacy
