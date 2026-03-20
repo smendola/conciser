@@ -38,6 +38,7 @@ videos.txt
 voice_samples/
 condenser_chains.json
 test_outputs*/
+.playwright-mcp/
 
 # Virtual environments
 venv/
