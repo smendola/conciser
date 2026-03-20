@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace 'com.smendola.conciser'
-    compileSdk 34
+    compileSdk 35
 
     def androidBuildNumberFile = new File(rootProject.projectDir, '.build_number')
     if (!androidBuildNumberFile.exists()) {
@@ -18,7 +18,7 @@ android {
     defaultConfig {
         applicationId "com.smendola.conciser"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode androidVersionCodeValue
         versionName androidVersionName
 

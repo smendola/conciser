@@ -1086,10 +1086,11 @@ def api_health():
 
 @app.route('/start')
 def start_page():
-    """Landing page for extension (desktop) or Android app (mobile)."""
+    """Landing page for extension (desktop) or Play Store (mobile)."""
     user_agent = request.headers.get('User-Agent', '')
-    template = 'start_mobile.html' if is_mobile_user_agent(user_agent) else 'start.html'
-    return render_template(template)
+    if is_mobile_user_agent(user_agent):
+        return redirect('https://play.google.com/store/apps/details?id=com.smendola.conciser')
+    return render_template('start.html')
 
 
 @app.route('/')
