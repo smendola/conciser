@@ -10,6 +10,8 @@ from .utils.project_root import get_project_root, resolve_env_file
 # Project root directory (where src/ and server/ are located)
 PROJECT_ROOT = get_project_root()
 
+DEFAULT_QUALITY = "720p"
+
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
@@ -35,7 +37,7 @@ class Settings(BaseSettings):
 
     # Default settings
     default_aggressiveness: int = Field(default=5, ge=1, le=10)
-    default_output_quality: str = Field(default="1080p")
+    default_output_quality: str = Field(default=DEFAULT_QUALITY)
     
     # Paths: keep defaults relative in config, but resolve them relative to PROJECT_ROOT
     # (never relative to the current working directory)

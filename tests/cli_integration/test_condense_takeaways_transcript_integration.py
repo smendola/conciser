@@ -5,6 +5,7 @@ from src.cli.app import cli
 from src.cli.commands import condense as condense_module
 from src.cli.commands import takeaways as takeaways_module
 from src.cli.commands import transcript as transcript_module
+from src.config import DEFAULT_QUALITY
 
 from mutagen.id3 import ID3
 
@@ -62,7 +63,7 @@ def test_condense_happy_path_defaults(runner, monkeypatch, settings_factory, fak
     assert "Condensation Complete!" in result.output
     assert len(pipeline.calls) == 1
     assert pipeline.calls[0]["aggressiveness"] == 5
-    assert pipeline.calls[0]["quality"] == "1080p"
+    assert pipeline.calls[0]["quality"] == DEFAULT_QUALITY
     assert pipeline.calls[0]["video_gen_mode"] == "slideshow"
     assert pipeline.calls[0]["resume"] is True
 

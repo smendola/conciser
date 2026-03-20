@@ -4,7 +4,7 @@ from pathlib import Path
 import click
 from colorama import Fore, Style
 
-from ...config import get_settings
+from ...config import get_settings, DEFAULT_QUALITY
 from ...pipeline import CondenserPipeline
 from ..common import _load_videos_txt, _resolve_voice
 from ..progress import ProgressDisplay
@@ -30,8 +30,8 @@ from ..app import cli  # noqa: E402
 @click.option(
     '--quality', '-q',
     type=click.Choice(['720p', '1080p', '4k']),
-    default='1080p',
-    help='Output video quality. Default: 1080p'
+    default=DEFAULT_QUALITY,
+    help=f'Output video quality. Default: {DEFAULT_QUALITY}'
 )
 @click.option(
     '--output', '-o',

@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Any, Callable
 import concurrent.futures
 
 from server.job_store import JobStore
-from src.config import get_settings
+from src.config import get_settings, DEFAULT_QUALITY
 from src.pipeline import CondenserPipeline
 from src.utils.project_root import get_project_root
 from src.modules.downloader import VideoDownloader
@@ -179,7 +179,7 @@ class JobService:
             video_url=job["url"],
             aggressiveness=params.get("aggressiveness", 5),
             output_path=output_path,
-            quality="1080p",
+            quality=DEFAULT_QUALITY,
             video_gen_mode=video_mode,
             tts_provider=params.get("tts_provider", self.settings.tts_provider),
             voice_id=params.get("voice", "en-US-AriaNeural"),

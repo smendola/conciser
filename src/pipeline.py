@@ -8,7 +8,7 @@ import time
 import re
 import xml.etree.ElementTree as ET
 
-from .config import Settings
+from .config import Settings, DEFAULT_QUALITY
 from .modules.downloader import VideoDownloader
 from .modules.transcriber import Transcriber
 from .modules.condenser import ContentCondenser
@@ -101,7 +101,7 @@ class CondenserPipeline:
         video_url: str,
         aggressiveness: int = 5,
         output_path: Optional[Path] = None,
-        quality: str = "1080p",
+        quality: str = DEFAULT_QUALITY,
         video_gen_mode: str = "static",
         progress_callback: Optional[callable] = None,
         resume: bool = True,
@@ -526,7 +526,7 @@ class CondenserPipeline:
         """Download video from URL, or just fetch metadata if metadata_only=True."""
         return self.downloader.download(url, quality=quality, folder_label=name_override, metadata_only=metadata_only)
 
-    def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+    def _transcribe_video(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = DEFAULT_QUALITY) -> Dict[str, Any]:
         """
         Extract audio and transcribe based on TRANSCRIPTION_METHOD setting.
 
@@ -551,7 +551,7 @@ class CondenserPipeline:
         else:
             raise ValueError(f"Invalid TRANSCRIPTION_METHOD: {method}. Must be 'youtube', 'whisper', or 'chained'.")
 
-    def _transcribe_youtube_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+    def _transcribe_youtube_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = DEFAULT_QUALITY) -> Dict[str, Any]:
         """Transcribe using YouTube API only - FAIL if not available."""
         from colorama import Fore, Style
 
@@ -573,7 +573,7 @@ class CondenserPipeline:
             print(error_msg)
             raise RuntimeError("YouTube transcript not available and transcription method is set to 'youtube'")
 
-    def _transcribe_whisper_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+    def _transcribe_whisper_only(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = DEFAULT_QUALITY) -> Dict[str, Any]:
         """Transcribe using Whisper only - skip YouTube API."""
         from colorama import Fore, Style
 
@@ -609,7 +609,7 @@ class CondenserPipeline:
 
         return transcript_result
 
-    def _transcribe_chained(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = "1080p") -> Dict[str, Any]:
+    def _transcribe_chained(self, video_path: Path, video_folder: Path, video_id: str = None, video_url: str = None, quality: str = DEFAULT_QUALITY) -> Dict[str, Any]:
         """Transcribe using chained method: try YouTube first, fallback to Whisper."""
         from colorama import Fore, Style
 

@@ -8,6 +8,8 @@ import json
 from urllib import request
 from typing import Dict, Any, Optional
 
+from ..config import DEFAULT_QUALITY
+
 logger = logging.getLogger(__name__)
 
 
@@ -238,7 +240,7 @@ class VideoDownloader:
     def download(
         self,
         url: str,
-        quality: str = "1080p",
+        quality: str = DEFAULT_QUALITY,
         output_filename: str = None,
         folder_label: str = None,
         metadata_only: bool = False,
@@ -418,7 +420,7 @@ class VideoDownloader:
                 video_path = part_file.with_suffix('')
                 part_file.rename(video_path)
                 logger.info(f"Download completed: {video_path}")
-                
+
                 # Find and log thumbnail file
                 thumbnail_files = [
                     f
@@ -494,7 +496,7 @@ class VideoDownloader:
             'best': 'bestvideo+bestaudio/best',
         }
 
-        return quality_map.get(quality, quality_map['1080p'])
+        return quality_map.get(quality, quality_map[DEFAULT_QUALITY])
 
     def get_video_info(self, url: str) -> Dict[str, Any]:
         """
