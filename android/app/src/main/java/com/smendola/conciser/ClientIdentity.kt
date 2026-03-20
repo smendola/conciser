@@ -1,4 +1,4 @@
-package com.nbj
+package com.smendola.conciser
 
 import android.content.Context
 import android.provider.Settings

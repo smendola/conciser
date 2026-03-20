@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace 'com.nbj'
+    namespace 'com.smendola.conciser'
     compileSdk 34
 
     def androidBuildNumberFile = new File(rootProject.projectDir, '.build_number')
@@ -16,7 +16,7 @@ android {
     def androidVersionName = "1.1.${androidVersionCodeValue}"
 
     defaultConfig {
-        applicationId "com.nbj"
+        applicationId "com.smendola.conciser"
         minSdk 24
         targetSdk 34
         versionCode androidVersionCodeValue
@@ -122,6 +122,18 @@ tasks.register('copyReleaseApkToDist', Copy) {
 
 tasks.matching { it.name == 'assembleRelease' }.configureEach {
     finalizedBy 'copyReleaseApkToDist'
+}
+
+tasks.register('copyReleaseAabToDist', Copy) {
+    def aabPath = layout.buildDirectory.file('outputs/bundle/release/app-release.aab')
+    from(aabPath)
+    into(new File(rootProject.projectDir, '../dist'))
+    rename { "nbj-condenser-${android.defaultConfig.versionName}.aab" }
+}
+
+tasks.matching { it.name == 'bundleRelease' }.configureEach {
+    dependsOn 'incrementAndroidBuildNumber'
+    finalizedBy 'copyReleaseAabToDist'
 }
 
 tasks.register('incrementAndroidBuildNumber') {

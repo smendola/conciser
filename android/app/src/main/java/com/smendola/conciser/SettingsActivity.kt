@@ -1,4 +1,4 @@
-package com.nbj
+package com.smendola.conciser
 
 import android.content.Context
 import android.content.Intent
@@ -12,7 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
-import com.nbj.databinding.ActivitySettingsBinding
+import com.smendola.conciser.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

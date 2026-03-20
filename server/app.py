@@ -1098,6 +1098,12 @@ def root_redirect():
     return redirect(url_for('start_page'))
 
 
+@app.route('/privacy')
+def privacy_policy():
+    """Privacy policy page (required for Play Store listing)."""
+    return render_template('privacy.html')
+
+
 @app.route('/extension.zip')
 def download_extension():
     """Download the latest packaged Chrome extension."""
