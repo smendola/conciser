@@ -6,6 +6,7 @@ tar Jcf conciser-ws-files.tar \
         condenser_chains.json \
         build-settings.json \
         android/app/nbj-release.jks \
+        android/play-service-account.json \
         .env
 
 echo scp conciser-ws-files.tar ...
