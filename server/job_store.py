@@ -249,6 +249,17 @@ class JobStore:
             rows = conn.execute(query, args).fetchall()
             return [dict(r) for r in rows]
 
+    def is_new_client(self, client_id: str) -> bool:
+        """Return True if this client_id has never submitted a job before."""
+        if not client_id:
+            return False
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM jobs WHERE client_id = ? LIMIT 1",
+                (client_id,),
+            ).fetchone()
+            return row is None
+
     def get_active_job_for_client(self, client_id: str) -> Optional[Dict[str, Any]]:
         """Return the most recent active job (queued/processing) for a client."""
         if not client_id:

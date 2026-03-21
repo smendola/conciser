@@ -58,7 +58,38 @@ class _NoDateRequestHandler(WSGIRequestHandler):
 
 
 app = Flask(__name__)
-if Settings().cors:
+
+_settings_for_init = Settings()
+
+def _get_sentry_dsn() -> str:
+    """Return SENTRY_DSN from settings (env), falling back to build-settings.json."""
+    if _settings_for_init.sentry_dsn:
+        return _settings_for_init.sentry_dsn
+    try:
+        import json
+        build_settings_path = get_project_root() / 'build-settings.json'
+        data = json.loads(build_settings_path.read_text())
+        return data.get('sentry_dsn', {}).get('server', '')
+    except Exception:
+        return ''
+
+_sentry_dsn = _get_sentry_dsn()
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.flask import FlaskIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    import logging as _stdlib_logging
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[
+            FlaskIntegration(),
+            LoggingIntegration(level=_stdlib_logging.INFO, event_level=_stdlib_logging.ERROR),
+        ],
+        traces_sample_rate=0.1,
+    )
+    logger.info("Sentry initialized (DSN from %s)", "env" if _settings_for_init.sentry_dsn else "build-settings.json")
+
+if _settings_for_init.cors:
     CORS(app, resources={
         r"/api/*": {
             "origins": "*",
@@ -465,6 +496,10 @@ def api_create_job():
         return jsonify({'error': 'Invalid type'}), 400
     if not youtube_url:
         return jsonify({'error': 'Missing url parameter'}), 400
+
+    if job_service.store.is_new_client(client_id) and _sentry_dsn:
+        import sentry_sdk as _sentry
+        _sentry.capture_message(f"new user: {client_id}", level="info")
 
     title = fetch_video_title(youtube_url)
     channel_name = fetch_channel_name(youtube_url)

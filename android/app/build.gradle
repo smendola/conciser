@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'com.github.triplet.play'
 }
 
 android {
@@ -47,7 +48,7 @@ android {
         buildConfigField "String[]", "PRESET_SERVER_NAMES", "{${presetNamesStr}}"
 
         // Inject Sentry DSN from environment or build-settings.json
-        def sentryDsn = System.getenv('SENTRY_DSN') ?: (settingsJson?.sentry_dsn ?: '')
+        def sentryDsn = System.getenv('SENTRY_DSN') ?: (settingsJson?.sentry_dsn?.android ?: '')
         buildConfigField "String", "SENTRY_DSN", "\"${sentryDsn}\""
 
         // Gate verbose voice/locale/prefs Sentry logging (default off)
@@ -151,4 +152,11 @@ tasks.register('incrementAndroidBuildNumber') {
 
 tasks.matching { it.name == 'assembleRelease' }.configureEach {
     dependsOn 'incrementAndroidBuildNumber'
+}
+
+play {
+    serviceAccountCredentials = file(System.getenv('PLAY_SERVICE_ACCOUNT_JSON') ?: "${rootProject.projectDir}/play-service-account.json")
+    track = 'internal'
+    releaseStatus = com.github.triplet.gradle.androidpublisher.ReleaseStatus.COMPLETED
+    defaultToAppBundles = true
 }
